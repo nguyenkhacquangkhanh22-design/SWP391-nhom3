@@ -1,0 +1,15 @@
+{
+  "name": "swp391-nhom3-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Root workspace runner for SWP391-nhom3",
+  "scripts": {
+    "dev": "concurrently -n \"BE,FE\" -c \"cyan,magenta\" \"npm --prefix be run dev\" \"npm --prefix fe run dev\"",
+    "dev:be": "npm --prefix be run dev",
+    "dev:fe": "npm --prefix fe run dev",
+    "install:all": "npm --prefix be install && npm --prefix fe install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
