@@ -5,6 +5,16 @@ export interface User {
   role: string;
   status: string;
   trust_score: number;
+  phone?: string;
+  address?: string;
+  avatarUrl?: string;
+  kycStatus?: "unverified" | "pending" | "verified" | "rejected";
+  kycDocument?: {
+    idNumber?: string;
+    submittedAt?: string;
+    verifiedAt?: string;
+    rejectionReason?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
 }

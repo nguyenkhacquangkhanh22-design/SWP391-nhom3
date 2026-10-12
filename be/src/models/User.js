@@ -39,6 +39,35 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    phone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    address: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    avatarUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    kycStatus: {
+      type: String,
+      enum: ["unverified", "pending", "verified", "rejected"],
+      default: "unverified",
+    },
+    kycDocument: {
+      idNumber: { type: String, trim: true },
+      idCardFront: { type: String, trim: true },
+      idCardBack: { type: String, trim: true },
+      selfiePhoto: { type: String, trim: true },
+      submittedAt: { type: Date },
+      verifiedAt: { type: Date },
+      rejectionReason: { type: String, trim: true },
+    },
     google_id: {
       type: String,
       unique: true,
