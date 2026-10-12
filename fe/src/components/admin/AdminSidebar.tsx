@@ -3,8 +3,8 @@ import { useAuth } from "../../app/AuthProvider";
 import Brand from "../Brand";
 
 interface AdminSidebarProps {
-  activeTab: "overview" | "users";
-  setActiveTab: (tab: "overview" | "users") => void;
+  activeTab: "overview" | "users" | "owner-apps";
+  setActiveTab: (tab: "overview" | "users" | "owner-apps") => void;
 }
 
 export default function AdminSidebar({
@@ -40,12 +40,23 @@ export default function AdminSidebar({
           <span>Quản lý người dùng</span>
         </button>
         <button
+          className={`admin-nav-item ${activeTab === "owner-apps" ? "is-active" : ""}`}
+          onClick={() => setActiveTab("owner-apps")}
+        >
+          <span className="admin-nav-icon">📋</span>
+          <span>Duyệt đơn Owner (UC_O02)</span>
+        </button>
+        <button
           className={`admin-nav-item ${activeTab === "overview" ? "is-active" : ""}`}
           onClick={() => setActiveTab("overview")}
         >
           <span className="admin-nav-icon">📊</span>
           <span>Chỉ số hệ thống</span>
         </button>
+        <Link to="/owner" className="admin-nav-item">
+          <span className="admin-nav-icon">💼</span>
+          <span>Cổng Owner</span>
+        </Link>
         <Link to="/profile" className="admin-nav-item">
           <span className="admin-nav-icon">👤</span>
           <span>Hồ sơ cá nhân</span>

@@ -8,6 +8,11 @@ import ProfilePage from "./pages/ProfilePage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminRoute from "./routes/AdminRoute";
+import OwnerRoute from "./routes/OwnerRoute";
+import OwnerPortal from "./pages/owner/OwnerPortal";
+import RegisterOwnerPage from "./pages/RegisterOwnerPage";
+import EquipmentMarketplacePage from "./pages/marketplace/EquipmentMarketplacePage";
+import EquipmentDetailPage from "./pages/marketplace/EquipmentDetailPage";
 
 function HomeRedirect() {
   const { user, isLoading } = useAuth();
@@ -15,10 +20,16 @@ function HomeRedirect() {
     return <div className="app-loading">Đang tải tài khoản...</div>;
   }
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/equipments" replace />;
   }
-  const isAdmin = (user.role || "").toLowerCase() === "systemadmin";
-  return <Navigate to={isAdmin ? "/admin" : "/profile"} replace />;
+  const role = (user.role || "").toLowerCase();
+  if (role === "systemadmin") {
+    return <Navigate to="/admin" replace />;
+  }
+  if (role === "owner") {
+    return <Navigate to="/owner" replace />;
+  }
+  return <Navigate to="/profile" replace />;
 }
 
 function App() {
@@ -31,9 +42,22 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
+
+        {/* Public marketplace routes */}
+        <Route path="/equipments" element={<EquipmentMarketplacePage />} />
+        <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
+        <Route path="/register-owner" element={<RegisterOwnerPage />} />
+
+        {/* Owner portal protected routes */}
+        <Route element={<OwnerRoute />}>
+          <Route path="/owner" element={<OwnerPortal />} />
+        </Route>
+
+        {/* System Admin protected routes */}
         <Route element={<AdminRoute />}>
           <Route path="/admin" element={<AdminDashboard />} />
         </Route>
+
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<HomeRedirect />} />
         <Route path="*" element={<HomeRedirect />} />

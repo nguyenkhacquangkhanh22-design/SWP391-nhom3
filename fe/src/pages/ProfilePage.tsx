@@ -75,10 +75,23 @@ export default function ProfilePage() {
     <main className="profile-page">
       <header className="profile-header">
         <Brand compact />
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <Link to="/equipments" className="button button-quiet" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
+            Chợ thiết bị 🔍
+          </Link>
           {(user.role || "").toLowerCase() === "systemadmin" && (
             <Link to="/admin" className="button button-secondary" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
               Trang Quản trị ⚙️
+            </Link>
+          )}
+          {(user.role || "").toLowerCase() === "owner" && (
+            <Link to="/owner" className="button button-primary" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
+              Cổng Người cho thuê 💼
+            </Link>
+          )}
+          {(user.role || "").toLowerCase() !== "owner" && (user.role || "").toLowerCase() !== "systemadmin" && (
+            <Link to="/register-owner" className="button button-primary" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
+              Đăng ký Owner 🚀
             </Link>
           )}
           <button

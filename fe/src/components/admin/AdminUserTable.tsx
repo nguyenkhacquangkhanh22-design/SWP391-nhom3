@@ -49,6 +49,7 @@ export default function AdminUserTable({
           >
             <option value="all">Tất cả vai trò</option>
             <option value="systemadmin">Systemadmin</option>
+            <option value="owner">Owner (Người cho thuê)</option>
             <option value="user">User</option>
           </select>
         </div>
