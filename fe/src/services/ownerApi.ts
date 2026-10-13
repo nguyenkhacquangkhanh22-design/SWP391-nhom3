@@ -9,6 +9,7 @@ import type {
   Dispute,
   SupportTicket,
   OwnerStats,
+  OwnerContractTemplate,
 } from "../types/owner";
 
 async function request<T>(
@@ -116,12 +117,25 @@ export const ownerApi = {
   getContracts: (token: string) =>
     request<{ contracts: RentalContract[] }>("/api/owner/contracts", { method: "GET" }, token),
 
+  getPublishedContractTemplates: (token: string) =>
+    request<{ templates: OwnerContractTemplate[] }>(
+      "/api/owner/contract-templates/published",
+      { method: "GET" },
+      token
+    ),
+
   getContractDetail: (token: string, id: string) =>
     request<{ contract: RentalContract }>(`/api/owner/contracts/${id}`, { method: "GET" }, token),
 
   createContract: (
     token: string,
-    data: { request_id: string; special_conditions?: string; custom_terms?: string }
+    data: {
+      request_id: string;
+      special_conditions?: string;
+      custom_terms?: string;
+      template_id?: string;
+      template_values?: Record<string, string>;
+    }
   ) =>
     request<{ message: string; contract: RentalContract }>(
       "/api/owner/contracts",
@@ -173,6 +187,13 @@ export const ownerApi = {
     request<{ message: string; record: HandoverRecord; settlement?: Settlement }>(
       `/api/owner/contracts/${contractId}/return-inspection`,
       { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  updateHandoverRecord: (token: string, id: string, data: Partial<HandoverRecord>) =>
+    request<{ message: string; record: HandoverRecord }>(
+      `/api/owner/handover-records/${id}`,
+      { method: "PUT", body: JSON.stringify(data) },
       token
     ),
 

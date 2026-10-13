@@ -7,6 +7,7 @@ const Settlement = require("../models/Settlement");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
+const ContractTemplate = require("../models/ContractTemplate");
 const AppError = require("../utils/AppError");
 
 // Helper to generate short unique codes
@@ -381,6 +382,17 @@ async function getContracts(req, res) {
   res.json({ contracts });
 }
 
+async function getPublishedContractTemplates(_req, res) {
+  const templates = await ContractTemplate.aggregate([
+    { $match: { status: "published" } },
+    { $sort: { version: -1 } },
+    { $group: { _id: "$template_code", template: { $first: "$$ROOT" } } },
+    { $replaceRoot: { newRoot: "$template" } },
+    { $sort: { name: 1 } },
+  ]);
+  res.json({ templates });
+}
+
 async function getContractDetail(req, res) {
   const { id } = req.params;
   const contract = await RentalContract.findOne({
@@ -401,7 +413,7 @@ async function getContractDetail(req, res) {
 // UC_O12: Create Rental Contract from accepted request using standard template
 async function createRentalContract(req, res) {
   const ownerId = req.user._id;
-  const { request_id, special_conditions, custom_terms } = req.body;
+  const { request_id, special_conditions, custom_terms, template_id, template_values } = req.body;
 
   if (!request_id) {
     throw new AppError(400, "Vui lòng cung cấp mã yêu cầu thuê đã chấp thuận");
@@ -423,7 +435,7 @@ async function createRentalContract(req, res) {
   const equipment = rentalReq.equipment_id;
   const contractCode = generateCode("HD");
 
-  const standardTerms = custom_terms || `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+  let standardTerms = custom_terms || `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
 Độc lập - Tự do - Hạnh phúc
 -----------------------------------
 HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ SỐ ${contractCode}
@@ -459,6 +471,54 @@ BÊN THUÊ (BÊN B - RENTER):
 ĐIỀU KHOẢN BỔ SUNG:
 ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
 
+  let selectedTemplate;
+  if (template_id) {
+    selectedTemplate = await ContractTemplate.findOne({
+      _id: template_id,
+      status: "published",
+    }).lean();
+    if (!selectedTemplate) {
+      throw new AppError(400, "Mẫu hợp đồng không còn được công bố. Vui lòng tải lại danh sách mẫu.");
+    }
+    const suppliedValues = {};
+    for (const field of selectedTemplate.fields) {
+      const supplied = template_values && typeof template_values === "object"
+        ? template_values[field.key]
+        : undefined;
+      if (supplied !== undefined && typeof supplied !== "string") {
+        throw new AppError(400, `Giá trị trường "${field.label}" không hợp lệ.`);
+      }
+      suppliedValues[field.key] = typeof supplied === "string" ? supplied.trim() : "";
+    }
+    const values = {
+      ...suppliedValues,
+      contract_code: contractCode,
+      owner_name: req.user.name,
+      owner_email: req.user.email,
+      renter_name: rentalReq.renter_name,
+      renter_email: rentalReq.renter_email || "",
+      renter_phone: rentalReq.renter_phone || "",
+      equipment_title: equipment.title,
+      equipment_brand: equipment.brand || "",
+      equipment_model: equipment.model_name || "",
+      equipment_condition: equipment.condition || "",
+      start_date: new Date(rentalReq.start_date).toLocaleString("vi-VN"),
+      end_date: new Date(rentalReq.end_date).toLocaleString("vi-VN"),
+      rental_price: rentalReq.rental_fee.toLocaleString("vi-VN"),
+      deposit_amount: rentalReq.deposit_amount.toLocaleString("vi-VN"),
+      special_conditions: special_conditions || "",
+    };
+    for (const field of selectedTemplate.fields) {
+      if (field.required && !String(values[field.key] || "").trim()) {
+        throw new AppError(400, `Vui lòng nhập trường bắt buộc: ${field.label}.`);
+      }
+    }
+    standardTerms = selectedTemplate.terms_content.replace(
+      /\{\{\s*([\w-]+)\s*\}\}/g,
+      (_placeholder, key) => String(values[key] ?? "")
+    );
+  }
+
   const contract = await RentalContract.create({
     contract_code: contractCode,
     request_id: rentalReq._id,
@@ -472,6 +532,8 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
     start_date: rentalReq.start_date,
     end_date: rentalReq.end_date,
     special_conditions: special_conditions || "",
+    template_id: selectedTemplate?._id,
+    template_version: selectedTemplate?.version,
     version: 1,
     version_history: [
       {
@@ -630,6 +692,44 @@ async function getContractHandoverRecords(req, res) {
   }).sort({ createdAt: 1 }).lean();
 
   res.json({ records });
+}
+
+async function updateHandoverRecordAfterReview(req, res) {
+  const { id } = req.params;
+  const { physical_condition, working_status, accessories_checklist, evidence_photos, notes } = req.body;
+  if (typeof physical_condition !== "string" || !physical_condition.trim()) {
+    throw new AppError(400, "Vui lòng nhập tình trạng thiết bị đã cập nhật.");
+  }
+  const record = await HandoverRecord.findOneAndUpdate(
+    {
+      _id: id,
+      owner_id: req.user._id,
+      "moderator_review.status": "needs_changes",
+    },
+    {
+      $set: {
+        physical_condition: physical_condition.trim(),
+        working_status: typeof working_status === "string" ? working_status.trim() : "",
+        accessories_checklist: Array.isArray(accessories_checklist) ? accessories_checklist : [],
+        evidence_photos: Array.isArray(evidence_photos) ? evidence_photos : [],
+        notes: typeof notes === "string" ? notes.trim() : "",
+        missing_items: Array.isArray(req.body.missing_items) ? req.body.missing_items : [],
+        damage_detected: typeof req.body.damage_detected === "string" ? req.body.damage_detected.trim() : "",
+        estimated_damage_cost: Math.max(0, Number(req.body.estimated_damage_cost) || 0),
+        "moderator_review.status": "pending",
+        "moderator_review.note": "",
+      },
+      $unset: {
+        "moderator_review.moderator_id": 1,
+        "moderator_review.reviewed_at": 1,
+      },
+    },
+    { new: true, runValidators: true }
+  );
+  if (!record) {
+    throw new AppError(404, "Không tìm thấy biên bản cần bổ sung của Owner này.");
+  }
+  res.json({ message: "Đã cập nhật biên bản và gửi lại để xác minh.", record });
 }
 
 // UC_O08: Handover Equipment (Biên bản bàn giao cho Renter)
@@ -982,12 +1082,14 @@ module.exports = {
   getRentalRequests,
   respondRentalRequest,
   getContracts,
+  getPublishedContractTemplates,
   getContractDetail,
   createRentalContract,
   updateDraftContract,
   submitRentalContractForApproval,
   confirmEContract,
   getContractHandoverRecords,
+  updateHandoverRecordAfterReview,
   createHandoverRecord,
   createReturnInspectionRecord,
   getSettlements,

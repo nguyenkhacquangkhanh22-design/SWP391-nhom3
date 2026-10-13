@@ -39,6 +39,9 @@ const supportTicketSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    related_record_id: {
+      type: mongoose.Schema.Types.ObjectId,
+    },
     priority: {
       type: String,
       enum: ["low", "medium", "high"],

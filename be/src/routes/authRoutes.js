@@ -60,6 +60,8 @@ router.post(
   asyncHandler(authController.changePassword),
 );
 router.get("/profile", authenticate, asyncHandler(authController.getProfile));
+router.get("/notifications", authenticate, asyncHandler(authController.listNotifications));
+router.patch("/notifications/:id/read", authenticate, asyncHandler(authController.markNotificationRead));
 router.patch(
   "/profile",
   authenticate,

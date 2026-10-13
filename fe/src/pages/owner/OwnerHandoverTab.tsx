@@ -29,6 +29,7 @@ export default function OwnerHandoverTab({
 
   const [records, setRecords] = useState<HandoverRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<HandoverRecord | null>(null);
 
   // Form states: Handover (UC_O08)
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -86,6 +87,31 @@ export default function OwnerHandoverTab({
   const handoverRecord = records.find((r) => r.record_type === "handover");
   const returnRecord = records.find((r) => r.record_type === "return");
 
+  function prepareRecordUpdate(record: HandoverRecord) {
+    setEditingRecord(record);
+    setAccessoriesList(record.accessories_checklist.map((item) => ({
+      item: item.item,
+      checked: item.checked,
+      notes: item.notes || "",
+    })));
+    if (record.record_type === "handover") {
+      setHandoverCondition(record.physical_condition);
+      setHandoverWorkingStatus(record.working_status);
+      setHandoverProofUrl(record.evidence_photos[0] || "");
+      setHandoverNotes(record.notes || "");
+      setShowHandoverModal(true);
+    } else {
+      setReturnCondition(record.physical_condition);
+      setReturnWorkingStatus(record.working_status);
+      setMissingItemsInput(record.missing_items?.join(", ") || "");
+      setDamageDetected(record.damage_detected || "");
+      setDamageCost(record.estimated_damage_cost || 0);
+      setReturnProofUrl(record.evidence_photos[0] || "");
+      setReturnNotes(record.notes || "");
+      setShowReturnModal(true);
+    }
+  }
+
   // UC_O08: Submit Handover Protocol
   async function handleSubmitHandover(e: React.FormEvent) {
     e.preventDefault();
@@ -95,14 +121,21 @@ export default function OwnerHandoverTab({
     onError("");
     onSuccess("");
     try {
-      await ownerApi.createHandoverRecord(token, activeContractId, {
+      const data = {
         accessories_checklist: accessoriesList,
         physical_condition: handoverCondition,
         working_status: handoverWorkingStatus,
         evidence_photos: handoverProofUrl ? [handoverProofUrl] : [],
         notes: handoverNotes,
-      });
-      onSuccess("Đã lập Biên bản bàn giao thiết bị (UC_O08) và chuyển trạng thái thuê sang Đang thuê.");
+      };
+      if (editingRecord) {
+        await ownerApi.updateHandoverRecord(token, editingRecord._id, data);
+        onSuccess("Đã cập nhật biên bản bàn giao và gửi lại để xác minh.");
+      } else {
+        await ownerApi.createHandoverRecord(token, activeContractId, data);
+        onSuccess("Đã lập Biên bản bàn giao thiết bị (UC_O08) và chuyển trạng thái thuê sang Đang thuê.");
+      }
+      setEditingRecord(null);
       setShowHandoverModal(false);
       loadRecords(activeContractId);
       onRefreshContracts();
@@ -128,7 +161,7 @@ export default function OwnerHandoverTab({
       .filter(Boolean);
 
     try {
-      await ownerApi.createReturnInspection(token, activeContractId, {
+      const data = {
         accessories_checklist: accessoriesList,
         physical_condition: returnCondition,
         working_status: returnWorkingStatus,
@@ -137,8 +170,15 @@ export default function OwnerHandoverTab({
         estimated_damage_cost: Number(damageCost),
         evidence_photos: returnProofUrl ? [returnProofUrl] : [],
         notes: returnNotes,
-      });
-      onSuccess("Đã lập Biên bản kiểm tra trả thiết bị (UC_O09) và cập nhật dữ liệu quyết toán!");
+      };
+      if (editingRecord) {
+        await ownerApi.updateHandoverRecord(token, editingRecord._id, data);
+        onSuccess("Đã cập nhật biên bản hoàn trả và gửi lại để xác minh.");
+      } else {
+        await ownerApi.createReturnInspection(token, activeContractId, data);
+        onSuccess("Đã lập Biên bản kiểm tra trả thiết bị (UC_O09) và cập nhật dữ liệu quyết toán!");
+      }
+      setEditingRecord(null);
       setShowReturnModal(false);
       loadRecords(activeContractId);
       onRefreshContracts();
@@ -202,7 +242,15 @@ export default function OwnerHandoverTab({
                 1️⃣ Biên bản bàn giao thiết bị (UC_O08)
               </h3>
               {handoverRecord ? (
-                <span className="status-badge status-active">✅ Đã bàn giao</span>
+                handoverRecord.moderator_review?.status === "needs_changes" ? (
+                  <button className="button button-secondary" onClick={() => prepareRecordUpdate(handoverRecord)}>
+                    Bổ sung theo yêu cầu
+                  </button>
+                ) : (
+                  <span className="status-badge status-active">
+                    {handoverRecord.moderator_review?.status === "verified" ? "✓ Đã xác minh" : "Đã bàn giao • Chờ xác minh"}
+                  </span>
+                )
               ) : (
                 <button
                   className="button button-primary"
@@ -216,6 +264,11 @@ export default function OwnerHandoverTab({
 
             {handoverRecord ? (
               <div className="record-details-view">
+                {handoverRecord.moderator_review?.note && (
+                  <div className="moderator-warning">
+                    <strong>Yêu cầu bổ sung:</strong> {handoverRecord.moderator_review.note}
+                  </div>
+                )}
                 <div className="record-info-row">
                   <span className="info-lbl">Thời điểm bàn giao:</span>
                   <span className="info-val">
@@ -275,7 +328,15 @@ export default function OwnerHandoverTab({
                 2️⃣ Biên bản kiểm tra trả thiết bị (UC_O09)
               </h3>
               {returnRecord ? (
-                <span className="status-badge status-completed">🏁 Đã kiểm tra trả</span>
+                returnRecord.moderator_review?.status === "needs_changes" ? (
+                  <button className="button button-secondary" onClick={() => prepareRecordUpdate(returnRecord)}>
+                    Bổ sung theo yêu cầu
+                  </button>
+                ) : (
+                  <span className="status-badge status-completed">
+                    {returnRecord.moderator_review?.status === "verified" ? "✓ Đã xác minh" : "Đã kiểm tra trả • Chờ xác minh"}
+                  </span>
+                )
               ) : handoverRecord ? (
                 <button
                   className="button button-primary"
@@ -291,6 +352,11 @@ export default function OwnerHandoverTab({
 
             {returnRecord ? (
               <div className="record-details-view">
+                {returnRecord.moderator_review?.note && (
+                  <div className="moderator-warning">
+                    <strong>Yêu cầu bổ sung:</strong> {returnRecord.moderator_review.note}
+                  </div>
+                )}
                 <div className="record-info-row">
                   <span className="info-lbl">Thời điểm kiểm tra trả:</span>
                   <span className="info-val">
@@ -366,8 +432,8 @@ export default function OwnerHandoverTab({
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "600px" }}>
             <div className="owner-modal-header">
-              <h3>🤝 Lập Biên bản Bàn giao thiết bị (UC_O08)</h3>
-              <button className="close-modal-btn" onClick={() => setShowHandoverModal(false)}>
+              <h3>🤝 {editingRecord ? "Bổ sung Biên bản Bàn giao" : "Lập Biên bản Bàn giao thiết bị (UC_O08)"}</h3>
+              <button className="close-modal-btn" onClick={() => { setShowHandoverModal(false); setEditingRecord(null); }}>
                 ✕
               </button>
             </div>
@@ -452,12 +518,12 @@ export default function OwnerHandoverTab({
                 <button
                   type="button"
                   className="button button-quiet"
-                  onClick={() => setShowHandoverModal(false)}
+                  onClick={() => { setShowHandoverModal(false); setEditingRecord(null); }}
                 >
                   Hủy
                 </button>
                 <button type="submit" className="button button-primary" disabled={isSubmitting}>
-                  {isSubmitting ? "Đang lưu..." : "Xác nhận bàn giao thiết bị"}
+                  {isSubmitting ? "Đang lưu..." : editingRecord ? "Gửi lại để xác minh" : "Xác nhận bàn giao thiết bị"}
                 </button>
               </div>
             </form>
@@ -470,8 +536,8 @@ export default function OwnerHandoverTab({
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "600px" }}>
             <div className="owner-modal-header">
-              <h3>🔍 Biên bản kiểm tra trả & Đối chiếu bàn giao (UC_O09)</h3>
-              <button className="close-modal-btn" onClick={() => setShowReturnModal(false)}>
+              <h3>🔍 {editingRecord ? "Bổ sung Biên bản hoàn trả" : "Biên bản kiểm tra trả & Đối chiếu bàn giao (UC_O09)"}</h3>
+              <button className="close-modal-btn" onClick={() => { setShowReturnModal(false); setEditingRecord(null); }}>
                 ✕
               </button>
             </div>
@@ -562,12 +628,12 @@ export default function OwnerHandoverTab({
                 <button
                   type="button"
                   className="button button-quiet"
-                  onClick={() => setShowReturnModal(false)}
+                  onClick={() => { setShowReturnModal(false); setEditingRecord(null); }}
                 >
                   Hủy
                 </button>
                 <button type="submit" className="button button-primary" disabled={isSubmitting}>
-                  {isSubmitting ? "Đang lưu..." : "Xác nhận biên bản kiểm tra trả"}
+                  {isSubmitting ? "Đang lưu..." : editingRecord ? "Gửi lại để xác minh" : "Xác nhận biên bản kiểm tra trả"}
                 </button>
               </div>
             </form>

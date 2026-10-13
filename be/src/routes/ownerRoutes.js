@@ -27,6 +27,7 @@ router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respon
 
 // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
 router.get("/contracts", asyncHandler(ownerController.getContracts));
+router.get("/contract-templates/published", asyncHandler(ownerController.getPublishedContractTemplates));
 router.get("/contracts/:id", asyncHandler(ownerController.getContractDetail));
 router.post("/contracts", asyncHandler(ownerController.createRentalContract));
 router.put("/contracts/:id", asyncHandler(ownerController.updateDraftContract));
@@ -37,6 +38,7 @@ router.post("/contracts/:id/confirm-e-contract", asyncHandler(ownerController.co
 router.get("/contracts/:id/handover", asyncHandler(ownerController.getContractHandoverRecords));
 router.post("/contracts/:id/handover", asyncHandler(ownerController.createHandoverRecord));
 router.post("/contracts/:id/return-inspection", asyncHandler(ownerController.createReturnInspectionRecord));
+router.put("/handover-records/:id", asyncHandler(ownerController.updateHandoverRecordAfterReview));
 
 // 6. Settlements & Revenue History (UC_O10, UC_O11)
 router.get("/settlements", asyncHandler(ownerController.getSettlements));

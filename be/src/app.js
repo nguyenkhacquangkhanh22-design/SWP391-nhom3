@@ -4,6 +4,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
 const marketplaceRoutes = require("./routes/marketplaceRoutes");
 const ownerRegistrationRoutes = require("./routes/ownerRegistrationRoutes");
+const moderatorRoutes = require("./routes/moderatorRoutes");
 const handleError = require("./middleware/handleError");
 
 const app = express();
@@ -19,6 +20,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/equipments", marketplaceRoutes);
 app.use("/api/owner-registration", ownerRegistrationRoutes);
+app.use("/api/moderator", moderatorRoutes);
 app.use(handleError);
 
 module.exports = app;

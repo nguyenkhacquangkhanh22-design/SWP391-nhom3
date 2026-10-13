@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { RentalContract, RentalRequest } from "../../types/owner";
+import { useEffect, useState } from "react";
+import type { OwnerContractTemplate, RentalContract, RentalRequest } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
 
 interface Props {
@@ -29,6 +29,9 @@ export default function OwnerContractsTab({
     initialSelectedRequest?._id || ""
   );
   const [specialConditions, setSpecialConditions] = useState("");
+  const [publishedTemplates, setPublishedTemplates] = useState<OwnerContractTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
 
   const [editingContract, setEditingContract] = useState<RentalContract | null>(null);
   const [editedTerms, setEditedTerms] = useState("");
@@ -37,6 +40,20 @@ export default function OwnerContractsTab({
   const [viewingContract, setViewingContract] = useState<RentalContract | null>(null);
   const [isSigning, setIsSigning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    ownerApi.getPublishedContractTemplates(token)
+      .then(({ templates }) => setPublishedTemplates(templates))
+      .catch((err: unknown) => onError(err instanceof Error ? err.message : "Không thể tải mẫu hợp đồng."));
+  }, [token]);
+
+  const selectedTemplate = publishedTemplates.find((template) => template._id === selectedTemplateId);
+  const automaticTemplateFields = new Set([
+    "contract_code", "owner_name", "owner_email", "renter_name", "renter_email",
+    "renter_phone", "equipment_title", "equipment_brand", "equipment_model",
+    "equipment_condition", "start_date", "end_date", "rental_price", "deposit_amount",
+    "special_conditions",
+  ]);
 
   // UC_O12: Create Contract
   async function handleCreateContract(e: React.FormEvent) {
@@ -53,10 +70,14 @@ export default function OwnerContractsTab({
       const res = await ownerApi.createContract(token, {
         request_id: selectedRequestForContract,
         special_conditions: specialConditions,
+        template_id: selectedTemplateId || undefined,
+        template_values: templateValues,
       });
       onSuccess(`Đã lập bản nháp hợp đồng "${res.contract.contract_code}" thành công.`);
       setShowCreateModal(false);
       setSpecialConditions("");
+      setSelectedTemplateId("");
+      setTemplateValues({});
       onRefresh();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Lập hợp đồng thất bại.");
@@ -199,6 +220,11 @@ export default function OwnerContractsTab({
                   </div>
                 </div>
               </div>
+              {c.moderator_feedback && (
+                <div className="moderator-warning" style={{ marginTop: 12 }}>
+                  <strong>Phản hồi kiểm duyệt:</strong> {c.moderator_feedback}
+                </div>
+              )}
 
               {/* Financial & Dates summary */}
               <div className="contract-meta-bar">
@@ -334,6 +360,45 @@ export default function OwnerContractsTab({
                     ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="field-label">Mẫu hợp đồng đã công bố</label>
+                  <select
+                    className="input-field"
+                    value={selectedTemplateId}
+                    onChange={(e) => {
+                      setSelectedTemplateId(e.target.value);
+                      setTemplateValues({});
+                    }}
+                  >
+                    <option value="">-- Dùng mẫu mặc định của hệ thống --</option>
+                    {publishedTemplates.map((template) => (
+                      <option key={template._id} value={template._id}>
+                        {template.name} • v{template.version}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTemplate && (
+                    <p style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Mẫu {selectedTemplate.template_code} v{selectedTemplate.version} được lưu cùng hợp đồng.
+                    </p>
+                  )}
+                </div>
+
+                {selectedTemplate?.fields.filter((field) => !automaticTemplateFields.has(field.key)).map((field) => (
+                  <div key={field.key}>
+                    <label className="field-label" htmlFor={`template-${field.key}`}>
+                      {field.label}{field.required ? " *" : ""}
+                    </label>
+                    <input
+                      id={`template-${field.key}`}
+                      className="input-field"
+                      value={templateValues[field.key] || ""}
+                      onChange={(e) => setTemplateValues((current) => ({ ...current, [field.key]: e.target.value }))}
+                      required={field.required}
+                    />
+                  </div>
+                ))}
 
                 <div>
                   <label className="field-label">Điều khoản bổ sung cụ thể (nếu có)</label>

@@ -9,6 +9,15 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface UserNotification {
+  _id: string;
+  title: string;
+  message: string;
+  related_record_id?: string;
+  read_at?: string;
+  createdAt: string;
+}
+
 export interface AuthResponse {
   user: User;
   token: string;

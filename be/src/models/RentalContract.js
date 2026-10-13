@@ -66,6 +66,13 @@ const rentalContractSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    template_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ContractTemplate",
+    },
+    template_version: {
+      type: Number,
+    },
     version_history: [
       {
         version: { type: Number, required: true },
@@ -96,6 +103,22 @@ const rentalContractSchema = new mongoose.Schema(
     moderator_approved_at: {
       type: Date,
     },
+    moderator_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    moderator_approved_version: {
+      type: Number,
+    },
+    moderation_history: [
+      {
+        action: { type: String, enum: ["approved", "rejected"], required: true },
+        moderator_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        reason: { type: String, default: "" },
+        version: { type: Number, required: true },
+        created_at: { type: Date, default: Date.now },
+      },
+    ],
     owner_signature: {
       signed: { type: Boolean, default: false },
       signed_at: { type: Date },
