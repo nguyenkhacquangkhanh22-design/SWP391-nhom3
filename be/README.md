@@ -12,7 +12,8 @@ Google sign-in expects an ID token from a client configured with
 
 ## Endpoints
 
-### Auth (`/api/auth`)
+All routes use the `/api/auth` prefix. Protected routes require
+`Authorization: Bearer <token>`.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
