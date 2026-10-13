@@ -27,7 +27,9 @@ export default function LoginPage() {
 
   if (user) {
     const isAdmin = (user.role || "").toLowerCase() === "systemadmin";
-    return <Navigate to={isAdmin ? "/admin" : "/profile"} replace />;
+    const role = (user.role || "").toLowerCase();
+    const destination = isAdmin ? "/admin" : role.replace(/[\s_-]/g, "") === "rentalmoderator" ? "/moderator" : "/profile";
+    return <Navigate to={destination} replace />;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

@@ -44,6 +44,10 @@ const equipmentStatusRequestSchema = new mongoose.Schema(
     reviewed_at: {
       type: Date,
     },
+    reviewed_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
   {
     timestamps: true,

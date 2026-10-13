@@ -81,6 +81,24 @@ const handoverRecordSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    moderator_review: {
+      status: {
+        type: String,
+        enum: ["pending", "verified", "needs_changes"],
+        default: "pending",
+      },
+      note: { type: String, default: "" },
+      moderator_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reviewed_at: { type: Date },
+    },
+    moderator_review_history: [
+      {
+        status: { type: String, enum: ["verified", "needs_changes"], required: true },
+        note: { type: String, default: "" },
+        moderator_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        reviewed_at: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,

@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Brand from "../components/Brand";
 import Feedback from "../components/Feedback";
 import PasswordInput from "../components/PasswordInput";
 import { authApi } from "../services/authApi";
+import type { UserNotification } from "../types/auth";
 
 export default function ProfilePage() {
   const { user, token, isLoading, signOut, saveUser, changePassword } = useAuth();
@@ -16,6 +17,18 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [notificationError, setNotificationError] = useState("");
+  const [markingNotificationId, setMarkingNotificationId] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    authApi.getNotifications(token)
+      .then(({ notifications: items }) => setNotifications(items))
+      .catch((requestError: unknown) => {
+        setNotificationError(requestError instanceof Error ? requestError.message : "Không thể tải thông báo.");
+      });
+  }, [token]);
 
   if (isLoading) return <div className="app-loading">Đang tải tài khoản...</div>;
   if (!user || !token) return <Navigate to="/login" replace />;
@@ -89,7 +102,14 @@ export default function ProfilePage() {
               Cổng Người cho thuê 💼
             </Link>
           )}
-          {(user.role || "").toLowerCase() !== "owner" && (user.role || "").toLowerCase() !== "systemadmin" && (
+          {(user.role || "").toLowerCase().replace(/[\s_-]/g, "") === "rentalmoderator" && (
+            <Link to="/moderator" className="button button-primary" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
+              Không gian kiểm duyệt ⚖️
+            </Link>
+          )}
+          {(user.role || "").toLowerCase() !== "owner" &&
+            (user.role || "").toLowerCase() !== "systemadmin" &&
+            (user.role || "").toLowerCase().replace(/[\s_-]/g, "") !== "rentalmoderator" && (
             <Link to="/register-owner" className="button button-primary" style={{ padding: "8px 14px", fontSize: "0.85rem" }}>
               Đăng ký Owner 🚀
             </Link>
@@ -112,6 +132,50 @@ export default function ProfilePage() {
         </div>
         <Feedback message={error} />
         <Feedback message={success} type="success" />
+        <section className="settings-card notification-panel" id="notifications">
+          <div className="settings-heading">
+            <div className="settings-icon">✉</div>
+            <div>
+              <h2>Thông báo</h2>
+              <p>Cập nhật về kiểm duyệt hợp đồng, biên bản và yêu cầu thiết bị.</p>
+            </div>
+          </div>
+          <Feedback message={notificationError} />
+          {notifications.length === 0 && !notificationError && (
+            <p className="notification-empty">Bạn chưa có thông báo mới.</p>
+          )}
+          <div className="notification-list">
+            {notifications.map((notification) => (
+              <article className={`notification-item ${notification.read_at ? "" : "unread"}`} key={notification._id}>
+                <div>
+                  <strong>{notification.title}</strong>
+                  <p>{notification.message}</p>
+                  <time>{new Date(notification.createdAt).toLocaleString("vi-VN")}</time>
+                </div>
+                {!notification.read_at && (
+                  <button
+                    className="button button-quiet"
+                    disabled={markingNotificationId === notification._id}
+                    onClick={() => {
+                      setMarkingNotificationId(notification._id);
+                      void authApi.markNotificationRead(token, notification._id)
+                        .then(({ notification: updated }) => {
+                          setNotifications((current) => current.map((item) => item._id === updated._id ? updated : item));
+                          setNotificationError("");
+                        })
+                        .catch((requestError: unknown) => setNotificationError(
+                          requestError instanceof Error ? requestError.message : "Không thể đánh dấu thông báo đã đọc."
+                        ))
+                        .finally(() => setMarkingNotificationId(""));
+                    }}
+                  >
+                    {markingNotificationId === notification._id ? "Đang lưu..." : "Đánh dấu đã đọc"}
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
         <div className="profile-grid">
           <section className="settings-card">
             <div className="settings-heading">

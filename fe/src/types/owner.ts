@@ -119,6 +119,15 @@ export interface RentalContract {
   createdAt: string;
 }
 
+export interface OwnerContractTemplate {
+  _id: string;
+  template_code: string;
+  name: string;
+  version: number;
+  terms_content: string;
+  fields: { key: string; label: string; required: boolean }[];
+}
+
 export interface HandoverRecord {
   _id: string;
   contract_id: string;
@@ -137,6 +146,11 @@ export interface HandoverRecord {
   estimated_damage_cost?: number;
   owner_confirmed: boolean;
   renter_confirmed: boolean;
+  moderator_review?: {
+    status: "pending" | "verified" | "needs_changes";
+    note?: string;
+    reviewed_at?: string;
+  };
   createdAt: string;
 }
 

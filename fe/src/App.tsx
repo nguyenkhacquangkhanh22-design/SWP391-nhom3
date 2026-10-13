@@ -13,6 +13,8 @@ import OwnerPortal from "./pages/owner/OwnerPortal";
 import RegisterOwnerPage from "./pages/RegisterOwnerPage";
 import EquipmentMarketplacePage from "./pages/marketplace/EquipmentMarketplacePage";
 import EquipmentDetailPage from "./pages/marketplace/EquipmentDetailPage";
+import ModeratorPortal from "./pages/moderator/ModeratorPortal";
+import ModeratorRoute from "./routes/ModeratorRoute";
 
 function HomeRedirect() {
   const { user, isLoading } = useAuth();
@@ -28,6 +30,9 @@ function HomeRedirect() {
   }
   if (role === "owner") {
     return <Navigate to="/owner" replace />;
+  }
+  if (role.replace(/[\s_-]/g, "") === "rentalmoderator") {
+    return <Navigate to="/moderator" replace />;
   }
   return <Navigate to="/profile" replace />;
 }
@@ -51,6 +56,11 @@ function App() {
         {/* Owner portal protected routes */}
         <Route element={<OwnerRoute />}>
           <Route path="/owner" element={<OwnerPortal />} />
+        </Route>
+
+        {/* Rental Moderator protected routes */}
+        <Route element={<ModeratorRoute />}>
+          <Route path="/moderator" element={<ModeratorPortal />} />
         </Route>
 
         {/* System Admin protected routes */}
