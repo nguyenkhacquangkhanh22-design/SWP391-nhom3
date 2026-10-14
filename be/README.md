@@ -69,9 +69,20 @@ Protected with role `owner` or `systemadmin`:
 | GET | `/api/owner-registration/status` | UC_O02 | Kiểm tra trạng thái duyệt hồ sơ Owner |
 | GET | `/api/admin/owner-applications` | UC_O02 | Admin xem danh sách hồ sơ đăng ký Owner |
 | PATCH | `/api/admin/owner-applications/:id/review` | UC_O02 | Admin phê duyệt / từ chối hồ sơ đăng ký |
-| GET | `/api/equipments` | UC_O19 | Tìm kiếm & duyệt thiết bị công khai trên sàn |
-| GET | `/api/equipments/:id` | UC_O20 | Xem chi tiết thiết bị, chủ sở hữu & đánh giá |
-| POST | `/api/equipments/:id/request-rental` | Renter | Gửi yêu cầu thuê thiết bị |
+### System Admin (`/api/admin`) - Bảng 5 Use Cases
+
+Protected with role `systemadmin`:
+
+| Method | Path | Use Case | Purpose |
+| --- | --- | --- | --- |
+| GET | `/overview` | UC_A02 | Xem tổng quan chỉ số và danh sách người dùng |
+| PATCH | `/users/:userId/role` | UC_A05 | Cấp / hạ quyền người dùng (User <-> Systemadmin) |
+| PATCH | `/users/:userId/status` | UC_A04 | Khóa / mở khóa tài khoản và thu hồi token tức thì |
+| GET | `/owner-applications` | UC_A07 | Danh sách hồ sơ đăng ký Owner chờ duyệt |
+| PATCH | `/owner-applications/:id/review` | UC_A07 | Phê duyệt hoặc từ chối cấp quyền Owner |
+| GET | `/support-tickets` | UC_A17 | Tra cứu danh sách yêu cầu hỗ trợ (có lọc & thống kê) |
+| POST | `/support-tickets/:id/reply` | UC_A17 | Trả lời yêu cầu hỗ trợ & cập nhật trạng thái |
+| PATCH | `/support-tickets/:id/status` | UC_A17 | Cập nhật trực tiếp trạng thái yêu cầu hỗ trợ |
 
 Passwords must contain at least 8 characters. Password reset links expire after
 15 minutes and are single-use. The forgot-password endpoint returns the same

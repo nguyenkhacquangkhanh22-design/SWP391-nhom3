@@ -3,13 +3,15 @@ import { useAuth } from "../../app/AuthProvider";
 import Brand from "../Brand";
 
 interface AdminSidebarProps {
-  activeTab: "overview" | "users" | "owner-apps";
-  setActiveTab: (tab: "overview" | "users" | "owner-apps") => void;
+  activeTab: "overview" | "users" | "owner-apps" | "support";
+  setActiveTab: (tab: "overview" | "users" | "owner-apps" | "support") => void;
+  supportOpenCount?: number;
 }
 
 export default function AdminSidebar({
   activeTab,
   setActiveTab,
+  supportOpenCount,
 }: AdminSidebarProps) {
   const { user, signOut } = useAuth();
 
@@ -45,6 +47,20 @@ export default function AdminSidebar({
         >
           <span className="admin-nav-icon">📋</span>
           <span>Duyệt đơn Owner (UC_O02)</span>
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === "support" ? "is-active" : ""}`}
+          onClick={() => setActiveTab("support")}
+        >
+          <span className="admin-nav-icon">🎫</span>
+          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+            <span>Hỗ trợ (UC_A17)</span>
+            {supportOpenCount !== undefined && supportOpenCount > 0 && (
+              <span className="status-badge status-pending" style={{ padding: "1px 6px", fontSize: "0.7rem", marginLeft: "6px" }}>
+                {supportOpenCount}
+              </span>
+            )}
+          </span>
         </button>
         <button
           className={`admin-nav-item ${activeTab === "overview" ? "is-active" : ""}`}

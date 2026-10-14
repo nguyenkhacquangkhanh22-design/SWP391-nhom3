@@ -1,4 +1,4 @@
-import type { AdminOverviewResponse } from "../types/admin";
+import type { AdminOverviewResponse, AdminSupportTicketsResponse, AdminSupportTicket } from "../types/admin";
 import type { User } from "../types/auth";
 import { ApiError } from "./authApi";
 
@@ -46,6 +46,42 @@ export const adminApi = {
     adminRequest<{ message: string; user: User }>(
       `/users/${userId}/status`,
       { method: "PATCH", body: JSON.stringify({ status }) },
+      token
+    ),
+
+  // UC_A17: Support Tickets
+  listSupportTickets: (
+    token: string,
+    params?: { status?: string; category?: string; priority?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.category) query.set("category", params.category);
+    if (params?.priority) query.set("priority", params.priority);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<AdminSupportTicketsResponse>(`/support-tickets${qs}`, { method: "GET" }, token);
+  },
+
+  replySupportTicket: (
+    token: string,
+    ticketId: string,
+    body: { message: string; nextStatus?: string }
+  ) =>
+    adminRequest<{ message: string; ticket: AdminSupportTicket }>(
+      `/support-tickets/${ticketId}/reply`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateSupportTicketStatus: (
+    token: string,
+    ticketId: string,
+    body: { status: string; note?: string }
+  ) =>
+    adminRequest<{ message: string; ticket: AdminSupportTicket }>(
+      `/support-tickets/${ticketId}/status`,
+      { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
 };

@@ -1,4 +1,6 @@
 const User = require("../models/User");
+const SupportTicket = require("../models/SupportTicket");
+const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
 async function getOverview(req, res) {
@@ -88,8 +90,162 @@ async function updateUserStatus(req, res) {
   });
 }
 
+// UC_A17: List support tickets with filter, search and stats
+async function listSupportTickets(req, res) {
+  const { status, category, priority, search } = req.query;
+  const filter = {};
+
+  if (status && status !== "all") {
+    filter.status = status;
+  }
+  if (category && category !== "all") {
+    filter.category = category;
+  }
+  if (priority && priority !== "all") {
+    filter.priority = priority;
+  }
+  if (search && search.trim()) {
+    const q = search.trim();
+    filter.$or = [
+      { ticket_code: { $regex: q, $options: "i" } },
+      { subject: { $regex: q, $options: "i" } },
+      { message: { $regex: q, $options: "i" } },
+    ];
+  }
+
+  const [tickets, stats] = await Promise.all([
+    SupportTicket.find(filter)
+      .populate("user_id", "name email role")
+      .populate("replies.sender_id", "name email role")
+      .sort({ createdAt: -1 })
+      .lean(),
+    Promise.all([
+      SupportTicket.countDocuments(),
+      SupportTicket.countDocuments({ status: "open" }),
+      SupportTicket.countDocuments({ status: "in_progress" }),
+      SupportTicket.countDocuments({ status: "resolved" }),
+      SupportTicket.countDocuments({ status: "closed" }),
+    ]).then(([total, open, in_progress, resolved, closed]) => ({
+      total,
+      open,
+      in_progress,
+      resolved,
+      closed,
+    })),
+  ]);
+
+  res.json({ tickets, stats });
+}
+
+// UC_A17: Reply to support ticket and optionally update status
+async function replySupportTicket(req, res) {
+  const { id } = req.params;
+  const { message, nextStatus } = req.body;
+
+  if (!message || !message.trim()) {
+    throw new AppError(400, "Nội dung phản hồi không được để trống");
+  }
+
+  const ticket = await SupportTicket.findById(id);
+  if (!ticket) {
+    throw new AppError(404, "Không tìm thấy yêu cầu hỗ trợ");
+  }
+
+  ticket.replies.push({
+    sender_id: req.user._id,
+    sender_name: req.user.name || "System Admin",
+    sender_role: "systemadmin",
+    message: message.trim(),
+    created_at: new Date(),
+  });
+
+  if (nextStatus && ["open", "in_progress", "resolved", "closed"].includes(nextStatus)) {
+    ticket.status = nextStatus;
+  } else if (ticket.status === "open") {
+    ticket.status = "in_progress";
+  }
+
+  await ticket.save();
+
+  // Create user notification (UC_RM12)
+  try {
+    const preview = message.trim().slice(0, 100) + (message.trim().length > 100 ? "..." : "");
+    await UserNotification.create({
+      user_id: ticket.user_id,
+      title: `[Hỗ trợ] Phản hồi mới cho yêu cầu #${ticket.ticket_code}`,
+      message: `Quản trị viên đã phản hồi: "${preview}"`,
+      related_record_id: ticket._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify user:", err);
+  }
+
+  const updatedTicket = await SupportTicket.findById(id)
+    .populate("user_id", "name email role")
+    .populate("replies.sender_id", "name email role")
+    .lean();
+
+  res.json({
+    message: "Đã gửi phản hồi thành công.",
+    ticket: updatedTicket,
+  });
+}
+
+// UC_A17: Update support ticket status directly
+async function updateSupportTicketStatus(req, res) {
+  const { id } = req.params;
+  const { status, note } = req.body;
+
+  if (!status || !["open", "in_progress", "resolved", "closed"].includes(status)) {
+    throw new AppError(400, "Trạng thái không hợp lệ ('open', 'in_progress', 'resolved', 'closed')");
+  }
+
+  const ticket = await SupportTicket.findById(id);
+  if (!ticket) {
+    throw new AppError(404, "Không tìm thấy yêu cầu hỗ trợ");
+  }
+
+  ticket.status = status;
+  if (note && note.trim()) {
+    ticket.replies.push({
+      sender_id: req.user._id,
+      sender_name: req.user.name || "System Admin",
+      sender_role: "systemadmin",
+      message: `[Cập nhật trạng thái sang ${status}]: ${note.trim()}`,
+      created_at: new Date(),
+    });
+  }
+
+  await ticket.save();
+
+  // Notify user
+  try {
+    await UserNotification.create({
+      user_id: ticket.user_id,
+      title: `[Hỗ trợ] Yêu cầu #${ticket.ticket_code} đã cập nhật trạng thái`,
+      message: `Trạng thái yêu cầu hỗ trợ của bạn đã được chuyển sang "${status}".`,
+      related_record_id: ticket._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify user:", err);
+  }
+
+  const updatedTicket = await SupportTicket.findById(id)
+    .populate("user_id", "name email role")
+    .populate("replies.sender_id", "name email role")
+    .lean();
+
+  res.json({
+    message: `Đã cập nhật trạng thái yêu cầu sang "${status}".`,
+    ticket: updatedTicket,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
   updateUserStatus,
+  listSupportTickets,
+  replySupportTicket,
+  updateSupportTicketStatus,
 };
