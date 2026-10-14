@@ -19,4 +19,9 @@ router.patch("/users/:userId/status", asyncHandler(adminController.updateUserSta
 router.get("/owner-applications", asyncHandler(ownerRegistrationController.adminListApplications));
 router.patch("/owner-applications/:id/review", asyncHandler(ownerRegistrationController.adminReviewApplication));
 
+// Support tickets review & response (UC_A17)
+router.get("/support-tickets", asyncHandler(adminController.listSupportTickets));
+router.post("/support-tickets/:id/reply", asyncHandler(adminController.replySupportTicket));
+router.patch("/support-tickets/:id/status", asyncHandler(adminController.updateSupportTicketStatus));
+
 module.exports = router;

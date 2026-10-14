@@ -2133,3 +2133,61 @@ a:hover {
 .info-val {
   font-weight: 500;
 }
+
+/* Support Tickets Thread Styles (UC_A17) */
+.ticket-thread-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 14px;
+  background: #0b111e;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.ticket-message-bubble {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #162032;
+  border: 1px solid var(--border);
+}
+
+.ticket-message-bubble.is-admin {
+  background: rgba(249, 115, 22, 0.08);
+  border-color: rgba(249, 115, 22, 0.3);
+  margin-left: 20px;
+}
+
+.ticket-message-bubble.is-original {
+  background: #141d2e;
+  border-left: 4px solid var(--orange);
+}
+
+.ticket-bubble-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+}
+
+.ticket-sender-name {
+  font-weight: 700;
+  color: #fff;
+}
+
+.ticket-bubble-time {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.ticket-bubble-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  margin: 0;
+}
