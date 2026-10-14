@@ -1303,28 +1303,277 @@ a:hover {
   color: #94a0b2;
 }
 
-/* Responsive */
-@media (max-width: 900px) {
+/* ==========================================================================
+   Admin Mobile Responsive Styling
+   ========================================================================== */
+
+/* Mobile Header Bar (Hidden on Desktop) */
+.admin-mobile-header {
+  display: none;
+}
+
+.admin-sidebar-close-btn {
+  display: none;
+}
+
+.admin-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 991px) {
   .admin-layout {
     flex-direction: column;
+    min-height: 100vh;
+    position: relative;
   }
 
-  .admin-sidebar {
+  /* Mobile Topbar */
+  .admin-mobile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #141c2c;
+    border-bottom: 1px solid #253047;
+    position: sticky;
+    top: 0;
+    z-index: 80;
+  }
+
+  .admin-hamburger-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 38px;
+    height: 38px;
+    background: #1a2235;
+    border: 1px solid #253047;
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .admin-hamburger-btn:hover {
+    background: #253047;
+    border-color: var(--orange);
+  }
+
+  .hamburger-line {
+    display: block;
     width: 100%;
-    height: auto;
-    position: static;
+    height: 2px;
+    background: #e8edf5;
+    border-radius: 2px;
   }
 
+  .admin-mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Mobile Drawer Sidebar */
+  .admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 290px;
+    max-width: 85vw;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 35px rgba(0, 0, 0, 0.7);
+    overflow-y: auto;
+  }
+
+  .admin-sidebar.is-mobile-open {
+    transform: translateX(0);
+  }
+
+  .admin-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 95;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .admin-sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid #253047;
+    border-radius: 8px;
+    color: #94a0b2;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-left: auto;
+    transition: all 0.15s ease;
+  }
+
+  .admin-sidebar-close-btn:hover {
+    color: #fff;
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+  }
+
+  /* Main Area Adjustments */
   .admin-main {
-    padding: 24px 16px;
+    padding: 18px 14px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   .admin-topbar {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .admin-page-title {
+    font-size: 1.45rem;
+    line-height: 1.25;
+  }
+
+  .admin-topbar-actions {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* Filter Toolbar in Support Tab */
+  .ticket-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .ticket-filter-tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding: 4px;
+    box-sizing: border-box;
+    scrollbar-width: none;
+  }
+
+  .ticket-filter-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ticket-search-box {
+    min-width: 100%;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Admin User Table Filters */
+  .admin-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px 18px;
+  }
+
+  .admin-table-filters {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .admin-search-input,
+  .admin-select {
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Modals on Mobile */
+  .owner-modal-card {
+    padding: 20px 16px;
+    max-height: 92vh;
+    border-radius: 14px;
+  }
+
+  .ticket-thread-container {
+    max-height: 280px;
+    padding: 10px;
+  }
+
+  .ticket-message-bubble {
+    padding: 10px 12px;
+  }
+
+  .ticket-message-bubble.is-admin {
+    margin-left: 10px;
   }
 }
+
+/* Extra small mobile devices (< 600px) */
+@media (max-width: 600px) {
+  .admin-page-title {
+    font-size: 1.25rem;
+  }
+
+  .admin-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .admin-metric-card {
+    padding: 14px;
+  }
+
+  .metric-value {
+    font-size: 1.6rem;
+  }
+
+  .ticket-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .ticket-kpi-card {
+    padding: 12px 14px;
+  }
+
+  .ticket-kpi-value {
+    font-size: 1.4rem;
+  }
+
+  .ticket-tab-btn {
+    padding: 6px 10px;
+    font-size: 0.76rem;
+  }
+
+  .admin-table th {
+    padding: 10px 12px;
+    font-size: 0.72rem;
+  }
+
+  .admin-table td {
+    padding: 12px 10px;
+    font-size: 0.8rem;
+  }
+}
+
 
 /* ==========================================================================
    OWNER PORTAL & MARKETPLACE STYLES
