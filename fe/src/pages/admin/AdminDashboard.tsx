@@ -4,6 +4,7 @@ import Feedback from "../../components/Feedback";
 import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminStatsGrid from "../../components/admin/AdminStatsGrid";
 import AdminUserTable, { type AdminUserRow } from "../../components/admin/AdminUserTable";
+import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
 import type { AdminStats, AdminSupportTicket, TicketStats } from "../../types/admin";
@@ -24,6 +25,7 @@ export default function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "owner-apps" | "support">("users");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // Ticket Modal & Form state (UC_A17)
   const [selectedTicket, setSelectedTicket] = useState<AdminSupportTicket | null>(null);
@@ -260,10 +262,40 @@ export default function AdminDashboard() {
   return (
     <div className="admin-layout">
       {/* Admin Sidebar Navigation */}
+      {/* Top Mobile Header Bar (Only visible on Mobile/Tablet) */}
+      <div className="admin-mobile-header">
+        <button
+          type="button"
+          className="admin-hamburger-btn"
+          onClick={() => setIsMobileNavOpen(true)}
+          aria-label="Mở menu quản trị"
+        >
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+        </button>
+
+        <div className="admin-mobile-brand">
+          <Brand compact />
+          <span className="admin-badge-portal">ADMIN</span>
+        </div>
+
+        <div
+          className="admin-user-avatar"
+          style={{ width: "34px", height: "34px", fontSize: "0.85rem" }}
+          title={user?.name || "Admin"}
+        >
+          {(user?.name || "A").slice(0, 2).toUpperCase()}
+        </div>
+      </div>
+
+      {/* Admin Sidebar Navigation */}
       <AdminSidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         supportOpenCount={ticketStats?.open || 0}
+        isOpenMobile={isMobileNavOpen}
+        onCloseMobile={() => setIsMobileNavOpen(false)}
       />
 
       {/* Main Admin Area */}
@@ -289,6 +321,7 @@ export default function AdminDashboard() {
             </div>
             <button
               className="button button-secondary button-compact"
+              style={{ width: "auto", minHeight: "unset" }}
               onClick={loadData}
               disabled={isLoading}
             >
@@ -324,137 +357,150 @@ export default function AdminDashboard() {
 
         {/* Owner Applications Review (UC_O02, UC_A07) */}
         {activeTab === "owner-apps" && (
-          <div className="admin-table-container" style={{ marginTop: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, color: "#fff", fontSize: "1.15rem" }}>
-                📋 Hồ sơ đăng ký Người cho thuê (Owner Applications - UC_O02)
-              </h3>
-              <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
-                Tổng cộng: {ownerApplications.length} hồ sơ
-              </span>
+          <section className="admin-card" style={{ marginTop: "20px" }}>
+            <div className="admin-card-header" style={{ padding: "16px 20px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.1rem", margin: 0, color: "#fff" }}>
+                  📋 Hồ sơ đăng ký Người cho thuê (UC_O02)
+                </h2>
+                <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--muted)" }}>
+                  Tổng cộng: {ownerApplications.length} hồ sơ yêu cầu nâng cấp quyền.
+                </p>
+              </div>
             </div>
 
-            {ownerApplications.length === 0 ? (
-              <div className="owner-empty-state" style={{ padding: "40px", textAlign: "center" }}>
-                <p style={{ color: "var(--muted)" }}>Hiện tại chưa có hồ sơ đăng ký Owner nào.</p>
-              </div>
-            ) : (
-              <table className="admin-user-table">
-                <thead>
-                  <tr>
-                    <th>Người đăng ký</th>
-                    <th>Thông tin liên hệ</th>
-                    <th>CCCD / Địa chỉ</th>
-                    <th>Tài khoản giải ngân</th>
-                    <th>Trạng thái</th>
-                    <th>Thao tác duyệt (UC_O02)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ownerApplications.map((app) => (
-                    <tr key={app._id}>
-                      <td>
-                        <strong style={{ color: "#fff" }}>{app.applicant_name}</strong>
-                        <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>{app.applicant_email}</div>
-                        {app.shop_name && (
-                          <div style={{ fontSize: "0.75rem", color: "var(--orange)" }}>
-                            Studio: {app.shop_name}
+            <div className="admin-table-wrap">
+              {ownerApplications.length === 0 ? (
+                <div style={{ padding: "50px 20px", textAlign: "center" }}>
+                  <div style={{ fontSize: "2.2rem", marginBottom: "8px" }}>📭</div>
+                  <p style={{ color: "var(--muted)", margin: 0, fontSize: "0.9rem" }}>
+                    Hiện tại chưa có hồ sơ đăng ký Owner nào cần xét duyệt.
+                  </p>
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "200px" }}>Người đăng ký</th>
+                      <th style={{ width: "130px" }}>Số điện thoại</th>
+                      <th style={{ width: "220px" }}>CCCD / Địa chỉ</th>
+                      <th style={{ width: "220px" }}>Tài khoản giải ngân</th>
+                      <th style={{ width: "130px", textAlign: "center" }}>Trạng thái</th>
+                      <th style={{ width: "170px", textAlign: "right" }}>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ownerApplications.map((app) => (
+                      <tr key={app._id}>
+                        <td>
+                          <strong style={{ color: "#fff" }}>{app.applicant_name}</strong>
+                          <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>{app.applicant_email}</div>
+                          {app.shop_name && (
+                            <div style={{ fontSize: "0.75rem", color: "var(--orange)", marginTop: "2px" }}>
+                              Studio: {app.shop_name}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <div>📞 {app.phone}</div>
+                        </td>
+                        <td>
+                          <div>CCCD: <strong style={{ color: "#fff" }}>{app.identity_card}</strong></div>
+                          <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>{app.address}</div>
+                          <div style={{ marginTop: "4px", display: "flex", gap: "6px" }}>
+                            {app.identity_card_front && (
+                              <a
+                                href={app.identity_card_front}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ fontSize: "0.75rem", color: "var(--orange)" }}
+                              >
+                                [Ảnh CCCD trước]
+                              </a>
+                            )}
+                            {app.identity_card_back && (
+                              <a
+                                href={app.identity_card_back}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ fontSize: "0.75rem", color: "var(--orange)" }}
+                              >
+                                [Ảnh CCCD sau]
+                              </a>
+                            )}
                           </div>
-                        )}
-                      </td>
-                      <td>
-                        <div>📞 {app.phone}</div>
-                      </td>
-                      <td>
-                        <div>CCCD: <strong>{app.identity_card}</strong></div>
-                        <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>{app.address}</div>
-                        {app.identity_card_front && (
-                          <a
-                            href={app.identity_card_front}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: "0.75rem", marginRight: "6px" }}
-                          >
-                            [Ảnh CCCD trước]
-                          </a>
-                        )}
-                        {app.identity_card_back && (
-                          <a
-                            href={app.identity_card_back}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: "0.75rem" }}
-                          >
-                            [Ảnh CCCD sau]
-                          </a>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ color: "#fff" }}>{app.bank_name}</div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                          STK: {app.bank_account_number}
-                        </div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                          Chủ TK: {app.bank_account_holder}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`status-badge status-${app.status}`}>
-                          {app.status === "pending"
-                            ? "⏳ Chờ duyệt"
-                            : app.status === "approved"
-                            ? "✅ Đã duyệt (Owner)"
-                            : "❌ Đã từ chối"}
-                        </span>
-                        {app.admin_note && (
-                          <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "4px" }}>
-                            {app.admin_note}
+                        </td>
+                        <td>
+                          <div style={{ color: "#fff", fontWeight: 600 }}>{app.bank_name}</div>
+                          <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                            STK: <span style={{ fontFamily: "monospace", color: "#cbd5e1" }}>{app.bank_account_number}</span>
                           </div>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          {app.status === "pending" && (
-                            <>
+                          <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                            Chủ TK: {app.bank_account_holder}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <span className={`status-badge status-${app.status}`}>
+                            {app.status === "pending"
+                              ? "⏳ Chờ duyệt"
+                              : app.status === "approved"
+                              ? "✅ Đã duyệt"
+                              : "❌ Từ chối"}
+                          </span>
+                          {app.admin_note && (
+                            <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "4px" }}>
+                              {app.admin_note}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: "6px" }}>
+                            {app.status === "pending" && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button-primary"
+                                  style={{ fontSize: "0.78rem", padding: "5px 10px", width: "auto", minHeight: "unset", borderRadius: "6px" }}
+                                  onClick={() => handleReviewApplication(app._id, "approve")}
+                                >
+                                  ✓ Duyệt
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button-quiet"
+                                  style={{ fontSize: "0.78rem", padding: "5px 10px", color: "#ef4444", width: "auto", minHeight: "unset", borderRadius: "6px" }}
+                                  onClick={() => handleReviewApplication(app._id, "reject")}
+                                >
+                                  ✕ Từ chối
+                                </button>
+                              </>
+                            )}
+                            {app.status === "approved" && (
+                              <span style={{ fontSize: "0.8rem", color: "#10b981", fontWeight: 600 }}>
+                                Đã cấp quyền
+                              </span>
+                            )}
+                            {app.status === "rejected" && (
                               <button
-                                className="button button-primary button-compact"
-                                style={{ fontSize: "0.75rem", padding: "4px 8px" }}
+                                type="button"
+                                className="button button-secondary"
+                                style={{ fontSize: "0.78rem", padding: "5px 10px", width: "auto", minHeight: "unset", borderRadius: "6px" }}
                                 onClick={() => handleReviewApplication(app._id, "approve")}
                               >
-                                ✓ Phê duyệt
+                                Xem xét lại
                               </button>
-                              <button
-                                className="button button-quiet button-compact"
-                                style={{ fontSize: "0.75rem", padding: "4px 8px", color: "#ef4444" }}
-                                onClick={() => handleReviewApplication(app._id, "reject")}
-                              >
-                                ✕ Từ chối
-                              </button>
-                            </>
-                          )}
-                          {app.status === "approved" && (
-                            <span style={{ fontSize: "0.78rem", color: "#10b981" }}>
-                              Đã cấp vai trò Owner
-                            </span>
-                          )}
-                          {app.status === "rejected" && (
-                            <button
-                              className="button button-secondary button-compact"
-                              style={{ fontSize: "0.75rem", padding: "4px 8px" }}
-                              onClick={() => handleReviewApplication(app._id, "approve")}
-                            >
-                              Duyệt lại
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
         )}
+
 
         {/* Support Tickets Management Section (UC_A17) */}
         {activeTab === "support" && (
