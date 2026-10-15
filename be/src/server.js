@@ -1,9 +1,11 @@
+const http = require("node:http");
 const path = require("node:path");
 require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
 const dns = require("node:dns");
 const app = require("./app");
 const connectDB = require("./config/db");
+const { initSocket } = require("./config/socket");
 
 const port = process.env.PORT || 3000;
 
@@ -29,8 +31,10 @@ function configureDnsServers() {
 async function startServer() {
   configureDnsServers();
   await connectDB();
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+  const httpServer = http.createServer(app);
+  initSocket(httpServer);
+  httpServer.listen(port, () => {
+    console.log(`Server is running on port ${port} with Socket.IO enabled`);
   });
 }
 

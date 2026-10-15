@@ -185,6 +185,19 @@ async function replySupportTicket(req, res) {
     .populate("replies.sender_id", "name email role")
     .lean();
 
+  // Realtime notification via Socket.IO
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("ticket:replied", {
+      ticketId: id.toString(),
+      ticket: updatedTicket,
+      reply: updatedTicket.replies[updatedTicket.replies.length - 1],
+      senderRole: "systemadmin",
+    });
+  } catch (err) {
+    console.error("Socket emit ticket:replied failed:", err.message);
+  }
+
   res.json({
     message: "Đã gửi phản hồi thành công.",
     ticket: updatedTicket,
@@ -234,6 +247,18 @@ async function updateSupportTicketStatus(req, res) {
     .populate("user_id", "name email role")
     .populate("replies.sender_id", "name email role")
     .lean();
+
+  // Realtime notification via Socket.IO
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("ticket:status_updated", {
+      ticketId: id.toString(),
+      status,
+      ticket: updatedTicket,
+    });
+  } catch (err) {
+    console.error("Socket emit ticket:status_updated failed:", err.message);
+  }
 
   res.json({
     message: `Đã cập nhật trạng thái yêu cầu sang "${status}".`,
