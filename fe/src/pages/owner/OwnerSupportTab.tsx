@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { SupportTicket } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
+import { getSocket } from "../../services/socket";
 
 interface Props {
   token: string;
@@ -24,6 +25,49 @@ export default function OwnerSupportTab({ token, onError, onSuccess }: Props) {
   useEffect(() => {
     loadTickets();
   }, [token]);
+
+  // Realtime Socket.IO Listeners for Owner
+  useEffect(() => {
+    const socket = getSocket();
+
+    const handleTicketReplied = (data: { ticketId: string; ticket: SupportTicket; senderRole: string }) => {
+      if (!data?.ticket) return;
+      setTickets((prev) =>
+        prev.map((t) => (t._id === data.ticket._id ? data.ticket : t))
+      );
+      setSelectedTicket((cur) => {
+        if (cur && cur._id === data.ticket._id) {
+          return data.ticket;
+        }
+        return cur;
+      });
+      if (data.senderRole === "systemadmin") {
+        onSuccess("🔔 Quản trị viên vừa phản hồi yêu cầu hỗ trợ của bạn!");
+      }
+    };
+
+    const handleTicketStatusUpdated = (data: { ticketId: string; status: string; ticket: SupportTicket }) => {
+      if (!data?.ticket) return;
+      setTickets((prev) =>
+        prev.map((t) => (t._id === data.ticket._id ? data.ticket : t))
+      );
+      setSelectedTicket((cur) => {
+        if (cur && cur._id === data.ticket._id) {
+          return data.ticket;
+        }
+        return cur;
+      });
+      onSuccess(`🔔 Yêu cầu #${data.ticket.ticket_code} đã cập nhật trạng thái: "${data.status.toUpperCase()}".`);
+    };
+
+    socket.on("ticket:replied", handleTicketReplied);
+    socket.on("ticket:status_updated", handleTicketStatusUpdated);
+
+    return () => {
+      socket.off("ticket:replied", handleTicketReplied);
+      socket.off("ticket:status_updated", handleTicketStatusUpdated);
+    };
+  }, []);
 
   async function loadTickets() {
     try {

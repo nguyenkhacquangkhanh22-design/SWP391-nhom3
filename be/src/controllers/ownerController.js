@@ -1023,9 +1023,24 @@ async function submitSupportTicket(req, res) {
     status: "open",
   });
 
+  const populatedTicket = await SupportTicket.findById(ticket._id)
+    .populate("user_id", "name email role")
+    .lean();
+
+  // Realtime notification via Socket.IO
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("ticket:created", {
+      ticket: populatedTicket,
+      message: `Yêu cầu hỗ trợ mới #${ticket.ticket_code} từ ${req.user.name || "Owner"}`,
+    });
+  } catch (err) {
+    console.error("Socket emit ticket:created failed:", err.message);
+  }
+
   res.status(201).json({
     message: "Gửi phiếu hỗ trợ thành công",
-    ticket,
+    ticket: populatedTicket,
   });
 }
 
@@ -1064,9 +1079,27 @@ async function replySupportTicket(req, res) {
 
   await ticket.save();
 
+  const updatedTicket = await SupportTicket.findById(id)
+    .populate("user_id", "name email role")
+    .populate("replies.sender_id", "name email role")
+    .lean();
+
+  // Realtime socket emit
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("ticket:replied", {
+      ticketId: id.toString(),
+      ticket: updatedTicket,
+      reply: updatedTicket.replies[updatedTicket.replies.length - 1],
+      senderRole: req.user.role || "owner",
+    });
+  } catch (err) {
+    console.error("Socket emit ticket:replied failed:", err.message);
+  }
+
   res.json({
     message: "Đã gửi phản hồi",
-    ticket,
+    ticket: updatedTicket,
   });
 }
 

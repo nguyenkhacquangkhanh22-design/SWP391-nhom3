@@ -7,6 +7,7 @@ import AdminUserTable, { type AdminUserRow } from "../../components/admin/AdminU
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
+import { getSocket } from "../../services/socket";
 import type { AdminStats, AdminSupportTicket, TicketStats } from "../../types/admin";
 import type { OwnerApplication } from "../../types/owner";
 
@@ -46,6 +47,59 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData();
+  }, [token]);
+
+  // Realtime Socket.IO Listeners
+  useEffect(() => {
+    const socket = getSocket();
+
+    const handleTicketCreated = (data: { ticket: AdminSupportTicket; message?: string }) => {
+      if (!data?.ticket) return;
+      setSupportTickets((prev) => {
+        if (prev.some((t) => t._id === data.ticket._id)) return prev;
+        return [data.ticket, ...prev];
+      });
+      setTicketStats((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          total: prev.total + 1,
+          open: prev.open + 1,
+        };
+      });
+      setSuccess(data.message || `🔔 Yêu cầu hỗ trợ mới #${data.ticket.ticket_code} vừa được gửi lên!`);
+    };
+
+    const handleTicketReplied = (data: { ticketId: string; ticket: AdminSupportTicket }) => {
+      if (!data?.ticket) return;
+      setSupportTickets((prev) =>
+        prev.map((t) => (t._id === data.ticket._id ? data.ticket : t))
+      );
+      setSelectedTicket((cur) => (cur && cur._id === data.ticket._id ? data.ticket : cur));
+    };
+
+    const handleTicketStatusUpdated = (data: { ticketId: string; status: string; ticket: AdminSupportTicket }) => {
+      if (!data?.ticket) return;
+      setSupportTickets((prev) =>
+        prev.map((t) => (t._id === data.ticket._id ? data.ticket : t))
+      );
+      setSelectedTicket((cur) => (cur && cur._id === data.ticket._id ? data.ticket : cur));
+      if (token) {
+        adminApi.listSupportTickets(token).then((res) => {
+          if (res.stats) setTicketStats(res.stats);
+        }).catch(() => {});
+      }
+    };
+
+    socket.on("ticket:created", handleTicketCreated);
+    socket.on("ticket:replied", handleTicketReplied);
+    socket.on("ticket:status_updated", handleTicketStatusUpdated);
+
+    return () => {
+      socket.off("ticket:created", handleTicketCreated);
+      socket.off("ticket:replied", handleTicketReplied);
+      socket.off("ticket:status_updated", handleTicketStatusUpdated);
+    };
   }, [token]);
 
   async function loadData() {
