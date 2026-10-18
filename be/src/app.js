@@ -6,6 +6,10 @@ const equipmentRoutes = require("./routes/equipmentRoutes");
 const userRoutes = require("./routes/userRoutes");
 const rentalRoutes = require("./routes/rentalRoutes");
 const supportRoutes = require("./routes/supportRoutes");
+const ownerRoutes = require("./routes/ownerRoutes");
+const marketplaceRoutes = require("./routes/marketplaceRoutes");
+const ownerRegistrationRoutes = require("./routes/ownerRegistrationRoutes");
+const moderatorRoutes = require("./routes/moderatorRoutes");
 const handleError = require("./middleware/handleError");
 
 const app = express();
@@ -23,6 +27,11 @@ app.use("/api/equipment", equipmentRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/owner", ownerRoutes);
+app.use("/api/equipments", marketplaceRoutes);
+app.use("/api/owner-registration", ownerRegistrationRoutes);
+app.use("/api/moderator", moderatorRoutes);
+
 app.use(handleError);
 
 module.exports = app;

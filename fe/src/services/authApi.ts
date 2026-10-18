@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, AuthResponse, User } from "../types/auth";
+import type { ApiErrorResponse, AuthResponse, User, UserNotification } from "../types/auth";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api/auth").replace(
   /\/$/,
@@ -97,6 +97,14 @@ export const authApi = {
     request<{ user: User }>(
       "/profile",
       { method: "PATCH", body: JSON.stringify({ name }) },
+      token,
+    ),
+  getNotifications: (token: string) =>
+    request<{ notifications: UserNotification[] }>("/notifications", {}, token),
+  markNotificationRead: (token: string, id: string) =>
+    request<{ notification: UserNotification }>(
+      `/notifications/${id}/read`,
+      { method: "PATCH" },
       token,
     ),
 };

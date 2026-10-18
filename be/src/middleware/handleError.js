@@ -7,7 +7,15 @@ function handleError(error, _req, res, _next) {
   }
 
   if (error.code === 11000) {
-    return res.status(409).json({ message: "Email or account identifier already exists" });
+    const field = Object.keys(error.keyPattern || {})[0];
+    if (field === "email" || field === "User_Id") {
+      return res.status(409).json({ message: "Email or account identifier already exists" });
+    }
+    return res.status(409).json({
+      message: field
+        ? `Dữ liệu bị trùng lặp: trường '${field}' đã tồn tại trong hệ thống.`
+        : "Email or account identifier already exists",
+    });
   }
 
   if (error.name === "ValidationError" || error.name === "CastError") {

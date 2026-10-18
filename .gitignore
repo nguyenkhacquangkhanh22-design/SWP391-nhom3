@@ -3,3 +3,11 @@ node_modules/
 *.env
 .env.*
 !.env.example
+rental-moderator-tasks.md
+
+# Documents
+*.docx
+*.doc
+*.pdf
+docs/
+ACCOUNTS.md

@@ -1,4 +1,6 @@
 const authService = require("../services/authService");
+const UserNotification = require("../models/UserNotification");
+const AppError = require("../utils/AppError");
 
 async function sendRegistrationOtp(req, res) {
   res.status(202).json(await authService.sendRegistrationOtp(req.body.email));
@@ -50,6 +52,24 @@ async function updateProfile(req, res) {
   res.json({ user: await authService.updateProfile(req.user, req.body) });
 }
 
+async function listNotifications(req, res) {
+  const notifications = await UserNotification.find({ user_id: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+  res.json({ notifications });
+}
+
+async function markNotificationRead(req, res) {
+  const notification = await UserNotification.findOneAndUpdate(
+    { _id: req.params.id, user_id: req.user._id },
+    { $set: { read_at: new Date() } },
+    { new: true }
+  );
+  if (!notification) throw new AppError(404, "Không tìm thấy thông báo.");
+  res.json({ notification });
+}
+
 module.exports = {
   sendRegistrationOtp,
   verifyRegistrationOtp,
@@ -62,4 +82,6 @@ module.exports = {
   googleLogin,
   getProfile,
   updateProfile,
+  listNotifications,
+  markNotificationRead,
 };

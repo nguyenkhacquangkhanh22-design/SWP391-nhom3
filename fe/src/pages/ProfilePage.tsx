@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
 import Feedback from "../components/Feedback";
 import PasswordInput from "../components/PasswordInput";
 import { smartEquipApi } from "../services/smartEquipApi";
+import { authApi } from "../services/authApi";
+import type { UserNotification } from "../types/auth";
 
 export default function ProfilePage() {
-  const { user, token, isLoading, saveUser, changePassword } = useAuth();
+  const { user, token, isLoading, saveUser, changePassword, signOut } = useAuth();
 
   // Profile fields (UC_R02)
   const [name, setName] = useState(user?.name || "");
@@ -27,8 +29,26 @@ export default function ProfilePage() {
   const [selfiePhoto, setSelfiePhoto] = useState("");
   const [isSubmittingKyc, setIsSubmittingKyc] = useState(false);
 
+  // Notifications (UC_RM)
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [notificationError, setNotificationError] = useState("");
+  const [markingNotificationId, setMarkingNotificationId] = useState("");
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    authApi
+      .getNotifications(token)
+      .then(({ notifications: items }) => setNotifications(items))
+      .catch((requestError: unknown) => {
+        setNotificationError(
+          requestError instanceof Error ? requestError.message : "Không thể tải thông báo."
+        );
+      });
+  }, [token]);
 
   if (isLoading) return <div className="app-loading">Đang tải tài khoản...</div>;
   if (!user || !token) return <Navigate to="/login" replace />;
@@ -53,7 +73,7 @@ export default function ProfilePage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Không thể cập nhật hồ sơ.",
+          : "Không thể cập nhật hồ sơ."
       );
     } finally {
       setIsSavingProfile(false);
@@ -75,7 +95,7 @@ export default function ProfilePage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Không thể đổi mật khẩu.",
+          : "Không thể đổi mật khẩu."
       );
     } finally {
       setIsChangingPassword(false);
@@ -111,10 +131,19 @@ export default function ProfilePage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Không thể gửi hồ sơ xác thực KYC.",
+          : "Không thể gửi hồ sơ xác thực KYC."
       );
     } finally {
       setIsSubmittingKyc(false);
+    }
+  }
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+    } finally {
+      setIsLoggingOut(false);
     }
   }
 
@@ -125,6 +154,11 @@ export default function ProfilePage() {
     verified: { text: "Đã xác thực ✅", bg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
     rejected: { text: "Bị từ chối ❌", bg: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   }[kycStatus];
+
+  const role = (user.role || "").toLowerCase();
+  const isAdmin = role === "systemadmin";
+  const isOwner = role === "owner";
+  const isModerator = role.replace(/[\s_-]/g, "") === "rentalmoderator";
 
   return (
     <div className="min-h-screen bg-[#0f1623] text-slate-100 flex flex-col font-sans">
@@ -145,8 +179,15 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {(user.role || "").toLowerCase() === "systemadmin" && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link
+              to="/equipments"
+              className="px-3.5 py-2 bg-[#1b253b] hover:bg-[#232f48] border border-[#2d3a54] text-slate-200 rounded-xl text-xs font-semibold transition-all"
+            >
+              Chợ thiết bị 🔍
+            </Link>
+
+            {isAdmin && (
               <Link
                 to="/admin"
                 className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-bold transition-all"
@@ -154,14 +195,122 @@ export default function ProfilePage() {
                 Trang Quản trị ⚙️
               </Link>
             )}
+
+            {isOwner && (
+              <Link
+                to="/owner"
+                className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-bold transition-all"
+              >
+                Cổng Người cho thuê 💼
+              </Link>
+            )}
+
+            {isModerator && (
+              <Link
+                to="/moderator"
+                className="px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all"
+              >
+                Không gian kiểm duyệt ⚖️
+              </Link>
+            )}
+
+            {!isOwner && !isAdmin && !isModerator && (
+              <Link
+                to="/register-owner"
+                className="px-4 py-2 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 rounded-xl text-xs font-bold transition-all"
+              >
+                Đăng ký Owner 🚀
+              </Link>
+            )}
+
             <div className={`px-3 py-1.5 rounded-full text-xs font-bold border ${kycBadge.bg}`}>
               KYC: {kycBadge.text}
             </div>
+
+            <button
+              onClick={() => void handleLogout()}
+              disabled={isLoggingOut}
+              className="px-3 py-1.5 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition-all"
+            >
+              {isLoggingOut ? "Đang thoát..." : "Đăng xuất"}
+            </button>
           </div>
         </div>
 
         <Feedback message={error} />
         <Feedback message={success} type="success" />
+
+        {/* Notifications Panel (UC_RM) */}
+        <div className="bg-[#151e2f] border border-[#243048] rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#222d42]">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✉️</span>
+              <div>
+                <h2 className="text-base font-bold text-white">Thông báo hệ thống</h2>
+                <p className="text-slate-400 text-xs">Cập nhật kiểm duyệt hợp đồng, biên bản giao nhận và thiết bị</p>
+              </div>
+            </div>
+            {notifications.filter((n) => !n.read_at).length > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                {notifications.filter((n) => !n.read_at).length} chưa đọc
+              </span>
+            )}
+          </div>
+
+          <Feedback message={notificationError} />
+
+          {notifications.length === 0 && !notificationError ? (
+            <p className="text-slate-500 text-xs py-2 text-center">Bạn chưa có thông báo mới.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {notifications.map((notification) => (
+                <div
+                  key={notification._id}
+                  className={`p-3 rounded-xl border text-xs flex items-start justify-between gap-4 transition-all ${
+                    notification.read_at
+                      ? "bg-[#101726]/60 border-[#1f293d] text-slate-400"
+                      : "bg-[#1a253c] border-orange-500/30 text-slate-200"
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <strong className="block text-white text-sm">{notification.title}</strong>
+                    <p className="text-slate-300">{notification.message}</p>
+                    <time className="text-[11px] text-slate-500">
+                      {new Date(notification.createdAt).toLocaleString("vi-VN")}
+                    </time>
+                  </div>
+                  {!notification.read_at && (
+                    <button
+                      disabled={markingNotificationId === notification._id}
+                      onClick={() => {
+                        setMarkingNotificationId(notification._id);
+                        void authApi
+                          .markNotificationRead(token, notification._id)
+                          .then(({ notification: updated }) => {
+                            setNotifications((current) =>
+                              current.map((item) => (item._id === updated._id ? updated : item))
+                            );
+                            setNotificationError("");
+                          })
+                          .catch((requestError: unknown) =>
+                            setNotificationError(
+                              requestError instanceof Error
+                                ? requestError.message
+                                : "Không thể đánh dấu thông báo đã đọc."
+                            )
+                          )
+                          .finally(() => setMarkingNotificationId(""));
+                      }}
+                      className="px-2.5 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 rounded-lg text-[11px] font-semibold whitespace-nowrap"
+                    >
+                      {markingNotificationId === notification._id ? "Đang lưu..." : "Đánh dấu đã đọc"}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Profile Info & Change Password (UC_R02) */}
