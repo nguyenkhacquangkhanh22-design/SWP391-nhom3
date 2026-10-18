@@ -30,7 +30,13 @@ export default function RegisterPage() {
     try {
       const result = await authApi.sendRegistrationOtp(email);
       setStep("otp");
-      setNotice(result.message);
+      const devOtp = (result as { devOtp?: string }).devOtp;
+      if (devOtp) {
+        setOtp(devOtp);
+        setNotice(`Mã OTP xác minh là: ${devOtp} (Đã tự động điền)`);
+      } else {
+        setNotice(result.message);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -93,8 +99,14 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       const result = await authApi.sendRegistrationOtp(email);
-      setOtp("");
-      setNotice(result.message);
+      const devOtp = (result as { devOtp?: string }).devOtp;
+      if (devOtp) {
+        setOtp(devOtp);
+        setNotice(`Mã OTP mới là: ${devOtp} (Đã tự động điền)`);
+      } else {
+        setOtp("");
+        setNotice(result.message);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error

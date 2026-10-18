@@ -125,42 +125,29 @@ export default function EquipmentDetailPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#0f1623", color: "var(--ink)", paddingBottom: "60px" }}>
       {/* Top Navbar */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "16px 36px",
-          borderBottom: "1px solid var(--border)",
-          background: "#131b2e",
-          position: "sticky",
-          top: 0,
-          zIndex: 40,
-        }}
-      >
+      <header className="marketplace-header">
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <Brand compact />
-          <span
-            style={{
-              fontSize: "0.75rem",
-              background: "rgba(249, 115, 22, 0.15)",
-              color: "var(--orange)",
-              padding: "4px 10px",
-              borderRadius: "20px",
-              fontWeight: 600,
-              border: "1px solid rgba(249, 115, 22, 0.3)",
-            }}
-          >
-            UC_O20 • CHI TIẾT THIẾT BỊ
+          <span className="marketplace-header-badge">
+            <span className="pulse-dot" />
+            THIẾT BỊ CHÍNH HÃNG
           </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Link to="/equipments" className="button button-quiet" style={{ fontSize: "0.85rem" }}>
+          <Link
+            to="/equipments"
+            className="button button-quiet"
+            style={{ width: "auto", fontSize: "0.85rem", padding: "8px 16px", borderRadius: "10px" }}
+          >
             ← Quay lại chợ thiết bị
           </Link>
           {user && (
-            <Link to="/profile" className="button button-secondary" style={{ fontSize: "0.85rem" }}>
+            <Link
+              to="/profile"
+              className="button button-secondary"
+              style={{ width: "auto", fontSize: "0.85rem", padding: "8px 16px", borderRadius: "10px" }}
+            >
               👤 Hồ sơ
             </Link>
           )}

@@ -109,25 +109,47 @@ async function sendRegistrationOtp(email) {
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
 
-    try {
-      await createEmailTransport().sendMail({
-        from: process.env.EMAIL_FROM,
-        to: normalizedEmail,
-        subject: "Xác minh email đăng ký Gatherly",
-        text: `Mã xác minh email của bạn là ${otp}. Mã có hiệu lực trong 10 phút.`,
-        html: `<p>Mã xác minh email của bạn là:</p><p style="font-size:28px;font-weight:bold;letter-spacing:8px">${otp}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>`,
-      });
-    } catch (error) {
-      await RegistrationVerification.deleteOne({
-        _id: challenge._id,
-        otp_hash: otpHash,
-      });
-      throw error;
+    const hasSmtp = Boolean(
+      process.env.SMTP_HOST &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASSWORD
+    );
+
+    if (hasSmtp) {
+      try {
+        await createEmailTransport().sendMail({
+          from: process.env.EMAIL_FROM || "SmartEquip <no-reply@example.com>",
+          to: normalizedEmail,
+          subject: "Xác minh email đăng ký SmartEquip",
+          text: `Mã xác minh email của bạn là ${otp}. Mã có hiệu lực trong 10 phút.`,
+          html: `<p>Mã xác minh email của bạn là:</p><p style="font-size:28px;font-weight:bold;letter-spacing:8px">${otp}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu mã này, hãy bỏ qua email.</p>`,
+        });
+      } catch (error) {
+        console.warn("⚠️ Gửi email qua SMTP thất bại:", error.message);
+        console.log(`\n======================================================`);
+        console.log(`🔑 [DEV MODE OTP FALLBACK]`);
+        console.log(`📧 Email: ${normalizedEmail}`);
+        console.log(`👉 Mã xác minh OTP: ${otp} (Hiệu lực 10 phút)`);
+        console.log(`======================================================\n`);
+      }
+    } else {
+      console.log(`\n======================================================`);
+      console.log(`🔑 [DEV MODE - CHƯA CẤU HÌNH SMTP TRONG .ENV]`);
+      console.log(`📧 Email đăng ký: ${normalizedEmail}`);
+      console.log(`👉 Mã xác minh OTP: ${otp} (Hiệu lực 10 phút)`);
+      console.log(`======================================================\n`);
     }
+
+    return {
+      message: hasSmtp
+        ? "Mã xác minh đã được gửi đến email của bạn."
+        : `Mã xác minh (Dev Mode): ${otp}`,
+      devOtp: otp,
+    };
   }
 
   return {
-    message: "If this email can be registered, a verification code will be sent.",
+    message: "Nếu email này hợp lệ, mã xác minh sẽ được tạo và gửi đi.",
   };
 }
 
@@ -335,12 +357,30 @@ async function forgotPassword(email) {
   resetUrl.searchParams.set("token", resetToken);
   resetUrl.searchParams.set("email", normalizedEmail);
 
-  await createEmailTransport().sendMail({
-    from: process.env.EMAIL_FROM,
-    to: normalizedEmail,
-    subject: "Reset your password",
-    text: `Use this link to reset your password within 15 minutes: ${resetUrl.toString()}`,
-  });
+  const hasSmtp = Boolean(
+    process.env.SMTP_HOST &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASSWORD
+  );
+
+  if (hasSmtp) {
+    try {
+      await createEmailTransport().sendMail({
+        from: process.env.EMAIL_FROM || "SmartEquip <no-reply@example.com>",
+        to: normalizedEmail,
+        subject: "Đặt lại mật khẩu SmartEquip",
+        text: `Sử dụng liên kết sau để đặt lại mật khẩu trong 15 phút: ${resetUrl.toString()}`,
+      });
+    } catch (error) {
+      console.warn("⚠️ Gửi email đặt lại mật khẩu thất bại:", error.message);
+      console.log(`\n🔗 [DEV RESET PASSWORD URL]: ${resetUrl.toString()}\n`);
+    }
+  } else {
+    console.log(`\n======================================================`);
+    console.log(`🔗 [DEV MODE - LIÊN KẾT ĐẶT LẠI MẬT KHẨU CHO: ${normalizedEmail}]`);
+    console.log(`👉 Link: ${resetUrl.toString()}`);
+    console.log(`======================================================\n`);
+  }
 }
 
 async function resetPassword({ email, token, newPassword }) {

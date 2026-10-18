@@ -24,10 +24,15 @@ async function request<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại backend.", 0);
+  }
 
   const data = await response.json().catch(() => ({}));
 

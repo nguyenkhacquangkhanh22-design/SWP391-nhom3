@@ -79,14 +79,20 @@ export default function OwnerPortal() {
     }
   }
 
+  function handleTabChange(tab: typeof activeTab) {
+    setActiveTab(tab);
+    setError("");
+    setSuccess("");
+  }
+
   function handleCreateContractFromRequest(req: RentalRequest) {
     setRequestForContract(req);
-    setActiveTab("contracts");
+    handleTabChange("contracts");
   }
 
   function handleOpenHandover(con: RentalContract) {
     setContractForHandover(con);
-    setActiveTab("handover");
+    handleTabChange("handover");
   }
 
   const approvedRequests = requests.filter(
@@ -125,19 +131,19 @@ export default function OwnerPortal() {
         <div className="owner-tabs-nav">
           <button
             className={`owner-tab-btn ${activeTab === "overview" ? "active" : ""}`}
-            onClick={() => setActiveTab("overview")}
+            onClick={() => handleTabChange("overview")}
           >
             📊 Tổng quan
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "equipments" ? "active" : ""}`}
-            onClick={() => setActiveTab("equipments")}
+            onClick={() => handleTabChange("equipments")}
           >
             📦 Thiết bị ({equipments.length})
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "requests" ? "active" : ""}`}
-            onClick={() => setActiveTab("requests")}
+            onClick={() => handleTabChange("requests")}
           >
             📬 Yêu cầu thuê
             {stats && stats.pendingRequests > 0 && (
@@ -146,31 +152,31 @@ export default function OwnerPortal() {
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "contracts" ? "active" : ""}`}
-            onClick={() => setActiveTab("contracts")}
+            onClick={() => handleTabChange("contracts")}
           >
             📝 Hợp đồng thuê ({contracts.length})
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "handover" ? "active" : ""}`}
-            onClick={() => setActiveTab("handover")}
+            onClick={() => handleTabChange("handover")}
           >
             🤝 Bàn giao & Kiểm tra
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "settlement" ? "active" : ""}`}
-            onClick={() => setActiveTab("settlement")}
+            onClick={() => handleTabChange("settlement")}
           >
             💰 Quyết toán & Doanh thu
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "disputes" ? "active" : ""}`}
-            onClick={() => setActiveTab("disputes")}
+            onClick={() => handleTabChange("disputes")}
           >
             ⚖️ Khiếu nại
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "support" ? "active" : ""}`}
-            onClick={() => setActiveTab("support")}
+            onClick={() => handleTabChange("support")}
           >
             🎫 Hỗ trợ
           </button>
@@ -213,7 +219,7 @@ export default function OwnerPortal() {
               <OwnerOverviewTab
                 stats={stats}
                 recentRequests={recentRequests}
-                onNavigateTab={(tab) => setActiveTab(tab as any)}
+                onNavigateTab={(tab) => handleTabChange(tab as any)}
                 onSelectRequest={handleCreateContractFromRequest}
               />
             )}
