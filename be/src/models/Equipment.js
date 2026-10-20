@@ -91,6 +91,27 @@ const equipmentSchema = new mongoose.Schema(
       default: "published",
       index: true,
     },
+    approval_status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+      index: true,
+    },
+    rejection_reason: {
+      type: String,
+      default: "",
+    },
+    moderated_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    moderated_at: {
+      type: Date,
+    },
+    hidden_reason: {
+      type: String,
+      default: "",
+    },
     status: {
       type: String,
       enum: ["available", "rented", "maintenance", "reserved", "damaged", "retired", "hidden"],

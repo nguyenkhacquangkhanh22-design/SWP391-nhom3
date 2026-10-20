@@ -1,4 +1,10 @@
-import type { AdminOverviewResponse, AdminSupportTicketsResponse, AdminSupportTicket } from "../types/admin";
+import type {
+  AdminOverviewResponse,
+  AdminSupportTicketsResponse,
+  AdminSupportTicket,
+  AdminEquipmentsResponse,
+  AdminEquipment,
+} from "../types/admin";
 import type { User } from "../types/auth";
 import { ApiError } from "./authApi";
 
@@ -81,6 +87,49 @@ export const adminApi = {
   ) =>
     adminRequest<{ message: string; ticket: AdminSupportTicket }>(
       `/support-tickets/${ticketId}/status`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // UC_A11 & UC_A12: Equipment Listings Moderation & Visibility
+  listEquipments: (
+    token: string,
+    params?: {
+      search?: string;
+      category?: string;
+      approvalStatus?: string;
+      visibility?: string;
+      sortBy?: string;
+    }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.category) query.set("category", params.category);
+    if (params?.approvalStatus) query.set("approvalStatus", params.approvalStatus);
+    if (params?.visibility) query.set("visibility", params.visibility);
+    if (params?.sortBy) query.set("sortBy", params.sortBy);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<AdminEquipmentsResponse>(`/equipments${qs}`, { method: "GET" }, token);
+  },
+
+  reviewEquipmentApproval: (
+    token: string,
+    equipmentId: string,
+    body: { approval_status: "approved" | "rejected"; rejection_reason?: string }
+  ) =>
+    adminRequest<{ message: string; equipment: AdminEquipment }>(
+      `/equipments/${equipmentId}/approval`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateEquipmentVisibility: (
+    token: string,
+    equipmentId: string,
+    body: { visibility: "published" | "hidden"; reason?: string }
+  ) =>
+    adminRequest<{ message: string; equipment: AdminEquipment }>(
+      `/equipments/${equipmentId}/visibility`,
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),

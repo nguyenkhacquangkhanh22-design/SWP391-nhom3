@@ -3,9 +3,10 @@ import { useAuth } from "../../app/AuthProvider";
 import Brand from "../Brand";
 
 interface AdminSidebarProps {
-  activeTab: "overview" | "users" | "owner-apps" | "support";
-  setActiveTab: (tab: "overview" | "users" | "owner-apps" | "support") => void;
+  activeTab: "overview" | "users" | "owner-apps" | "support" | "equipments";
+  setActiveTab: (tab: "overview" | "users" | "owner-apps" | "support" | "equipments") => void;
   supportOpenCount?: number;
+  equipmentPendingCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -14,12 +15,13 @@ export default function AdminSidebar({
   activeTab,
   setActiveTab,
   supportOpenCount,
+  equipmentPendingCount,
   isOpenMobile,
   onCloseMobile,
 }: AdminSidebarProps) {
   const { user, signOut } = useAuth();
 
-  const handleSelectTab = (tab: "overview" | "users" | "owner-apps" | "support") => {
+  const handleSelectTab = (tab: "overview" | "users" | "owner-apps" | "support" | "equipments") => {
     setActiveTab(tab);
     onCloseMobile?.();
   };
@@ -77,6 +79,20 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">📋</span>
             <span>Duyệt đơn Owner (UC_O02)</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "equipments" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("equipments")}
+          >
+            <span className="admin-nav-icon">📹</span>
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+              <span>Duyệt bài đăng (UC_A11, A12)</span>
+              {equipmentPendingCount !== undefined && equipmentPendingCount > 0 && (
+                <span className="status-badge status-pending" style={{ padding: "1px 6px", fontSize: "0.7rem", marginLeft: "6px" }}>
+                  {equipmentPendingCount}
+                </span>
+              )}
+            </span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "support" ? "is-active" : ""}`}

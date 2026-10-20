@@ -59,3 +59,69 @@ export interface AdminSupportTicketsResponse {
   tickets: AdminSupportTicket[];
   stats: TicketStats;
 }
+
+export interface AdminEquipmentOwner {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  trust_score?: number;
+}
+
+export interface AdminEquipmentPricing {
+  price_per_hour?: number;
+  price_per_day: number;
+  deposit_amount: number;
+  weekend_rate?: number;
+}
+
+export interface AdminEquipmentSpec {
+  key: string;
+  value: string;
+}
+
+export interface AdminEquipment {
+  _id: string;
+  owner_id: AdminEquipmentOwner;
+  title: string;
+  category: string;
+  brand?: string;
+  model_name?: string;
+  serial_number?: string;
+  description?: string;
+  specifications: AdminEquipmentSpec[];
+  images: string[];
+  accessories?: string[];
+  condition?: string;
+  pricing: AdminEquipmentPricing;
+  rental_terms?: string;
+  cancellation_policy?: string;
+  visibility: "published" | "hidden" | "draft";
+  approval_status: "pending" | "approved" | "rejected";
+  rejection_reason?: string;
+  moderated_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  moderated_at?: string;
+  hidden_reason?: string;
+  status: "available" | "rented" | "maintenance" | "reserved" | "damaged" | "retired" | "hidden";
+  rating?: number;
+  review_count?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEquipmentStats {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  hidden: number;
+}
+
+export interface AdminEquipmentsResponse {
+  equipments: AdminEquipment[];
+  stats: AdminEquipmentStats;
+}

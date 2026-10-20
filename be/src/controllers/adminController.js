@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -266,6 +267,210 @@ async function updateSupportTicketStatus(req, res) {
   });
 }
 
+// =============================================================================
+// UC_A11 & UC_A12: Equipment Listings Moderation & Visibility Control
+// =============================================================================
+async function listEquipments(req, res) {
+  const { search, category, approvalStatus, visibility, sortBy } = req.query;
+
+  const query = {};
+
+  if (approvalStatus && approvalStatus !== "all") {
+    if (approvalStatus === "approved") {
+      query.approval_status = { $in: ["approved", undefined] };
+    } else {
+      query.approval_status = approvalStatus;
+    }
+  }
+
+  if (visibility && visibility !== "all") {
+    query.visibility = visibility;
+  }
+
+  if (category && category !== "all") {
+    query.category = { $regex: new RegExp(category, "i") };
+  }
+
+  if (search) {
+    const searchRegex = new RegExp(search.trim(), "i");
+    query.$or = [
+      { title: searchRegex },
+      { brand: searchRegex },
+      { model_name: searchRegex },
+      { category: searchRegex },
+      { serial_number: searchRegex },
+    ];
+  }
+
+  let sort = { createdAt: -1 };
+  if (sortBy === "price_asc") sort = { "pricing.price_per_day": 1 };
+  if (sortBy === "price_desc") sort = { "pricing.price_per_day": -1 };
+  if (sortBy === "rating") sort = { rating: -1 };
+
+  const [equipments, totalCount, pendingCount, approvedCount, rejectedCount, hiddenCount] =
+    await Promise.all([
+      Equipment.find(query)
+        .populate("owner_id", "name email phone trust_score")
+        .populate("moderated_by", "name email role")
+        .sort(sort)
+        .lean(),
+      Equipment.countDocuments(),
+      Equipment.countDocuments({ approval_status: "pending" }),
+      Equipment.countDocuments({ approval_status: { $in: ["approved", undefined] } }),
+      Equipment.countDocuments({ approval_status: "rejected" }),
+      Equipment.countDocuments({ visibility: "hidden" }),
+    ]);
+
+  res.json({
+    equipments,
+    stats: {
+      total: totalCount,
+      pending: pendingCount,
+      approved: approvedCount,
+      rejected: rejectedCount,
+      hidden: hiddenCount,
+    },
+  });
+}
+
+async function reviewEquipmentApproval(req, res) {
+  const { id } = req.params;
+  const { approval_status, rejection_reason } = req.body;
+
+  if (!["approved", "rejected"].includes(approval_status)) {
+    throw new AppError(400, "Trạng thái xét duyệt phải là 'approved' hoặc 'rejected'");
+  }
+
+  if (approval_status === "rejected" && (!rejection_reason || !rejection_reason.trim())) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối bài đăng thiết bị");
+  }
+
+  const equipment = await Equipment.findById(id);
+  if (!equipment) {
+    throw new AppError(404, "Không tìm thấy thiết bị");
+  }
+
+  equipment.approval_status = approval_status;
+  equipment.rejection_reason = approval_status === "rejected" ? rejection_reason.trim() : "";
+  equipment.moderated_by = req.user._id;
+  equipment.moderated_at = new Date();
+
+  // If approved, ensure it's published unless owner set it to draft
+  if (approval_status === "approved" && equipment.visibility !== "draft") {
+    equipment.visibility = "published";
+  }
+
+  await equipment.save();
+
+  // Notify owner
+  try {
+    const notifyTitle = approval_status === "approved"
+      ? `Bài đăng "${equipment.title}" đã được duyệt`
+      : `Bài đăng "${equipment.title}" đã bị từ chối`;
+    const notifyMessage = approval_status === "approved"
+      ? `Quản trị viên đã phê duyệt bài đăng "${equipment.title}". Thiết bị hiện đã sẵn sàng trên sàn!`
+      : `Bài đăng "${equipment.title}" bị từ chối xét duyệt với lý do: ${rejection_reason}`;
+
+    await UserNotification.create({
+      user_id: equipment.owner_id,
+      title: notifyTitle,
+      message: notifyMessage,
+      related_record_id: equipment._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify owner about equipment review:", err);
+  }
+
+  const populatedEquipment = await Equipment.findById(id)
+    .populate("owner_id", "name email phone trust_score")
+    .populate("moderated_by", "name email role")
+    .lean();
+
+  // Socket realtime
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("equipment:moderated", {
+      equipmentId: id.toString(),
+      equipment: populatedEquipment,
+      action: approval_status,
+      message: `Bài đăng "${equipment.title}" vừa được cập nhật sang trạng thái "${approval_status}".`,
+    });
+  } catch (err) {
+    console.error("Socket emit equipment:moderated failed:", err);
+  }
+
+  res.json({
+    message: approval_status === "approved"
+      ? `Đã phê duyệt bài đăng "${equipment.title}" thành công.`
+      : `Đã từ chối bài đăng "${equipment.title}".`,
+    equipment: populatedEquipment,
+  });
+}
+
+async function updateEquipmentVisibility(req, res) {
+  const { id } = req.params;
+  const { visibility, reason } = req.body;
+
+  if (!["published", "hidden"].includes(visibility)) {
+    throw new AppError(400, "Trạng thái hiển thị phải là 'published' hoặc 'hidden'");
+  }
+
+  const equipment = await Equipment.findById(id);
+  if (!equipment) {
+    throw new AppError(404, "Không tìm thấy thiết bị");
+  }
+
+  equipment.visibility = visibility;
+  if (visibility === "hidden") {
+    equipment.hidden_reason = (reason || "").trim();
+  } else {
+    equipment.hidden_reason = "";
+  }
+
+  await equipment.save();
+
+  // Notify owner if hidden
+  if (visibility === "hidden") {
+    try {
+      await UserNotification.create({
+        user_id: equipment.owner_id,
+        title: `Bài đăng "${equipment.title}" đã bị ẩn khỏi sàn`,
+        message: `Quản trị viên đã tạm ẩn bài đăng "${equipment.title}" do vi phạm quy định. Lý do: ${reason || "Không tuân thủ quy định đăng tin"}`,
+        related_record_id: equipment._id,
+      });
+    } catch (err) {
+      console.error("Failed to notify owner about equipment hidden:", err);
+    }
+  }
+
+  const populatedEquipment = await Equipment.findById(id)
+    .populate("owner_id", "name email phone trust_score")
+    .populate("moderated_by", "name email role")
+    .lean();
+
+  // Socket realtime
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("equipment:visibility_changed", {
+      equipmentId: id.toString(),
+      equipment: populatedEquipment,
+      visibility,
+      message: visibility === "hidden"
+        ? `Bài đăng "${equipment.title}" đã bị ẩn khỏi sàn.`
+        : `Bài đăng "${equipment.title}" đã được khôi phục công khai.`,
+    });
+  } catch (err) {
+    console.error("Socket emit equipment:visibility_changed failed:", err);
+  }
+
+  res.json({
+    message: visibility === "hidden"
+      ? `Đã ẩn bài đăng "${equipment.title}" khỏi sàn.`
+      : `Đã khôi phục hiển thị bài đăng "${equipment.title}".`,
+    equipment: populatedEquipment,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -273,4 +478,7 @@ module.exports = {
   listSupportTickets,
   replySupportTicket,
   updateSupportTicketStatus,
+  listEquipments,
+  reviewEquipmentApproval,
+  updateEquipmentVisibility,
 };

@@ -24,4 +24,9 @@ router.get("/support-tickets", asyncHandler(adminController.listSupportTickets))
 router.post("/support-tickets/:id/reply", asyncHandler(adminController.replySupportTicket));
 router.patch("/support-tickets/:id/status", asyncHandler(adminController.updateSupportTicketStatus));
 
+// Equipment listings moderation & visibility control (UC_A11 & UC_A12)
+router.get("/equipments", asyncHandler(adminController.listEquipments));
+router.patch("/equipments/:id/approval", asyncHandler(adminController.reviewEquipmentApproval));
+router.patch("/equipments/:id/visibility", asyncHandler(adminController.updateEquipmentVisibility));
+
 module.exports = router;
