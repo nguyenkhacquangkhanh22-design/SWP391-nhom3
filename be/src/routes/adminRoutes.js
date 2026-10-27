@@ -24,4 +24,21 @@ router.get("/support-tickets", asyncHandler(adminController.listSupportTickets))
 router.post("/support-tickets/:id/reply", asyncHandler(adminController.replySupportTicket));
 router.patch("/support-tickets/:id/status", asyncHandler(adminController.updateSupportTicketStatus));
 
+// Equipment listings moderation & visibility control (UC_A11 & UC_A12)
+router.get("/equipments", asyncHandler(adminController.listEquipments));
+router.patch("/equipments/:id/approval", asyncHandler(adminController.reviewEquipmentApproval));
+router.patch("/equipments/:id/visibility", asyncHandler(adminController.updateEquipmentVisibility));
+
+// Rental disputes & deposit deduction/refund (UC_A15 & UC_A16)
+router.get("/disputes", asyncHandler(adminController.listDisputes));
+router.get("/disputes/:id", asyncHandler(adminController.getDisputeDetail));
+router.patch("/disputes/:id/resolve", asyncHandler(adminController.resolveDispute));
+
+// KYC Renter submissions review (UC_A06)
+router.get("/kyc-submissions", asyncHandler(adminController.listKycSubmissions));
+router.patch("/kyc-submissions/:userId/review", asyncHandler(adminController.reviewKycSubmission));
+
+// Audit logs lookup (UC_A21)
+router.get("/audit-logs", asyncHandler(adminController.listAuditLogs));
+
 module.exports = router;

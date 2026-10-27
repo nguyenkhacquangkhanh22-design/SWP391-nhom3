@@ -15,6 +15,7 @@ async function browseEquipments(req, res) {
 
   const query = {
     visibility: "published",
+    approval_status: { $in: ["approved", undefined] },
   };
 
   if (status) {

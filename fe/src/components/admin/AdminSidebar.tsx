@@ -2,10 +2,23 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../app/AuthProvider";
 import Brand from "../Brand";
 
+export type AdminTab =
+  | "overview"
+  | "users"
+  | "owner-apps"
+  | "kyc"
+  | "equipments"
+  | "disputes"
+  | "support"
+  | "audit-logs";
+
 interface AdminSidebarProps {
-  activeTab: "overview" | "users" | "owner-apps" | "support";
-  setActiveTab: (tab: "overview" | "users" | "owner-apps" | "support") => void;
+  activeTab: AdminTab;
+  setActiveTab: (tab: AdminTab) => void;
   supportOpenCount?: number;
+  equipmentPendingCount?: number;
+  disputePendingCount?: number;
+  kycPendingCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -14,12 +27,15 @@ export default function AdminSidebar({
   activeTab,
   setActiveTab,
   supportOpenCount,
+  equipmentPendingCount,
+  disputePendingCount,
+  kycPendingCount,
   isOpenMobile,
   onCloseMobile,
 }: AdminSidebarProps) {
   const { user, signOut } = useAuth();
 
-  const handleSelectTab = (tab: "overview" | "users" | "owner-apps" | "support") => {
+  const handleSelectTab = (tab: AdminTab) => {
     setActiveTab(tab);
     onCloseMobile?.();
   };
@@ -79,6 +95,48 @@ export default function AdminSidebar({
             <span>Duyệt đơn Owner (UC_O02)</span>
           </button>
           <button
+            className={`admin-nav-item ${activeTab === "kyc" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("kyc")}
+          >
+            <span className="admin-nav-icon">🆔</span>
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+              <span>Duyệt KYC Renter (UC_A06)</span>
+              {kycPendingCount !== undefined && kycPendingCount > 0 && (
+                <span className="status-badge status-pending" style={{ padding: "1px 6px", fontSize: "0.7rem", marginLeft: "6px" }}>
+                  {kycPendingCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "equipments" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("equipments")}
+          >
+            <span className="admin-nav-icon">📹</span>
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+              <span>Duyệt bài đăng (UC_A11, A12)</span>
+              {equipmentPendingCount !== undefined && equipmentPendingCount > 0 && (
+                <span className="status-badge status-pending" style={{ padding: "1px 6px", fontSize: "0.7rem", marginLeft: "6px" }}>
+                  {equipmentPendingCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "disputes" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("disputes")}
+          >
+            <span className="admin-nav-icon">⚖️</span>
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+              <span>Tranh chấp & Cọc (A15, A16)</span>
+              {disputePendingCount !== undefined && disputePendingCount > 0 && (
+                <span className="status-badge status-pending" style={{ padding: "1px 6px", fontSize: "0.7rem", marginLeft: "6px" }}>
+                  {disputePendingCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
             className={`admin-nav-item ${activeTab === "support" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("support")}
           >
@@ -91,6 +149,13 @@ export default function AdminSidebar({
                 </span>
               )}
             </span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "audit-logs" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("audit-logs")}
+          >
+            <span className="admin-nav-icon">🛡️</span>
+            <span>Nhật ký hệ thống (UC_A21)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "overview" ? "is-active" : ""}`}

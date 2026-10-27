@@ -8,6 +8,7 @@ const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
+const { getIO } = require("../config/socket");
 const AppError = require("../utils/AppError");
 
 // Helper to generate short unique codes
@@ -140,11 +141,21 @@ async function createEquipmentListing(req, res) {
     rental_terms: rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.",
     cancellation_policy: cancellation_policy || "Miễn phí hủy trước 24 giờ.",
     visibility: "published",
+    approval_status: "pending",
     status: "available",
   });
 
+  try {
+    getIO().emit("equipment:created", {
+      equipment,
+      message: `Thiết bị mới "${equipment.title}" vừa được tạo và đang chờ xét duyệt!`,
+    });
+  } catch (err) {
+    console.error("Socket emit equipment:created error:", err);
+  }
+
   res.status(201).json({
-    message: "Tạo bài đăng thiết bị thành công",
+    message: "Tạo bài đăng thiết bị thành công và đang chờ quản trị viên phê duyệt",
     equipment,
   });
 }
