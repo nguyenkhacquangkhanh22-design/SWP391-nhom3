@@ -2,15 +2,34 @@ const User = require("../models/User");
 const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
+const Dispute = require("../models/Dispute");
+const Settlement = require("../models/Settlement");
+const RentalContract = require("../models/RentalContract");
+const HandoverRecord = require("../models/HandoverRecord");
+const AuditLog = require("../models/AuditLog");
+const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
 async function getOverview(req, res) {
-  const [totalUsers, activeUsers, adminCount, recentUsers] = await Promise.all([
+  const [
+    totalUsers,
+    activeUsers,
+    adminCount,
+    pendingEquipments,
+    pendingDisputes,
+    pendingKyc,
+    openTickets,
+    recentUsers,
+  ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ status: "active" }),
     User.countDocuments({
       role: { $regex: /^systemadmin$/i },
     }),
+    Equipment.countDocuments({ approval_status: "pending" }),
+    Dispute.countDocuments({ status: { $in: ["pending_review", "investigating"] } }),
+    User.countDocuments({ kycStatus: "pending" }),
+    SupportTicket.countDocuments({ status: "open" }),
     User.find({}, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
       .sort({ createdAt: -1 })
       .lean(),
@@ -22,6 +41,10 @@ async function getOverview(req, res) {
       activeUsers,
       inactiveUsers: totalUsers - activeUsers,
       adminCount,
+      pendingEquipments,
+      pendingDisputes,
+      pendingKyc,
+      openTickets,
     },
     users: recentUsers,
   });
@@ -40,8 +63,17 @@ async function updateUserRole(req, res) {
     throw new AppError(404, "User not found");
   }
 
+  const oldRole = user.role;
   user.role = role.trim();
   await user.save();
+
+  await recordAuditLog(req, {
+    action: "USER_ROLE_UPDATED",
+    targetType: "User",
+    targetId: user._id,
+    targetLabel: `${user.name} (${user.email})`,
+    details: { oldRole, newRole: user.role },
+  });
 
   res.json({
     message: "User role updated successfully",
@@ -72,12 +104,21 @@ async function updateUserStatus(req, res) {
     throw new AppError(400, "You cannot alter your own account status");
   }
 
+  const oldStatus = user.status;
   user.status = status;
   if (status !== "active") {
     // Invalidate sessions immediately if deactivated/blocked
     user.token_version = (user.token_version || 0) + 1;
   }
   await user.save();
+
+  await recordAuditLog(req, {
+    action: "USER_STATUS_UPDATED",
+    targetType: "User",
+    targetId: user._id,
+    targetLabel: `${user.name} (${user.email})`,
+    details: { oldStatus, newStatus: user.status },
+  });
 
   res.json({
     message: `User status changed to ${status}`,
@@ -181,6 +222,18 @@ async function replySupportTicket(req, res) {
     console.error("Failed to notify user:", err);
   }
 
+  // Record audit log
+  await recordAuditLog(req, {
+    action: "SUPPORT_TICKET_REPLIED",
+    targetType: "SupportTicket",
+    targetId: ticket._id,
+    targetLabel: `#${ticket.ticket_code} - ${ticket.title}`,
+    details: {
+      messagePreview: message.trim().slice(0, 100),
+      ticketStatus: ticket.status,
+    },
+  });
+
   const updatedTicket = await SupportTicket.findById(id)
     .populate("user_id", "name email role")
     .populate("replies.sender_id", "name email role")
@@ -219,6 +272,7 @@ async function updateSupportTicketStatus(req, res) {
     throw new AppError(404, "Không tìm thấy yêu cầu hỗ trợ");
   }
 
+  const oldStatus = ticket.status;
   ticket.status = status;
   if (note && note.trim()) {
     ticket.replies.push({
@@ -243,6 +297,19 @@ async function updateSupportTicketStatus(req, res) {
   } catch (err) {
     console.error("Failed to notify user:", err);
   }
+
+  // Record audit log
+  await recordAuditLog(req, {
+    action: "SUPPORT_TICKET_STATUS_UPDATED",
+    targetType: "SupportTicket",
+    targetId: ticket._id,
+    targetLabel: `#${ticket.ticket_code} - ${ticket.title}`,
+    details: {
+      oldStatus,
+      newStatus: status,
+      note: note ? note.trim() : "",
+    },
+  });
 
   const updatedTicket = await SupportTicket.findById(id)
     .populate("user_id", "name email role")
@@ -381,6 +448,18 @@ async function reviewEquipmentApproval(req, res) {
     console.error("Failed to notify owner about equipment review:", err);
   }
 
+  // Record audit log
+  await recordAuditLog(req, {
+    action: approval_status === "approved" ? "EQUIPMENT_APPROVED" : "EQUIPMENT_REJECTED",
+    targetType: "Equipment",
+    targetId: equipment._id,
+    targetLabel: equipment.title,
+    details: {
+      approval_status,
+      rejection_reason: approval_status === "rejected" ? rejection_reason : undefined,
+    },
+  });
+
   const populatedEquipment = await Equipment.findById(id)
     .populate("owner_id", "name email phone trust_score")
     .populate("moderated_by", "name email role")
@@ -443,6 +522,18 @@ async function updateEquipmentVisibility(req, res) {
     }
   }
 
+  // Record audit log
+  await recordAuditLog(req, {
+    action: visibility === "hidden" ? "EQUIPMENT_HIDDEN" : "EQUIPMENT_RESTORED",
+    targetType: "Equipment",
+    targetId: equipment._id,
+    targetLabel: equipment.title,
+    details: {
+      visibility,
+      reason: reason || "",
+    },
+  });
+
   const populatedEquipment = await Equipment.findById(id)
     .populate("owner_id", "name email phone trust_score")
     .populate("moderated_by", "name email role")
@@ -471,6 +562,490 @@ async function updateEquipmentVisibility(req, res) {
   });
 }
 
+// ==========================================
+// MODULE 2: TRANH CHẤP & BỒI THƯỜNG (UC_A15 & UC_A16)
+// ==========================================
+
+async function listDisputes(req, res) {
+  const { status, search, page = 1, limit = 10 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter = {};
+  if (status && status !== "all") {
+    filter.status = status;
+  }
+  if (search && search.trim()) {
+    const keyword = search.trim();
+    filter.$or = [
+      { dispute_code: { $regex: keyword, $options: "i" } },
+      { title: { $regex: keyword, $options: "i" } },
+      { reason: { $regex: keyword, $options: "i" } },
+      { description: { $regex: keyword, $options: "i" } },
+    ];
+  }
+
+  const [
+    disputes,
+    totalCount,
+    totalAll,
+    pendingReviewCount,
+    investigatingCount,
+    resolvedCount,
+    dismissedCount,
+  ] = await Promise.all([
+    Dispute.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate({
+        path: "contract_id",
+        select: "contract_code rental_price deposit_amount start_date end_date status equipment_id",
+        populate: {
+          path: "equipment_id",
+          select: "title images price_per_day deposit_amount category",
+        },
+      })
+      .populate("owner_id", "name email phone trust_score")
+      .populate("renter_id", "name email phone trust_score")
+      .populate("resolved_by", "name email role")
+      .lean(),
+    Dispute.countDocuments(filter),
+    Dispute.countDocuments(),
+    Dispute.countDocuments({ status: "pending_review" }),
+    Dispute.countDocuments({ status: "investigating" }),
+    Dispute.countDocuments({ status: "resolved" }),
+    Dispute.countDocuments({ status: "dismissed" }),
+  ]);
+
+  res.json({
+    disputes,
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum) || 1,
+      totalCount,
+      limit: limitNum,
+    },
+    stats: {
+      total: totalAll,
+      pending_review: pendingReviewCount,
+      investigating: investigatingCount,
+      resolved: resolvedCount,
+      dismissed: dismissedCount,
+    },
+  });
+}
+
+async function getDisputeDetail(req, res) {
+  const { id } = req.params;
+  const dispute = await Dispute.findById(id)
+    .populate({
+      path: "contract_id",
+      populate: [
+        { path: "equipment_id", select: "title images price_per_day deposit_amount category description condition" },
+        { path: "owner_id", select: "name email phone trust_score" },
+        { path: "renter_id", select: "name email phone trust_score" },
+      ],
+    })
+    .populate("owner_id", "name email phone trust_score")
+    .populate("renter_id", "name email phone trust_score")
+    .populate("resolved_by", "name email role")
+    .lean();
+
+  if (!dispute) {
+    throw new AppError(404, "Không tìm thấy hồ sơ tranh chấp");
+  }
+
+  const contractId = dispute.contract_id?._id || dispute.contract_id;
+  const [handovers, settlement] = await Promise.all([
+    contractId
+      ? HandoverRecord.find({ contract_id: contractId }).sort({ record_date: 1 }).lean()
+      : [],
+    contractId
+      ? Settlement.findOne({ contract_id: contractId }).lean()
+      : null,
+  ]);
+
+  res.json({
+    dispute,
+    handovers,
+    settlement,
+  });
+}
+
+async function resolveDispute(req, res) {
+  const { id } = req.params;
+  const { status, compensation_approved, resolution_note } = req.body;
+
+  if (!status || !["resolved", "dismissed", "investigating"].includes(status)) {
+    throw new AppError(400, "Trạng thái phán quyết không hợp lệ ('resolved', 'dismissed', 'investigating')");
+  }
+
+  const dispute = await Dispute.findById(id).populate("contract_id");
+  if (!dispute) {
+    throw new AppError(404, "Không tìm thấy hồ sơ tranh chấp");
+  }
+
+  const approvedAmount = status === "resolved" ? Math.max(0, Number(compensation_approved) || 0) : 0;
+
+  dispute.status = status;
+  if (status !== "investigating") {
+    dispute.compensation_approved = approvedAmount;
+    dispute.resolution_note = resolution_note ? resolution_note.trim() : "";
+    dispute.resolved_by = req.user._id;
+    dispute.resolved_at = new Date();
+  } else {
+    if (resolution_note) {
+      dispute.resolution_note = resolution_note.trim();
+    }
+  }
+
+  await dispute.save();
+
+  // If resolved or dismissed, handle financial settlement (UC_A16)
+  let settlement = null;
+  if (status === "resolved" || status === "dismissed") {
+    const contract = dispute.contract_id;
+    const contractId = contract?._id || dispute.contract_id;
+
+    settlement = await Settlement.findOne({ contract_id: contractId });
+    if (settlement) {
+      settlement.damage_deduction = approvedAmount;
+      settlement.deduction_reason = resolution_note || `Khấu trừ theo phán quyết tranh chấp ${dispute.dispute_code}`;
+      settlement.deposit_refund_to_renter = Math.max(
+        0,
+        settlement.deposit_paid - (settlement.overtime_fee || 0) - approvedAmount
+      );
+      settlement.owner_payout_amount =
+        settlement.total_rental_fee -
+        settlement.platform_fee +
+        (settlement.overtime_fee || 0) +
+        approvedAmount;
+      await settlement.save();
+    } else if (contract) {
+      const depositPaid = Number(contract.deposit_amount) || 0;
+      const rentalFee = Number(contract.rental_price) || 0;
+      const platformFee = Math.round(rentalFee * 0.1);
+      const refundToRenter = Math.max(0, depositPaid - approvedAmount);
+      const ownerPayout = rentalFee - platformFee + approvedAmount;
+
+      try {
+        settlement = await Settlement.create({
+          settlement_code: `SETTLE-${Date.now().toString().slice(-6)}`,
+          contract_id: contractId,
+          owner_id: dispute.owner_id,
+          renter_id: dispute.renter_id,
+          total_rental_fee: rentalFee,
+          overtime_fee: 0,
+          damage_deduction: approvedAmount,
+          deduction_reason: resolution_note || `Khấu trừ tranh chấp ${dispute.dispute_code}`,
+          deposit_paid: depositPaid,
+          deposit_refund_to_renter: refundToRenter,
+          platform_fee: platformFee,
+          owner_payout_amount: ownerPayout,
+          payout_status: "pending_owner_confirmation",
+        });
+      } catch (err) {
+        console.error("Failed to auto-create settlement for dispute:", err);
+      }
+    }
+
+    // Send notifications to Owner & Renter
+    try {
+      const decisionText =
+        status === "resolved"
+          ? `Chấp thuận bồi thường ${approvedAmount.toLocaleString("vi-VN")} đ`
+          : "Bác bỏ khiếu nại (Hoàn cọc nguyên vẹn)";
+
+      await Promise.all([
+        UserNotification.create({
+          user_id: dispute.owner_id,
+          title: `Phán quyết tranh chấp [${dispute.dispute_code}]`,
+          message: `Admin đã kết luận tranh chấp: ${decisionText}. Ghi chú: ${resolution_note || "Không có"}`,
+          related_record_id: dispute._id,
+        }),
+        UserNotification.create({
+          user_id: dispute.renter_id,
+          title: `Phán quyết tranh chấp [${dispute.dispute_code}]`,
+          message: `Admin đã kết luận tranh chấp: ${decisionText}. Ghi chú: ${resolution_note || "Không có"}`,
+          related_record_id: dispute._id,
+        }),
+      ]);
+    } catch (err) {
+      console.error("Failed to notify users about dispute resolution:", err);
+    }
+  }
+
+  // Audit log
+  await recordAuditLog(req, {
+    action: status === "resolved" ? "DISPUTE_RESOLVED" : status === "dismissed" ? "DISPUTE_DISMISSED" : "DISPUTE_INVESTIGATING",
+    targetType: "Dispute",
+    targetId: dispute._id,
+    targetLabel: dispute.dispute_code,
+    details: {
+      status,
+      compensation_approved: approvedAmount,
+      resolution_note,
+      claimed_compensation: dispute.claimed_compensation,
+    },
+  });
+
+  // Socket emit
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("dispute:resolved", {
+      disputeId: dispute._id.toString(),
+      disputeCode: dispute.dispute_code,
+      status,
+      compensation_approved: approvedAmount,
+      message: `Tranh chấp ${dispute.dispute_code} đã được xử lý: ${status === "resolved" ? "Chấp thuận bồi thường" : status === "dismissed" ? "Bác bỏ khiếu nại" : "Đang điều tra"}.`,
+    });
+  } catch (err) {
+    console.error("Socket emit dispute:resolved failed:", err);
+  }
+
+  const populated = await Dispute.findById(id)
+    .populate("contract_id")
+    .populate("owner_id", "name email phone trust_score")
+    .populate("renter_id", "name email phone trust_score")
+    .populate("resolved_by", "name email role")
+    .lean();
+
+  res.json({
+    message: status === "investigating"
+      ? `Đã chuyển tranh chấp "${dispute.dispute_code}" sang trạng thái Đang điều tra.`
+      : `Đã hoàn tất phân xử tranh chấp "${dispute.dispute_code}".`,
+    dispute: populated,
+    settlement,
+  });
+}
+
+// ==========================================
+// MODULE 4: XÉT DUYỆT KYC RENTER (UC_A06)
+// ==========================================
+
+async function listKycSubmissions(req, res) {
+  const { status, search, page = 1, limit = 10 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter = {};
+  if (status && status !== "all") {
+    filter.kycStatus = status;
+  } else if (!status) {
+    filter.kycStatus = { $in: ["pending", "verified", "rejected"] };
+  }
+
+  if (search && search.trim()) {
+    const keyword = search.trim();
+    filter.$or = [
+      { name: { $regex: keyword, $options: "i" } },
+      { email: { $regex: keyword, $options: "i" } },
+      { "kycDocument.idNumber": { $regex: keyword, $options: "i" } },
+    ];
+  }
+
+  const [
+    users,
+    totalCount,
+    pendingCount,
+    verifiedCount,
+    rejectedCount,
+    unverifiedCount,
+  ] = await Promise.all([
+    User.find(filter, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
+      .sort({ "kycDocument.submittedAt": -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate("kycDocument.verifiedBy", "name email role")
+      .lean(),
+    User.countDocuments(filter),
+    User.countDocuments({ kycStatus: "pending" }),
+    User.countDocuments({ kycStatus: "verified" }),
+    User.countDocuments({ kycStatus: "rejected" }),
+    User.countDocuments({ kycStatus: "unverified" }),
+  ]);
+
+  res.json({
+    submissions: users,
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum) || 1,
+      totalCount,
+      limit: limitNum,
+    },
+    stats: {
+      pending: pendingCount,
+      verified: verifiedCount,
+      rejected: rejectedCount,
+      unverified: unverifiedCount,
+      total_active: pendingCount + verifiedCount + rejectedCount,
+    },
+  });
+}
+
+async function reviewKycSubmission(req, res) {
+  const { userId } = req.params;
+  const { status, rejectionReason, trustScoreBonus = 20 } = req.body;
+
+  if (!status || !["verified", "rejected"].includes(status)) {
+    throw new AppError(400, "Trạng thái xét duyệt KYC phải là 'verified' hoặc 'rejected'");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new AppError(404, "Không tìm thấy người dùng");
+  }
+
+  if (status === "rejected" && (!rejectionReason || !rejectionReason.trim())) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối hồ sơ KYC");
+  }
+
+  user.kycStatus = status;
+  if (!user.kycDocument) {
+    user.kycDocument = {};
+  }
+
+  if (status === "verified") {
+    user.kycDocument.verifiedAt = new Date();
+    user.kycDocument.verifiedBy = req.user._id;
+    user.kycDocument.rejectionReason = "";
+    user.trust_score = (user.trust_score || 0) + Number(trustScoreBonus);
+  } else {
+    user.kycDocument.rejectionReason = rejectionReason.trim();
+    user.kycDocument.verifiedAt = undefined;
+    user.kycDocument.verifiedBy = req.user._id;
+  }
+
+  await user.save();
+
+  // Send notification to user
+  try {
+    await UserNotification.create({
+      user_id: user._id,
+      title: status === "verified"
+        ? "Hồ sơ xác thực danh tính (KYC) đã được phê duyệt! 🎉"
+        : "Hồ sơ xác thực danh tính (KYC) bị từ chối ⚠️",
+      message: status === "verified"
+        ? `Chúc mừng bạn! Hồ sơ định danh cá nhân đã được xác thực thành công. Bạn được cộng +${trustScoreBonus} điểm uy tín.`
+        : `Hồ sơ định danh của bạn chưa được duyệt. Lý do: ${rejectionReason}. Vui lòng kiểm tra và gửi lại ảnh chụp rõ nét.`,
+      related_record_id: user._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify user about KYC review:", err);
+  }
+
+  // Audit log
+  await recordAuditLog(req, {
+    action: status === "verified" ? "KYC_VERIFIED" : "KYC_REJECTED",
+    targetType: "User",
+    targetId: user._id,
+    targetLabel: `${user.name} (${user.email})`,
+    details: {
+      status,
+      rejectionReason: status === "rejected" ? rejectionReason : undefined,
+      trustScoreBonus: status === "verified" ? trustScoreBonus : undefined,
+      idNumber: user.kycDocument?.idNumber,
+    },
+  });
+
+  // Socket realtime
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("kyc:reviewed", {
+      userId: user._id.toString(),
+      userName: user.name,
+      userEmail: user.email,
+      status,
+      message: status === "verified"
+        ? `Hồ sơ KYC của ${user.name} đã được phê duyệt.`
+        : `Hồ sơ KYC của ${user.name} đã bị từ chối.`,
+    });
+  } catch (err) {
+    console.error("Socket emit kyc:reviewed failed:", err);
+  }
+
+  const updatedUser = await User.findById(userId, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
+    .populate("kycDocument.verifiedBy", "name email role")
+    .lean();
+
+  res.json({
+    message: status === "verified"
+      ? `Đã phê duyệt KYC thành công cho người dùng "${user.name}".`
+      : `Đã từ chối hồ sơ KYC của người dùng "${user.name}".`,
+    user: updatedUser,
+  });
+}
+
+// ==========================================
+// MODULE 3: AUDIT LOGS (UC_A21)
+// ==========================================
+
+async function listAuditLogs(req, res) {
+  const { action, targetType, search, startDate, endDate, page = 1, limit = 15 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 15));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter = {};
+  if (action && action !== "all") {
+    filter.action = action;
+  }
+  if (targetType && targetType !== "all") {
+    filter.target_type = targetType;
+  }
+  if (search && search.trim()) {
+    const keyword = search.trim();
+    filter.$or = [
+      { actor_name: { $regex: keyword, $options: "i" } },
+      { actor_email: { $regex: keyword, $options: "i" } },
+      { target_label: { $regex: keyword, $options: "i" } },
+      { action: { $regex: keyword, $options: "i" } },
+    ];
+  }
+  if (startDate || endDate) {
+    filter.createdAt = {};
+    if (startDate) {
+      filter.createdAt.$gte = new Date(startDate);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [logs, totalCount, logsToday] = await Promise.all([
+    AuditLog.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate("actor_id", "name email role")
+      .lean(),
+    AuditLog.countDocuments(filter),
+    AuditLog.countDocuments({ createdAt: { $gte: todayStart } }),
+  ]);
+
+  res.json({
+    logs,
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum) || 1,
+      totalCount,
+      limit: limitNum,
+    },
+    stats: {
+      total: totalCount,
+      today: logsToday,
+    },
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -481,4 +1056,11 @@ module.exports = {
   listEquipments,
   reviewEquipmentApproval,
   updateEquipmentVisibility,
+  listDisputes,
+  getDisputeDetail,
+  resolveDispute,
+  listKycSubmissions,
+  reviewKycSubmission,
+  listAuditLogs,
 };
+

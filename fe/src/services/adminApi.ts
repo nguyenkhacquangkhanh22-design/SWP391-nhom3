@@ -133,4 +133,121 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A15 & UC_A16: Disputes & Financial Deductions
+  // ==========================================
+  listDisputes: (
+    token: string,
+    params?: {
+      status?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminDisputesResponse>(
+      `/disputes${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  getDisputeDetail: (token: string, id: string) =>
+    adminRequest<import("../types/admin").DisputeDetailResponse>(
+      `/disputes/${id}`,
+      { method: "GET" },
+      token
+    ),
+
+  resolveDispute: (
+    token: string,
+    id: string,
+    body: import("../types/admin").ResolveDisputePayload
+  ) =>
+    adminRequest<{
+      message: string;
+      dispute: import("../types/admin").AdminDispute;
+      settlement?: import("../types/admin").AdminSettlementRecord;
+    }>(
+      `/disputes/${id}/resolve`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A06: KYC Submissions
+  // ==========================================
+  listKycSubmissions: (
+    token: string,
+    params?: {
+      status?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminKycResponse>(
+      `/kyc-submissions${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  reviewKycSubmission: (
+    token: string,
+    userId: string,
+    body: import("../types/admin").ReviewKycPayload
+  ) =>
+    adminRequest<{
+      message: string;
+      user: import("../types/admin").AdminKycSubmission;
+    }>(
+      `/kyc-submissions/${userId}/review`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A21: Audit Logs
+  // ==========================================
+  listAuditLogs: (
+    token: string,
+    params?: {
+      action?: string;
+      targetType?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.action) query.set("action", params.action);
+    if (params?.targetType) query.set("targetType", params.targetType);
+    if (params?.search) query.set("search", params.search);
+    if (params?.startDate) query.set("startDate", params.startDate);
+    if (params?.endDate) query.set("endDate", params.endDate);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminAuditLogsResponse>(
+      `/audit-logs${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
 };

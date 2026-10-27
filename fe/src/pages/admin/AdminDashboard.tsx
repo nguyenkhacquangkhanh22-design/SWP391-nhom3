@@ -1,9 +1,12 @@
 import { useEffect, useState, useMemo, type FormEvent } from "react";
 import { useAuth } from "../../app/AuthProvider";
 import Feedback from "../../components/Feedback";
-import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminSidebar, { type AdminTab } from "../../components/admin/AdminSidebar";
 import AdminStatsGrid from "../../components/admin/AdminStatsGrid";
 import AdminUserTable, { type AdminUserRow } from "../../components/admin/AdminUserTable";
+import AdminDisputesTab from "../../components/admin/AdminDisputesTab";
+import AdminKycTab from "../../components/admin/AdminKycTab";
+import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -14,6 +17,8 @@ import type {
   TicketStats,
   AdminEquipment,
   AdminEquipmentStats,
+  AdminDisputeStats,
+  AdminKycStats,
 } from "../../types/admin";
 import type { OwnerApplication } from "../../types/owner";
 
@@ -26,13 +31,15 @@ export default function AdminDashboard() {
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null);
   const [equipments, setEquipments] = useState<AdminEquipment[]>([]);
   const [equipmentStats, setEquipmentStats] = useState<AdminEquipmentStats | null>(null);
+  const [disputeStats, setDisputeStats] = useState<AdminDisputeStats | null>(null);
+  const [kycStats, setKycStats] = useState<AdminKycStats | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "owner-apps" | "support" | "equipments">("users");
+  const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
@@ -160,12 +167,32 @@ export default function AdminDashboard() {
       }
     };
 
+    const handleDisputeResolved = (data: { disputeCode: string; status: string; message?: string }) => {
+      setSuccess(data.message || `⚖️ Tranh chấp #${data.disputeCode} đã có phán quyết mới!`);
+      if (token) {
+        adminApi.listDisputes(token).then((res) => {
+          if (res.stats) setDisputeStats(res.stats);
+        }).catch(() => {});
+      }
+    };
+
+    const handleKycReviewed = (data: { userName: string; status: string; message?: string }) => {
+      setSuccess(data.message || `🆔 Hồ sơ KYC của ${data.userName} đã được cập nhật trạng thái!`);
+      if (token) {
+        adminApi.listKycSubmissions(token).then((res) => {
+          if (res.stats) setKycStats(res.stats);
+        }).catch(() => {});
+      }
+    };
+
     socket.on("ticket:created", handleTicketCreated);
     socket.on("ticket:replied", handleTicketReplied);
     socket.on("ticket:status_updated", handleTicketStatusUpdated);
     socket.on("equipment:created", handleEquipmentCreated);
     socket.on("equipment:moderated", handleEquipmentModerated);
     socket.on("equipment:visibility_changed", handleEquipmentVisibilityChanged);
+    socket.on("dispute:resolved", handleDisputeResolved);
+    socket.on("kyc:reviewed", handleKycReviewed);
 
     return () => {
       socket.off("ticket:created", handleTicketCreated);
@@ -174,6 +201,8 @@ export default function AdminDashboard() {
       socket.off("equipment:created", handleEquipmentCreated);
       socket.off("equipment:moderated", handleEquipmentModerated);
       socket.off("equipment:visibility_changed", handleEquipmentVisibilityChanged);
+      socket.off("dispute:resolved", handleDisputeResolved);
+      socket.off("kyc:reviewed", handleKycReviewed);
     };
   }, [token]);
 
@@ -182,7 +211,7 @@ export default function AdminDashboard() {
     setIsLoading(true);
     setError("");
     try {
-      const [data, appsData, ticketsData, eqData] = await Promise.all([
+      const [data, appsData, ticketsData, eqData, dispData, kycData] = await Promise.all([
         adminApi.getOverview(token),
         ownerApi.adminListOwnerApplications(token).catch(() => ({ applications: [] })),
         adminApi.listSupportTickets(token).catch(() => ({
@@ -193,6 +222,14 @@ export default function AdminDashboard() {
           equipments: [],
           stats: { total: 0, pending: 0, approved: 0, rejected: 0, hidden: 0 },
         })),
+        adminApi.listDisputes(token).catch(() => ({
+          disputes: [],
+          stats: { total: 0, pending_review: 0, investigating: 0, resolved: 0, dismissed: 0 },
+        })),
+        adminApi.listKycSubmissions(token).catch(() => ({
+          submissions: [],
+          stats: { pending: 0, verified: 0, rejected: 0, unverified: 0, total_active: 0 },
+        })),
       ]);
       setStats(data.stats);
       setUsers(data.users);
@@ -201,6 +238,8 @@ export default function AdminDashboard() {
       setTicketStats(ticketsData.stats || null);
       setEquipments(eqData.equipments || []);
       setEquipmentStats(eqData.stats || null);
+      if (dispData.stats) setDisputeStats(dispData.stats);
+      if (kycData.stats) setKycStats(kycData.stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu quản trị.");
     } finally {
@@ -525,8 +564,10 @@ export default function AdminDashboard() {
       <AdminSidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        supportOpenCount={ticketStats?.open || 0}
-        equipmentPendingCount={equipmentStats?.pending || 0}
+        supportOpenCount={ticketStats?.open || stats?.openTickets || 0}
+        equipmentPendingCount={equipmentStats?.pending || stats?.pendingEquipments || 0}
+        disputePendingCount={disputeStats?.pending_review || stats?.pendingDisputes || 0}
+        kycPendingCount={kycStats?.pending || stats?.pendingKyc || 0}
         isOpenMobile={isMobileNavOpen}
         onCloseMobile={() => setIsMobileNavOpen(false)}
       />
@@ -542,10 +583,16 @@ export default function AdminDashboard() {
                 ? "Quản lý người dùng (UC_A03 - UC_A05)"
                 : activeTab === "owner-apps"
                 ? "Xét duyệt hồ sơ Owner (UC_O02, UC_A07)"
+                : activeTab === "kyc"
+                ? "Xét duyệt danh tính Renter KYC (UC_A06)"
                 : activeTab === "equipments"
                 ? "Kiểm duyệt & Quản lý bài đăng thiết bị (UC_A11, UC_A12)"
+                : activeTab === "disputes"
+                ? "Phân xử tranh chấp & Khấu trừ cọc (UC_A15, UC_A16)"
                 : activeTab === "support"
                 ? "Tiếp nhận & Xử lý yêu cầu hỗ trợ (UC_A17)"
+                : activeTab === "audit-logs"
+                ? "Nhật ký hoạt động hệ thống (UC_A21)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -1917,6 +1964,34 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* KYC Verification Tab (UC_A06) */}
+        {activeTab === "kyc" && token && (
+          <AdminKycTab
+            token={token}
+            onStatsUpdate={setKycStats}
+            onError={setError}
+            onSuccess={setSuccess}
+          />
+        )}
+
+        {/* Disputes & Deposit Deductions Tab (UC_A15 & UC_A16) */}
+        {activeTab === "disputes" && token && (
+          <AdminDisputesTab
+            token={token}
+            onStatsUpdate={setDisputeStats}
+            onError={setError}
+            onSuccess={setSuccess}
+          />
+        )}
+
+        {/* Audit Logs Tab (UC_A21) */}
+        {activeTab === "audit-logs" && token && (
+          <AdminAuditLogsTab
+            token={token}
+            onError={setError}
+          />
         )}
 
         {/* Equipment Detail Modal (UC_A11 & UC_A12) */}

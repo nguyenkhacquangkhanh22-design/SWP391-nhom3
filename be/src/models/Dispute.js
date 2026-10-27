@@ -49,6 +49,11 @@ const disputeSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    compensation_approved: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     status: {
       type: String,
       enum: ["pending_review", "investigating", "resolved", "dismissed"],
@@ -58,6 +63,10 @@ const disputeSchema = new mongoose.Schema(
     resolution_note: {
       type: String,
       default: "",
+    },
+    resolved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     resolved_at: {
       type: Date,
