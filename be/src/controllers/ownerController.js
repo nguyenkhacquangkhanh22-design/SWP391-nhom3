@@ -94,6 +94,23 @@ async function getEquipmentDetail(req, res) {
   res.json({ equipment });
 }
 
+// UC_O03: Upload Equipment Photos
+async function uploadEquipmentPhoto(req, res) {
+  if (!req.file) {
+    throw new AppError(400, "Vui lòng chọn file ảnh để tải lên");
+  }
+  const fileUrl = `/uploads/${req.file.filename}`;
+  res.json({ url: fileUrl, filename: req.file.filename });
+}
+
+async function uploadEquipmentPhotos(req, res) {
+  if (!req.files || req.files.length === 0) {
+    throw new AppError(400, "Vui lòng chọn ít nhất một file ảnh");
+  }
+  const urls = req.files.map((file) => `/uploads/${file.filename}`);
+  res.json({ urls });
+}
+
 // UC_O03: Create Equipment Listing (including photo uploads)
 async function createEquipmentListing(req, res) {
   const ownerId = req.user._id;
@@ -1023,24 +1040,9 @@ async function submitSupportTicket(req, res) {
     status: "open",
   });
 
-  const populatedTicket = await SupportTicket.findById(ticket._id)
-    .populate("user_id", "name email role")
-    .lean();
-
-  // Realtime notification via Socket.IO
-  try {
-    const { getIO } = require("../config/socket");
-    getIO().emit("ticket:created", {
-      ticket: populatedTicket,
-      message: `Yêu cầu hỗ trợ mới #${ticket.ticket_code} từ ${req.user.name || "Owner"}`,
-    });
-  } catch (err) {
-    console.error("Socket emit ticket:created failed:", err.message);
-  }
-
   res.status(201).json({
     message: "Gửi phiếu hỗ trợ thành công",
-    ticket: populatedTicket,
+    ticket,
   });
 }
 
@@ -1079,31 +1081,15 @@ async function replySupportTicket(req, res) {
 
   await ticket.save();
 
-  const updatedTicket = await SupportTicket.findById(id)
-    .populate("user_id", "name email role")
-    .populate("replies.sender_id", "name email role")
-    .lean();
-
-  // Realtime socket emit
-  try {
-    const { getIO } = require("../config/socket");
-    getIO().emit("ticket:replied", {
-      ticketId: id.toString(),
-      ticket: updatedTicket,
-      reply: updatedTicket.replies[updatedTicket.replies.length - 1],
-      senderRole: req.user.role || "owner",
-    });
-  } catch (err) {
-    console.error("Socket emit ticket:replied failed:", err.message);
-  }
-
   res.json({
     message: "Đã gửi phản hồi",
-    ticket: updatedTicket,
+    ticket,
   });
 }
 
 module.exports = {
+  uploadEquipmentPhoto,
+  uploadEquipmentPhotos,
   getOverview,
   getOwnerEquipments,
   getEquipmentDetail,

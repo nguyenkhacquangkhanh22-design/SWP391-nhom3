@@ -8,6 +8,7 @@ class EquipmentController {
     const result = await equipmentService.searchEquipment(req.query);
     res.status(200).json({
       success: true,
+      message: "Lấy danh sách thiết bị thành công",
       data: result.equipments,
       pagination: result.pagination,
     });
@@ -20,6 +21,7 @@ class EquipmentController {
     const equipment = await equipmentService.getEquipmentById(req.params.id);
     res.status(200).json({
       success: true,
+      message: "Lấy chi tiết thiết bị thành công",
       data: equipment,
     });
   }

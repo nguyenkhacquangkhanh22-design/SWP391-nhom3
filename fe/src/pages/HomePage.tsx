@@ -40,9 +40,9 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Link
               to="/equipment"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-base shadow-lg shadow-orange-600/30 transition-all transform hover:-translate-y-0.5 text-center"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white hover:text-white font-bold text-base shadow-lg shadow-orange-600/30 transition-all transform hover:-translate-y-0.5 text-center inline-flex items-center justify-center gap-2"
             >
-              🔍 Khám phá thiết bị ngay
+              <span className="text-white font-bold">🔍 Khám phá thiết bị ngay</span>
             </Link>
             <Link
               to="/register"

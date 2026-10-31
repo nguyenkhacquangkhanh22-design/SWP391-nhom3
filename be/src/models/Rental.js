@@ -54,6 +54,11 @@ const rentalSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     totalAmount: {
       type: Number,
       required: true,
@@ -62,39 +67,71 @@ const rentalSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "pending",            // Vừa gửi yêu cầu thuê, chờ kiểm tra/xác nhận
-        "contract_pending",   // Chờ người thuê ký hợp đồng điện tử
-        "payment_pending",    // Chờ thanh toán tiền thuê & cọc
-        "confirmed",          // Đã ký & thanh toán, chuẩn bị bàn giao
-        "in_progress",        // Đang trong thời gian thuê
-        "return_requested",   // Người thuê đã gửi yêu cầu trả máy (UC_R10)
-        "completed",          // Đã kiểm tra trả máy & hoàn tất
-        "cancelled",          // Đã hủy (UC_R13)
-        "disputed",           // Đang có tranh chấp/khiếu nại (UC_R14)
+        "PENDING",
+        "APPROVED",
+        "CONTRACT_SIGNED",
+        "PAID",
+        "ACTIVE",
+        "RETURNED",
+        "COMPLETED",
+        "CANCELLED",
+        "DISPUTED",
+        // Hỗ trợ thêm cho tương thích ngược
+        "pending",
+        "contract_pending",
+        "payment_pending",
+        "confirmed",
+        "in_progress",
+        "return_requested",
+        "completed",
+        "cancelled",
+        "disputed",
       ],
-      default: "contract_pending",
+      default: "PENDING",
       index: true,
+    },
+    deliveryAddress: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    renterNote: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    notes: {
+      type: String,
+      trim: true,
+      default: "",
     },
     contract: {
       contractNumber: { type: String, trim: true },
       termsAccepted: { type: Boolean, default: false },
+      contractTerms: { type: String, trim: true },
       signedAt: { type: Date },
+      renterSignature: { type: String, trim: true },
       digitalSignature: { type: String, trim: true },
       contractUrl: { type: String, trim: true },
     },
     payment: {
+      isPaid: { type: Boolean, default: false },
+      paidAt: { type: Date },
+      paymentMethod: { type: String, trim: true },
+      transactionId: { type: String, trim: true },
+      amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
         enum: ["unpaid", "paid", "refunded"],
         default: "unpaid",
       },
-      paymentMethod: {
-        type: String,
-        enum: ["vnpay", "momo", "bank_transfer", "wallet"],
-      },
-      transactionId: { type: String, trim: true },
-      paidAt: { type: Date },
-      amountPaid: { type: Number, default: 0 },
+    },
+    returnInfo: {
+      requestedAt: { type: Date },
+      returnCondition: { type: String, trim: true },
+      returnNote: { type: String, trim: true },
+      returnTime: { type: Date },
+      returnLocation: { type: String, trim: true },
     },
     returnRequest: {
       requestedAt: { type: Date },
@@ -105,6 +142,7 @@ const rentalSchema = new mongoose.Schema(
     review: {
       rating: { type: Number, min: 1, max: 5 },
       comment: { type: String, trim: true },
+      createdAt: { type: Date },
       reviewedAt: { type: Date },
     },
     cancellation: {
@@ -114,17 +152,10 @@ const rentalSchema = new mongoose.Schema(
     },
     dispute: {
       reason: { type: String, trim: true },
+      description: { type: String, trim: true },
       evidenceImages: [{ type: String }],
       disputedAt: { type: Date },
-      status: { type: String, enum: ["open", "investigating", "resolved"], default: "open" },
-    },
-    deliveryAddress: {
-      type: String,
-      trim: true,
-    },
-    notes: {
-      type: String,
-      trim: true,
+      status: { type: String, default: "open" },
     },
   },
   {
@@ -132,5 +163,56 @@ const rentalSchema = new mongoose.Schema(
     collection: "rentals",
   },
 );
+
+rentalSchema.pre("save", function (next) {
+  // Đồng bộ notes & renterNote
+  if (this.renterNote && !this.notes) {
+    this.notes = this.renterNote;
+  } else if (this.notes && !this.renterNote) {
+    this.renterNote = this.notes;
+  }
+
+  // Đồng bộ chữ ký
+  if (this.contract) {
+    if (this.contract.renterSignature && !this.contract.digitalSignature) {
+      this.contract.digitalSignature = this.contract.renterSignature;
+    } else if (this.contract.digitalSignature && !this.contract.renterSignature) {
+      this.contract.renterSignature = this.contract.digitalSignature;
+    }
+  }
+
+  // Đồng bộ thanh toán
+  if (this.payment) {
+    if (this.payment.isPaid && this.payment.paymentStatus === "unpaid") {
+      this.payment.paymentStatus = "paid";
+    } else if (this.payment.paymentStatus === "paid" && !this.payment.isPaid) {
+      this.payment.isPaid = true;
+    }
+  }
+
+  // Đồng bộ returnInfo và returnRequest
+  if (this.returnInfo && this.returnInfo.requestedAt) {
+    if (!this.returnRequest) this.returnRequest = {};
+    this.returnRequest.requestedAt = this.returnInfo.requestedAt;
+    this.returnRequest.returnNotes = this.returnInfo.returnNote || "";
+    this.returnRequest.deviceConditionNote = this.returnInfo.returnCondition || "";
+  } else if (this.returnRequest && this.returnRequest.requestedAt) {
+    if (!this.returnInfo) this.returnInfo = {};
+    this.returnInfo.requestedAt = this.returnRequest.requestedAt;
+    this.returnInfo.returnNote = this.returnRequest.returnNotes || "";
+    this.returnInfo.returnCondition = this.returnRequest.deviceConditionNote || "";
+  }
+
+  // Đồng bộ review createdAt / reviewedAt
+  if (this.review) {
+    if (this.review.createdAt && !this.review.reviewedAt) {
+      this.review.reviewedAt = this.review.createdAt;
+    } else if (this.review.reviewedAt && !this.review.createdAt) {
+      this.review.createdAt = this.review.reviewedAt;
+    }
+  }
+
+  next();
+});
 
 module.exports = mongoose.model("Rental", rentalSchema);

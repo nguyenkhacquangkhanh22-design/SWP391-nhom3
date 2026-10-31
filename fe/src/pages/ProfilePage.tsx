@@ -4,12 +4,13 @@ import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
 import Feedback from "../components/Feedback";
 import PasswordInput from "../components/PasswordInput";
+import ImageUploadField from "../components/ImageUploadField";
 import { smartEquipApi } from "../services/smartEquipApi";
 import { authApi } from "../services/authApi";
 import type { UserNotification } from "../types/auth";
 
 export default function ProfilePage() {
-  const { user, token, isLoading, saveUser, changePassword, signOut } = useAuth();
+  const { user, token, isLoading, saveUser, changePassword } = useAuth();
 
   // Profile fields (UC_R02)
   const [name, setName] = useState(user?.name || "");
@@ -36,7 +37,6 @@ export default function ProfilePage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -109,24 +109,32 @@ export default function ProfilePage() {
     setSuccess("");
 
     if (!idNumber.trim()) {
-      setError("Vui lòng nhập số CMND/CCCD.");
+      setError("Vui lòng nhập số CMND/CCCD (Trường bắt buộc *).");
       return;
     }
-    if (!idCardFront.trim() || !idCardBack.trim()) {
-      setError("Vui lòng cung cấp link ảnh mặt trước và mặt sau CMND/CCCD.");
+    if (idNumber.trim().length < 9) {
+      setError("Số CMND/CCCD không hợp lệ (tối thiểu 9 số).");
+      return;
+    }
+    if (!idCardFront.trim()) {
+      setError("Vui lòng tải lên ảnh mặt trước CMND/CCCD (Trường bắt buộc *).");
+      return;
+    }
+    if (!idCardBack.trim()) {
+      setError("Vui lòng tải lên ảnh mặt sau CMND/CCCD (Trường bắt buộc *).");
       return;
     }
 
     setIsSubmittingKyc(true);
     try {
       const result = await smartEquipApi.submitKyc(accessToken, {
-        idNumber,
-        idCardFront,
-        idCardBack,
-        selfiePhoto,
+        idNumber: idNumber.trim(),
+        idCardFront: idCardFront.trim(),
+        idCardBack: idCardBack.trim(),
+        selfiePhoto: selfiePhoto.trim(),
       });
       saveUser(result.user);
-      setSuccess("Hồ sơ xác thực KYC đã được gửi! Đang chờ quản trị viên phê duyệt.");
+      setSuccess("Hồ sơ xác thực KYC đã được gửi thành công! Vui lòng chờ xét duyệt.");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -138,14 +146,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleLogout() {
-    setIsLoggingOut(true);
-    try {
-      await signOut();
-    } finally {
-      setIsLoggingOut(false);
-    }
-  }
 
   const kycStatus = user.kycStatus || "unverified";
   const kycBadge = {
@@ -180,13 +180,6 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            <Link
-              to="/equipments"
-              className="px-3.5 py-2 bg-[#1b253b] hover:bg-[#232f48] border border-[#2d3a54] text-slate-200 rounded-xl text-xs font-semibold transition-all"
-            >
-              Chợ thiết bị 🔍
-            </Link>
-
             {isAdmin && (
               <Link
                 to="/admin"
@@ -226,14 +219,6 @@ export default function ProfilePage() {
             <div className={`px-3 py-1.5 rounded-full text-xs font-bold border ${kycBadge.bg}`}>
               KYC: {kycBadge.text}
             </div>
-
-            <button
-              onClick={() => void handleLogout()}
-              disabled={isLoggingOut}
-              className="px-3 py-1.5 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition-all"
-            >
-              {isLoggingOut ? "Đang thoát..." : "Đăng xuất"}
-            </button>
           </div>
         </div>
 
@@ -438,6 +423,18 @@ export default function ProfilePage() {
                 Người thuê cần hoàn tất xác thực giấy tờ tùy thân CCCD/CMND để tạo độ tin cậy và đủ điều kiện thuê các thiết bị có giá trị cao.
               </p>
 
+              {kycStatus === "pending" && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+                  <span className="text-base leading-none">⏳</span>
+                  <div>
+                    <strong>Hồ sơ của bạn đang chờ phê duyệt.</strong>
+                    <p className="text-[11px] text-amber-400/80 mt-0.5">
+                      Bạn vẫn có thể chỉnh sửa số CCCD hoặc chọn lại ảnh bên dưới nếu muốn cập nhật giấy tờ mới.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {kycStatus === "verified" ? (
                 <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs space-y-2">
                   <div className="font-bold flex items-center gap-2">
@@ -450,74 +447,64 @@ export default function ProfilePage() {
               ) : (
                 <form onSubmit={handleSubmitKyc} className="space-y-4 text-xs pt-2">
                   <div>
-                    <label className="block font-semibold text-slate-400 mb-1">
-                      Số CCCD / CMND *
+                    <label className="block font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                      Số CCCD / CMND
+                      <span className="text-rose-400 font-bold flex items-center gap-0.5">
+                        * <span className="text-[11px] font-medium text-rose-400">(Bắt buộc)</span>
+                      </span>
                     </label>
                     <input
                       type="text"
                       placeholder="VD: 079099001234"
                       value={idNumber}
-                      onChange={(e) => setIdNumber(e.target.value)}
-                      disabled={kycStatus === "pending"}
-                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                      onChange={(e) => setIdNumber(e.target.value.replace(/[^0-9A-Za-z]/g, ""))}
+                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 text-xs"
                       required
                     />
                   </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-400 mb-1">
-                      Link ảnh mặt trước CCCD *
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://.../id_front.jpg"
-                      value={idCardFront}
-                      onChange={(e) => setIdCardFront(e.target.value)}
-                      disabled={kycStatus === "pending"}
-                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 disabled:opacity-50"
-                      required
-                    />
-                  </div>
+                  <ImageUploadField
+                    id="kyc-front"
+                    label="Ảnh mặt trước CCCD"
+                    value={idCardFront}
+                    onChange={setIdCardFront}
+                    required={true}
+                    placeholder="https://.../id_front.jpg"
+                  />
 
-                  <div>
-                    <label className="block font-semibold text-slate-400 mb-1">
-                      Link ảnh mặt sau CCCD *
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://.../id_back.jpg"
-                      value={idCardBack}
-                      onChange={(e) => setIdCardBack(e.target.value)}
-                      disabled={kycStatus === "pending"}
-                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 disabled:opacity-50"
-                      required
-                    />
-                  </div>
+                  <ImageUploadField
+                    id="kyc-back"
+                    label="Ảnh mặt sau CCCD"
+                    value={idCardBack}
+                    onChange={setIdCardBack}
+                    required={true}
+                    placeholder="https://.../id_back.jpg"
+                  />
 
-                  <div>
-                    <label className="block font-semibold text-slate-400 mb-1">
-                      Link ảnh chân dung selfie (Tùy chọn)
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://.../selfie.jpg"
-                      value={selfiePhoto}
-                      onChange={(e) => setSelfiePhoto(e.target.value)}
-                      disabled={kycStatus === "pending"}
-                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 disabled:opacity-50"
-                    />
-                  </div>
+                  <ImageUploadField
+                    id="kyc-selfie"
+                    label="Ảnh chân dung selfie cầm CCCD"
+                    value={selfiePhoto}
+                    onChange={setSelfiePhoto}
+                    required={false}
+                    placeholder="https://.../selfie.jpg"
+                  />
 
                   <button
                     type="submit"
-                    disabled={isSubmittingKyc || kycStatus === "pending"}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-emerald-600/30"
+                    disabled={isSubmittingKyc}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2"
                   >
-                    {isSubmittingKyc
-                      ? "Đang gửi hồ sơ..."
-                      : kycStatus === "pending"
-                      ? "Hồ sơ đang chờ duyệt..."
-                      : "Gửi hồ sơ xác thực KYC"}
+                    {isSubmittingKyc ? (
+                      <>
+                        <span className="inline-block animate-spin">⏳</span>
+                        <span>Đang gửi hồ sơ xác thực...</span>
+                      </>
+                    ) : kycStatus === "pending" ? (
+                      "Cập nhật lại hồ sơ KYC"
+                    ) : (
+                      "Gửi hồ sơ xác thực KYC"
+                    )}
                   </button>
                 </form>
               )}

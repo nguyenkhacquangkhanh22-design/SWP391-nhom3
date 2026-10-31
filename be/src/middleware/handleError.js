@@ -7,19 +7,19 @@ function handleError(error, _req, res, _next) {
   }
 
   if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern || {})[0];
-    if (field === "email" || field === "User_Id") {
-      return res.status(409).json({ message: "Email or account identifier already exists" });
-    }
-    return res.status(409).json({
-      message: field
-        ? `Dữ liệu bị trùng lặp: trường '${field}' đã tồn tại trong hệ thống.`
-        : "Email or account identifier already exists",
-    });
+    return res.status(409).json({ message: "Email or account identifier already exists" });
   }
 
   if (error.name === "ValidationError" || error.name === "CastError") {
     return res.status(400).json({ message: error.message });
+  }
+
+  if (error.name === "MulterError") {
+    return res.status(400).json({
+      message: error.code === "LIMIT_FILE_SIZE"
+        ? "Kích thước ảnh tối đa là 10MB."
+        : error.message,
+    });
   }
 
   const databaseUnavailable =
@@ -30,10 +30,10 @@ function handleError(error, _req, res, _next) {
   const statusCode = databaseUnavailable
     ? 503
     : Number.isInteger(error.statusCode)
-    && error.statusCode >= 400
-    && error.statusCode < 500
-    ? error.statusCode
-    : 500;
+      && error.statusCode >= 400
+      && error.statusCode < 500
+      ? error.statusCode
+      : 500;
 
   if (statusCode >= 500) {
     console.error("Request failed:", error);

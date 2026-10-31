@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
+import Navbar from "../components/Navbar";
 import Brand from "../components/Brand";
 import Feedback from "../components/Feedback";
 import { ownerApi } from "../services/ownerApi";
@@ -135,41 +136,7 @@ export default function RegisterOwnerPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#0f1623", color: "var(--ink)", paddingBottom: "60px" }}>
       {/* Top Navbar */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "18px 32px",
-          borderBottom: "1px solid var(--border)",
-          background: "#131b2e",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <Brand compact />
-          <span
-            style={{
-              fontSize: "0.75rem",
-              background: "rgba(249, 115, 22, 0.15)",
-              color: "var(--orange)",
-              padding: "4px 10px",
-              borderRadius: "20px",
-              fontWeight: 600,
-              border: "1px solid rgba(249, 115, 22, 0.3)",
-            }}
-          >
-            UC_O02 • ĐĂNG KÝ OWNER
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: "12px" }}>
-          <Link to="/equipments" className="button button-quiet" style={{ fontSize: "0.85rem" }}>
-            Chợ thiết bị 🔍
-          </Link>
-          <Link to="/profile" className="button button-secondary" style={{ fontSize: "0.85rem" }}>
-            Hồ sơ cá nhân
-          </Link>
-        </div>
-      </header>
+      <Navbar />
 
       <div style={{ maxWidth: "860px", margin: "36px auto", padding: "0 20px" }}>
         {/* Hero Banner */}

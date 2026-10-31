@@ -42,13 +42,31 @@ a {
 }
 
 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Chỉ áp dụng màu cam cho các liên kết chữ thông thường không có class */
+a:not([class]) {
   color: var(--green);
   font-weight: 700;
   text-decoration: none;
 }
 
-a:hover {
+a:not([class]):hover {
   color: var(--green-dark);
+}
+
+/* Đảm bảo chữ trên các nút màu cam hoặc có class text-white luôn trắng sáng, rõ nét khi hover */
+a[class*="text-white"],
+a[class*="text-white"]:hover,
+a[class*="bg-orange-"],
+a[class*="bg-orange-"]:hover,
+button[class*="text-white"],
+button[class*="text-white"]:hover,
+button[class*="bg-orange-"],
+button[class*="bg-orange-"]:hover {
+  color: #ffffff !important;
 }
 
 .auth-layout {
@@ -103,34 +121,44 @@ a:hover {
   width: fit-content;
   align-items: center;
   gap: 10px;
-  color: #e8edf5;
+  color: #ffffff;
+  text-decoration: none;
 }
 
 .brand:hover {
-  color: inherit;
+  color: #ffffff !important;
 }
 
 .brand-mark {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 7px;
+  border-radius: 9px;
   color: #fff;
   background: #f97316;
-  box-shadow: 0 5px 18px rgb(249 115 22 / 18%);
+  box-shadow: 0 4px 14px rgb(249 115 22 / 30%);
+  flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.brand:hover .brand-mark {
+  transform: scale(1.04);
+  box-shadow: 0 6px 18px rgb(249 115 22 / 45%);
 }
 
 .brand-mark svg {
   width: 20px;
   height: 20px;
+  display: block;
 }
 
 .brand-name {
   font-family: Inter, sans-serif;
-  font-size: 0.9rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffffff !important;
 }
 
 .showcase-content {

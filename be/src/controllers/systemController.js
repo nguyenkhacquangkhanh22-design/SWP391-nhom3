@@ -8,6 +8,7 @@ class SystemController {
     const data = await systemService.getSystemInfo();
     res.status(200).json({
       success: true,
+      message: "Lấy thông tin hệ thống SmartEquip thành công",
       data,
     });
   }

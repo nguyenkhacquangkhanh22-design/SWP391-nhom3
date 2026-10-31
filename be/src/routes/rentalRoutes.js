@@ -1,6 +1,6 @@
 const express = require("express");
 const rentalController = require("../controllers/rentalController");
-const authenticate = require("../middleware/authenticate");
+const verifyToken = require("../middleware/verifyToken");
 const AppError = require("../utils/AppError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -13,8 +13,8 @@ function requireObjectBody(req, _res, next) {
   next();
 }
 
-// Tất cả các route thuê thiết bị yêu cầu Middleware authJWT (authenticate)
-router.use(authenticate);
+// Tất cả các route thuê thiết bị yêu cầu Middleware verifyToken
+router.use(verifyToken);
 
 // UC_R07: POST /api/rentals/request (Tạo yêu cầu thuê thiết bị kèm Check Availability)
 router.post("/request", requireObjectBody, asyncHandler(rentalController.createRentalRequest));

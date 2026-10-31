@@ -8,6 +8,7 @@ class UserController {
     const profile = await userService.getProfile(req.user._id);
     res.status(200).json({
       success: true,
+      data: profile,
       user: profile,
     });
   }
@@ -20,6 +21,7 @@ class UserController {
     res.status(200).json({
       success: true,
       message: "Hồ sơ cá nhân đã được cập nhật thành công",
+      data: updated,
       user: updated,
     });
   }
@@ -32,6 +34,7 @@ class UserController {
     res.status(200).json({
       success: true,
       message: "Hồ sơ KYC đã được gửi thành công và đang chờ xét duyệt",
+      data: profile,
       user: profile,
     });
   }

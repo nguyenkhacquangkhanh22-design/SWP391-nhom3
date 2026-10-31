@@ -15,8 +15,6 @@ import AdminRoute from "./routes/AdminRoute";
 import OwnerRoute from "./routes/OwnerRoute";
 import OwnerPortal from "./pages/owner/OwnerPortal";
 import RegisterOwnerPage from "./pages/RegisterOwnerPage";
-import EquipmentMarketplacePage from "./pages/marketplace/EquipmentMarketplacePage";
-import MarketplaceEquipmentDetailPage from "./pages/marketplace/EquipmentDetailPage";
 import ModeratorPortal from "./pages/moderator/ModeratorPortal";
 import ModeratorRoute from "./routes/ModeratorRoute";
 
@@ -49,8 +47,8 @@ function App() {
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/equipment" element={<EquipmentListPage />} />
         <Route path="/equipment/:id" element={<EquipmentDetailPage />} />
-        <Route path="/equipments" element={<EquipmentMarketplacePage />} />
-        <Route path="/equipments/:id" element={<MarketplaceEquipmentDetailPage />} />
+        <Route path="/equipments" element={<EquipmentListPage />} />
+        <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
         <Route path="/register-owner" element={<RegisterOwnerPage />} />
 
         {/* Auth routes */}

@@ -25,10 +25,14 @@ function getJwtSecret() {
 
 function createAccessToken(user) {
   return jwt.sign(
-    { tokenVersion: user.token_version || 0 },
+    {
+      sub: user._id.toString(),
+      userId: user._id.toString(),
+      role: user.role || "renter",
+      tokenVersion: user.token_version || 0,
+    },
     getJwtSecret(),
     {
-      subject: user._id.toString(),
       expiresIn: process.env.JWT_EXPIRES_IN || "1d",
     },
   );
@@ -36,12 +40,17 @@ function createAccessToken(user) {
 
 function toPublicUser(user) {
   return {
+    _id: user._id,
     User_Id: user.User_Id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: user.role || "renter",
     status: user.status,
     trust_score: user.trust_score,
+    phone: user.phone || "",
+    address: user.address || "",
+    avatarUrl: user.avatarUrl || "",
+    kycStatus: user.kycStatus || "unverified",
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -232,43 +241,70 @@ async function verifyRegistrationOtp({ email, otp }) {
   };
 }
 
-async function register({ name, email, password, verificationToken }) {
+async function register({ name, email, password, verificationToken, otp }) {
   if (typeof name !== "string" || !name.trim()) {
     throw new AppError(400, "Name is required");
   }
   const normalizedEmail = validateEmail(email);
-  if (typeof verificationToken !== "string" || !verificationToken) {
-    throw new AppError(403, "Verify your email before creating an account");
-  }
   if (await User.exists({ email: normalizedEmail })) {
     throw new AppError(409, "Email or account identifier already exists");
   }
   validatePassword(password);
 
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const now = new Date();
-  const verification = await RegistrationVerification.findOneAndDelete(
-    {
+  let verified = false;
+
+  // 1. Nếu truyền trực tiếp mã OTP 6 số
+  if (typeof otp === "string" && /^\d{6}$/.test(otp)) {
+    const challenge = await RegistrationVerification.findOne({
+      email: normalizedEmail,
+      otp_expires_at: { $gt: now },
+    }).select("+otp_hash");
+
+    if (challenge && challenge.otp_hash) {
+      const submittedHash = hashRegistrationSecret(otp, "registration-otp");
+      if (crypto.timingSafeEqual(Buffer.from(submittedHash, "hex"), Buffer.from(challenge.otp_hash, "hex"))) {
+        await RegistrationVerification.deleteOne({ _id: challenge._id });
+        verified = true;
+      }
+    }
+  }
+
+  // 2. Nếu truyền verificationToken đã xác thực OTP trước đó
+  if (!verified && typeof verificationToken === "string" && verificationToken) {
+    const verification = await RegistrationVerification.findOneAndDelete({
       email: normalizedEmail,
       verified_ticket_hash: hashRegistrationSecret(
         verificationToken,
         "registration-ticket",
       ),
       ticket_expires_at: { $gt: now },
-    },
-  );
-  if (!verification) {
-    throw new AppError(403, "Email verification is missing, expired, or already used");
+    });
+    if (verification) {
+      verified = true;
+    }
   }
+
+  if (!verified) {
+    throw new AppError(403, "Mã xác thực email (OTP) không chính xác, đã hết hạn hoặc chưa được xác minh.");
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
   const user = await User.create({
     User_Id: crypto.randomUUID(),
     name: name.trim(),
     email: normalizedEmail,
     password_hash: passwordHash,
+    role: "renter",
   });
 
-  return { user: toPublicUser(user), token: createAccessToken(user) };
+  return {
+    success: true,
+    message: "Đăng ký tài khoản thành công",
+    user: toPublicUser(user),
+    token: createAccessToken(user),
+  };
 }
 
 async function login({ email, password }) {
@@ -286,7 +322,12 @@ async function login({ email, password }) {
     throw new AppError(403, "This account is not active");
   }
 
-  return { user: toPublicUser(user), token: createAccessToken(user) };
+  return {
+    success: true,
+    message: "Đăng nhập thành công",
+    user: toPublicUser(user),
+    token: createAccessToken(user),
+  };
 }
 
 async function logout(user) {

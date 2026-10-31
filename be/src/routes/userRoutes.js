@@ -1,6 +1,6 @@
 const express = require("express");
 const userController = require("../controllers/userController");
-const authenticate = require("../middleware/authenticate");
+const verifyToken = require("../middleware/verifyToken");
 const AppError = require("../utils/AppError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -13,8 +13,8 @@ function requireObjectBody(req, _res, next) {
   next();
 }
 
-// Tất cả các route bên dưới yêu cầu Middleware authJWT (authenticate)
-router.use(authenticate);
+// Tất cả các route bên dưới yêu cầu Middleware verifyToken
+router.use(verifyToken);
 
 // UC_R02: GET /api/user/profile (Xem profile)
 router.get("/profile", asyncHandler(userController.getProfile));

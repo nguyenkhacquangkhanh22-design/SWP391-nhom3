@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
+import Brand from "./Brand";
 
 export default function Navbar() {
   const { user, signOut } = useAuth();
@@ -14,16 +15,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-40 bg-[#121927]/90 backdrop-blur-md border-b border-[#243048]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand */}
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-9 h-9 rounded-xl bg-orange-600 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
-            ⚡
-          </div>
-          <div>
-            <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-orange-400 transition-colors">
-              Smart<span className="text-orange-500">Equip</span>
-            </span>
-          </div>
-        </Link>
+        <Brand />
 
         {/* Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium">

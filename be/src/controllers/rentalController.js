@@ -68,6 +68,7 @@ class RentalController {
     const result = await rentalService.getRentalHistory(req.user._id, req.query);
     res.status(200).json({
       success: true,
+      message: "Lấy danh sách lịch sử thuê thành công",
       data: result.rentals,
       pagination: result.pagination,
     });

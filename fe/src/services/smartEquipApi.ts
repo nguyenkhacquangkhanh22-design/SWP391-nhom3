@@ -116,6 +116,7 @@ export const smartEquipApi = {
       startDate: string;
       endDate: string;
       deliveryAddress?: string;
+      renterNote?: string;
       notes?: string;
     },
   ) =>
@@ -129,7 +130,7 @@ export const smartEquipApi = {
   confirmContract: (
     token: string,
     rentalId: string,
-    data: { termsAccepted: boolean; digitalSignature: string },
+    data: { termsAccepted: boolean; digitalSignature?: string; renterSignature?: string },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/confirm-contract`,
@@ -141,7 +142,7 @@ export const smartEquipApi = {
   payRental: (
     token: string,
     rentalId: string,
-    data: { paymentMethod?: string },
+    data: { paymentMethod?: string } = {},
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/pay`,
@@ -153,7 +154,15 @@ export const smartEquipApi = {
   requestReturn: (
     token: string,
     rentalId: string,
-    data: { returnNotes?: string; deviceConditionNote?: string; returnImages?: string[] },
+    data: {
+      returnCondition?: string;
+      returnNote?: string;
+      returnTime?: string;
+      returnLocation?: string;
+      returnNotes?: string;
+      deviceConditionNote?: string;
+      returnImages?: string[];
+    } = {},
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/return`,

@@ -54,15 +54,18 @@ export interface SystemInfo {
 
 export interface RentalContract {
   contractNumber?: string;
+  contractTerms?: string;
   termsAccepted: boolean;
   signedAt?: string;
+  renterSignature?: string;
   digitalSignature?: string;
   contractUrl?: string;
 }
 
 export interface RentalPayment {
+  isPaid?: boolean;
   paymentStatus: "unpaid" | "paid" | "refunded";
-  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet";
+  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | string;
   transactionId?: string;
   paidAt?: string;
   amountPaid: number;
@@ -70,6 +73,10 @@ export interface RentalPayment {
 
 export interface RentalReturnRequest {
   requestedAt?: string;
+  returnCondition?: string;
+  returnNote?: string;
+  returnTime?: string;
+  returnLocation?: string;
   returnNotes?: string;
   deviceConditionNote?: string;
   returnImages?: string[];
@@ -79,13 +86,15 @@ export interface RentalReview {
   rating: number;
   comment?: string;
   reviewedAt?: string;
+  createdAt?: string;
 }
 
 export interface RentalDispute {
   reason?: string;
+  description?: string;
   evidenceImages?: string[];
   disputedAt?: string;
-  status?: "open" | "investigating" | "resolved";
+  status?: "open" | "investigating" | "resolved" | string;
 }
 
 export interface RentalCancellation {
@@ -106,8 +115,18 @@ export interface Rental {
   dailyRate: number;
   rentalFee: number;
   depositAmount: number;
+  discountAmount?: number;
   totalAmount: number;
   status:
+    | "PENDING"
+    | "APPROVED"
+    | "CONTRACT_SIGNED"
+    | "PAID"
+    | "ACTIVE"
+    | "RETURNED"
+    | "COMPLETED"
+    | "CANCELLED"
+    | "DISPUTED"
     | "pending"
     | "contract_pending"
     | "payment_pending"
@@ -119,11 +138,13 @@ export interface Rental {
     | "disputed";
   contract: RentalContract;
   payment: RentalPayment;
+  returnInfo?: RentalReturnRequest;
   returnRequest?: RentalReturnRequest;
   review?: RentalReview;
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   deliveryAddress?: string;
+  renterNote?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;

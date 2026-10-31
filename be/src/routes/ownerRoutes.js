@@ -2,6 +2,7 @@ const express = require("express");
 const ownerController = require("../controllers/ownerController");
 const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
+const upload = require("../middleware/upload");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = express.Router();
@@ -13,6 +14,8 @@ router.use(authenticate, authorize("owner", "systemadmin"));
 router.get("/overview", asyncHandler(ownerController.getOverview));
 
 // 2. Equipment Listings (UC_O03, UC_O04, UC_O05, UC_O06, UC_O16)
+router.post("/upload-photo", upload.single("file"), asyncHandler(ownerController.uploadEquipmentPhoto));
+router.post("/upload-photos", upload.array("files", 10), asyncHandler(ownerController.uploadEquipmentPhotos));
 router.get("/equipments", asyncHandler(ownerController.getOwnerEquipments));
 router.post("/equipments", asyncHandler(ownerController.createEquipmentListing));
 router.get("/equipments/:id", asyncHandler(ownerController.getEquipmentDetail));
