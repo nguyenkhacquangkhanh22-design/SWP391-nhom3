@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const systemRoutes = require("./routes/systemRoutes");
@@ -21,6 +22,7 @@ app.setServerReady = (ready = true) => {
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Enable CORS for local dev
 app.use((req, res, next) => {
