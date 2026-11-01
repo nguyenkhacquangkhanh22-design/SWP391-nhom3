@@ -421,6 +421,27 @@ export default function EquipmentMarketplacePage() {
                       <span className="card-badge-bottom-left">
                         ✓ {eq.condition || "Mới 99%"}
                       </span>
+
+                      {/* Multi-photo count badge */}
+                      {eq.images && eq.images.length > 1 && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            bottom: "12px",
+                            right: "12px",
+                            background: "rgba(15, 23, 42, 0.85)",
+                            border: "1px solid rgba(255, 255, 255, 0.14)",
+                            color: "#f8fafc",
+                            padding: "3px 9px",
+                            borderRadius: "6px",
+                            fontSize: "0.7rem",
+                            fontWeight: 600,
+                            backdropFilter: "blur(6px)",
+                          }}
+                        >
+                          📷 {eq.images.length} ảnh
+                        </span>
+                      )}
                     </div>
 
                     {/* Card Body */}

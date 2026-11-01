@@ -8,6 +8,8 @@ const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
+const User = require("../models/User");
+const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
 // Helper to generate short unique codes
@@ -15,6 +17,28 @@ function generateCode(prefix) {
   const randomPart = crypto.randomBytes(3).toString("hex").toUpperCase();
   const year = new Date().getFullYear();
   return `${prefix}-${year}-${randomPart}`;
+}
+
+async function notifyManagers(title, message, relatedRecordId) {
+  try {
+    const managers = await User.find({
+      role: { $regex: /^(rental[_ -]?moderator|systemadmin|admin)$/i },
+    })
+      .select("_id")
+      .lean();
+    if (managers.length > 0) {
+      await UserNotification.insertMany(
+        managers.map((m) => ({
+          user_id: m._id,
+          title,
+          message,
+          related_record_id: relatedRecordId,
+        }))
+      );
+    }
+  } catch (err) {
+    console.error("Failed to notify web managers:", err);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -41,6 +65,7 @@ async function getOverview(req, res) {
     Settlement.find({ owner_id: ownerId }).lean(),
     RentalRequest.find({ owner_id: ownerId })
       .populate("equipment_id", "title images pricing")
+      .populate("moderator_id", "name email")
       .sort({ createdAt: -1 })
       .limit(5)
       .lean(),
@@ -314,13 +339,14 @@ async function submitEquipmentStatusUpdateRequest(req, res) {
 }
 
 // -----------------------------------------------------------------------------
-// 3. Rental Requests (UC_O07: Approve / Reject Rental Request)
+// 3. Rental Requests (UC_O07: Approve / Reject Rental Request forwarded by Web Manager)
 // -----------------------------------------------------------------------------
 async function getRentalRequests(req, res) {
   const ownerId = req.user._id;
   const requests = await RentalRequest.find({ owner_id: ownerId })
     .populate("equipment_id")
     .populate("renter_id", "name email phone")
+    .populate("moderator_id", "name email")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -348,6 +374,13 @@ async function respondRentalRequest(req, res) {
     throw new AppError(404, "Không tìm thấy yêu cầu thuê");
   }
 
+  if (rentalReq.status === "pending_moderator") {
+    throw new AppError(
+      400,
+      "Yêu cầu thuê này đang chờ Quản lý web kiểm tra và chuyển tiếp cho bạn. Chỉ khi Quản lý web gửi sang, Owner mới có thể duyệt."
+    );
+  }
+
   if (rentalReq.status !== "pending") {
     throw new AppError(400, `Yêu cầu này đã ở trạng thái: ${rentalReq.status}`);
   }
@@ -362,8 +395,40 @@ async function respondRentalRequest(req, res) {
   rentalReq.responded_at = new Date();
   await rentalReq.save();
 
+  // Notify Renter and Web Manager
+  try {
+    if (rentalReq.renter_id) {
+      await UserNotification.create({
+        user_id: rentalReq.renter_id,
+        title:
+          action === "approve"
+            ? `✅ Owner đã duyệt yêu cầu thuê #${rentalReq.request_code}`
+            : `❌ Owner từ chối yêu cầu thuê #${rentalReq.request_code}`,
+        message:
+          action === "approve"
+            ? `Chủ thiết bị (${req.user.name}) đã duyệt yêu cầu thuê #${rentalReq.request_code} và đang lập hợp đồng gửi Quản lý web duyệt.`
+            : `Chủ thiết bị (${req.user.name}) đã từ chối yêu cầu thuê #${rentalReq.request_code}: ${rentalReq.rejection_reason}`,
+        related_record_id: rentalReq._id,
+      });
+    }
+    await notifyManagers(
+      action === "approve"
+        ? `✅ Owner đã duyệt yêu cầu #${rentalReq.request_code}`
+        : `❌ Owner từ chối yêu cầu #${rentalReq.request_code}`,
+      action === "approve"
+        ? `Owner ${req.user.name} đã chấp thuận yêu cầu thuê #${rentalReq.request_code} và sẽ gửi hợp đồng lên để Quản lý web duyệt.`
+        : `Owner ${req.user.name} từ chối yêu cầu thuê #${rentalReq.request_code}: ${rentalReq.rejection_reason}`,
+      rentalReq._id
+    );
+  } catch (err) {
+    console.error("Failed to notify renter/moderator on request response:", err);
+  }
+
   res.json({
-    message: action === "approve" ? "Đã chấp nhận yêu cầu thuê" : "Đã từ chối yêu cầu thuê",
+    message:
+      action === "approve"
+        ? "Đã chấp nhận yêu cầu thuê! Bây giờ bạn hãy lập Hợp đồng cho thuê và gửi cho Quản lý web duyệt."
+        : "Đã từ chối yêu cầu thuê",
     request: rentalReq,
   });
 }
@@ -376,6 +441,8 @@ async function getContracts(req, res) {
   const contracts = await RentalContract.find({ owner_id: ownerId })
     .populate("equipment_id")
     .populate("renter_id", "name email phone")
+    .populate("moderator_id", "name email")
+    .populate("moderation_history.moderator_id", "name email")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -401,6 +468,8 @@ async function getContractDetail(req, res) {
   })
     .populate("equipment_id")
     .populate("renter_id", "name email phone")
+    .populate("moderator_id", "name email")
+    .populate("moderation_history.moderator_id", "name email")
     .lean();
 
   if (!contract) {
@@ -410,10 +479,17 @@ async function getContractDetail(req, res) {
   res.json({ contract });
 }
 
-// UC_O12: Create Rental Contract from accepted request using standard template
+// UC_O12: Owner creates Rental Contract from accepted request and sends to Web Manager (Moderator) for approval
 async function createRentalContract(req, res) {
   const ownerId = req.user._id;
-  const { request_id, special_conditions, custom_terms, template_id, template_values } = req.body;
+  const {
+    request_id,
+    special_conditions,
+    custom_terms,
+    template_id,
+    template_values,
+    submit_immediately,
+  } = req.body;
 
   if (!request_id) {
     throw new AppError(400, "Vui lòng cung cấp mã yêu cầu thuê đã chấp thuận");
@@ -429,47 +505,76 @@ async function createRentalContract(req, res) {
   }
 
   if (rentalReq.status !== "approved") {
-    throw new AppError(400, "Chỉ có thể lập hợp đồng từ yêu cầu đã được Owner chấp nhận");
+    throw new AppError(400, "Chỉ có thể lập hợp đồng từ yêu cầu đã được Quản lý web gửi và Owner chấp nhận");
   }
 
   const equipment = rentalReq.equipment_id;
   const contractCode = generateCode("HD");
+  const accessoriesText =
+    Array.isArray(equipment.accessories) && equipment.accessories.length > 0
+      ? equipment.accessories.join(", ")
+      : "Theo tiêu chuẩn nhà sản xuất";
 
-  let standardTerms = custom_terms || `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+  let standardTerms =
+    (typeof custom_terms === "string" && custom_terms.trim()) ||
+    `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
 Độc lập - Tự do - Hạnh phúc
------------------------------------
-HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ SỐ ${contractCode}
+--------------------------------------------------
+HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ CHUẨN
+Mã hợp đồng: ${contractCode}
 
-Căn cứ Bộ luật Dân sự nước CHXHCN Việt Nam và quy chế hoạt động của Nền tảng SWP391 Rental.
-Hôm nay, ngày ${new Date().toLocaleDateString("vi-VN")}, chúng tôi gồm:
+Căn cứ Bộ luật Dân sự nước CHXHCN Việt Nam hiện hành;
+Căn cứ Quy chế hoạt động và Kiểm duyệt Hợp đồng của Nền tảng SWP391 Rental;
+Hôm nay, ngày ${new Date().toLocaleDateString("vi-VN")}, chúng tôi gồm có:
 
-BÊN CHO THUÊ (BÊN A - OWNER):
-- Đại diện: ${req.user.name}
-- Email: ${req.user.email}
+I. BÊN CHO THUÊ THIẾT BỊ (BÊN A - OWNER):
+- Họ và tên đại diện: ${req.user.name}
+- Email liên hệ: ${req.user.email}
+- Vai trò: Chủ sở hữu hợp pháp của thiết bị cho thuê trên nền tảng.
 
-BÊN THUÊ (BÊN B - RENTER):
-- Đại diện: ${rentalReq.renter_name}
-- Email: ${rentalReq.renter_email || "N/A"}
-- Điện thoại: ${rentalReq.renter_phone || "N/A"}
+II. BÊN THUÊ THIẾT BỊ (BÊN B - RENTER):
+- Họ và tên đại diện: ${rentalReq.renter_name}
+- Email liên hệ: ${rentalReq.renter_email || "N/A"}
+- Số điện thoại: ${rentalReq.renter_phone || "N/A"}
+- Mã yêu cầu thuê gốc: ${rentalReq.request_code}
 
-ĐIỀU 1: THIẾT BỊ VÀ THỜI GIAN THUÊ
-- Thiết bị: ${equipment.title} (Hãng: ${equipment.brand || "N/A"}, Model: ${equipment.model_name || "N/A"})
-- Tình trạng: ${equipment.condition}
-- Thời gian bắt đầu: ${new Date(rentalReq.start_date).toLocaleString("vi-VN")}
-- Thời gian kết thúc: ${new Date(rentalReq.end_date).toLocaleString("vi-VN")}
+Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với các điều khoản dưới đây:
 
-ĐIỀU 2: GIÁ THUÊ VÀ TIỀN ĐẶT CỌC
-- Tổng tiền thuê dự kiến: ${rentalReq.rental_fee.toLocaleString("vi-VN")} VND
-- Tiền đặt cọc: ${rentalReq.deposit_amount.toLocaleString("vi-VN")} VND
-- Phương thức thanh toán: Ký quỹ qua nền tảng và quyết toán khi hoàn trả thiết bị.
+ĐIỀU 1: ĐỐI TƯỢNG HỢP ĐỒNG & TÌNH TRẠNG THIẾT BỊ
+1.1. Tên thiết bị: ${equipment.title}
+1.2. Thương hiệu / Model: ${equipment.brand || "Chính hãng"} / ${equipment.model_name || "Tiêu chuẩn"}
+1.3. Số Serial (S/N): ${equipment.serial_number || "Ghi nhận chi tiết tại Biên bản bàn giao"}
+1.4. Tình trạng thiết bị khi lập hợp đồng: ${equipment.condition || "Tốt (95%)"}
+1.5. Phụ kiện đi kèm: ${accessoriesText}
 
-ĐIỀU 3: QUYỀN VÀ NGHĨA VỤ CÁC BÊN
-- Bên A có trách nhiệm bàn giao thiết bị đúng thời gian, đúng chất lượng cam kết kèm biên bản bàn giao.
-- Bên B có trách nhiệm bảo quản nguyên vẹn thiết bị, sử dụng đúng hướng dẫn và hoàn trả đúng hẹn.
-- Mọi hư hỏng, mất mát sẽ được đối chiếu theo Biên bản bàn giao và khấu trừ vào tiền cọc theo quy định.
+ĐIỀU 2: THỜI HẠN THUÊ THIẾT BỊ
+2.1. Thời gian bắt đầu nhận máy: ${new Date(rentalReq.start_date).toLocaleString("vi-VN")}
+2.2. Thời gian hoàn trả máy: ${new Date(rentalReq.end_date).toLocaleString("vi-VN")}
+2.3. Hình thức tính thuê: ${rentalReq.rental_type === "hourly" ? "Thuê theo giờ" : `Thuê theo ngày (${rentalReq.duration_days || 1} ngày)`}
 
-ĐIỀU KHOẢN BỔ SUNG:
-${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
+ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG, TIỀN ĐẶT CỌC & THANH TOÁN
+3.1. Tổng tiền thuê thiết bị: ${rentalReq.rental_fee.toLocaleString("vi-VN")} VND
+3.2. Khoản tiền đặt cọc bảo đảm: ${rentalReq.deposit_amount.toLocaleString("vi-VN")} VND
+3.3. Tổng số tiền tạm tính (Tiền thuê + Tiền cọc): ${(rentalReq.rental_fee + rentalReq.deposit_amount).toLocaleString("vi-VN")} VND
+3.4. Chính sách hủy đơn: ${equipment.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
+
+ĐIỀU 4: QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (OWNER)
+4.1. Bàn giao thiết bị đúng chủng loại, số serial, phụ kiện và tình trạng hoạt động tốt đúng thời gian đã thỏa thuận.
+4.2. Lập Biên bản bàn giao (UC_O08) và Biên bản kiểm tra hoàn trả (UC_O09) có đầy đủ hình ảnh minh chứng.
+4.3. Hoàn trả khoản tiền đặt cọc cho Bên B sau khi nghiệm thu thiết bị không phát sinh hư hại hoặc mất mát phụ kiện.
+
+ĐIỀU 5: QUYỀN VÀ NGHĨA VỤ CỦA BÊN B (RENTER)
+5.1. Kiểm tra kỹ tình trạng vật lý và hoạt động của thiết bị khi nhận bàn giao.
+5.2. Sử dụng thiết bị đúng mục đích, tự bảo quản thiết bị, không tự ý tháo mở, sửa chữa hoặc cho bên thứ ba thuê lại.
+5.3. Quy định của Owner: ${equipment.rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."}
+5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý khấu trừ chi phí khắc phục thực tế vào khoản tiền đặt cọc theo Biên bản hoàn trả được Quản lý web xác minh.
+
+ĐIỀU 6: ĐIỀU KHOẢN BỔ SUNG CỦA OWNER
+${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
+
+ĐIỀU 7: QUY TRÌNH PHÊ DUYỆT CỦA QUẢN LÝ WEB & CHỮ KÝ NGƯỜI THUÊ
+7.1. Hợp đồng này được Bên A (Owner) lập sau khi duyệt yêu cầu thuê do Quản lý web chuyển tiếp, và gửi lên cho Quản lý web kiểm duyệt nội dung.
+7.2. Sau khi Quản lý web phê duyệt hợp lệ, Quản lý web gửi Hợp đồng này tới Bên B (Người thuê) để Bên B ký tên điện tử xác nhận hiệu lực hợp đồng.`;
 
   let selectedTemplate;
   if (template_id) {
@@ -519,6 +624,8 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
     );
   }
 
+  const initialStatus = submit_immediately ? "pending_approval" : "draft";
+
   const contract = await RentalContract.create({
     contract_code: contractCode,
     request_id: rentalReq._id,
@@ -539,18 +646,36 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
       {
         version: 1,
         edited_at: new Date(),
-        changes_summary: "Khởi tạo hợp đồng từ yêu cầu thuê được chấp thuận",
+        changes_summary: submit_immediately
+          ? "Owner lập hợp đồng chuẩn v1 và gửi Quản lý web duyệt để chuyển cho Người thuê ký"
+          : "Owner khởi tạo bản nháp hợp đồng chuẩn v1",
         terms_content: standardTerms,
       },
     ],
-    status: "draft",
+    owner_signature: {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: `OWNER_SIG_${ownerId}_${Date.now()}`,
+      signer_name: req.user.name,
+    },
+    status: initialStatus,
   });
 
   rentalReq.status = "contract_created";
   await rentalReq.save();
 
+  if (submit_immediately) {
+    await notifyManagers(
+      `📜 Hợp đồng mới #${contract.contract_code} chờ Quản lý web duyệt`,
+      `Owner ${req.user.name} đã lập Hợp đồng ${contract.contract_code} cho khách ${rentalReq.renter_name}. Vui lòng duyệt để gửi cho Người thuê ký tên!`,
+      contract._id
+    );
+  }
+
   res.status(201).json({
-    message: "Tạo hợp đồng thuê (bản nháp) thành công",
+    message: submit_immediately
+      ? "Đã lập hợp đồng chuẩn và gửi Quản lý web duyệt! Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên."
+      : "Tạo bản nháp hợp đồng thuê chuẩn thành công",
     contract,
   });
 }
@@ -558,7 +683,7 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}`;
 // UC_O13: Update Draft Rental Contract (version tracking preserved)
 async function updateDraftContract(req, res) {
   const { id } = req.params;
-  const { terms_content, special_conditions, changes_summary } = req.body;
+  const { terms_content, special_conditions, changes_summary, submit_immediately } = req.body;
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -572,39 +697,64 @@ async function updateDraftContract(req, res) {
   if (!["draft", "moderator_rejected"].includes(contract.status)) {
     throw new AppError(
       400,
-      `Không thể sửa hợp đồng ở trạng thái '${contract.status}'. Chỉ sửa được bản nháp hoặc hợp đồng bị Moderator trả về.`
+      `Không thể sửa hợp đồng ở trạng thái '${contract.status}'. Chỉ sửa được bản nháp hoặc hợp đồng bị Quản lý web trả về.`
     );
   }
 
-  if (!terms_content) {
+  if (!terms_content || !terms_content.trim()) {
     throw new AppError(400, "Nội dung điều khoản hợp đồng không được để trống");
   }
 
   const nextVersion = contract.version + 1;
-  contract.terms_content = terms_content;
+  contract.terms_content = terms_content.trim();
   if (special_conditions !== undefined) contract.special_conditions = special_conditions;
   contract.version = nextVersion;
   contract.version_history.push({
     version: nextVersion,
     edited_at: new Date(),
-    changes_summary: changes_summary || `Cập nhật phiên bản v${nextVersion}`,
-    terms_content,
+    changes_summary:
+      changes_summary ||
+      (submit_immediately
+        ? `Cập nhật phiên bản v${nextVersion} và gửi Quản lý web duyệt lại`
+        : `Cập nhật phiên bản v${nextVersion}`),
+    terms_content: terms_content.trim(),
   });
 
-  // If was rejected, set back to draft
-  if (contract.status === "moderator_rejected") {
+  if (!contract.owner_signature?.signed) {
+    contract.owner_signature = {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: `OWNER_SIG_${req.user._id}_${Date.now()}`,
+      signer_name: req.user.name,
+    };
+  }
+
+  if (submit_immediately) {
+    contract.status = "pending_approval";
+    contract.moderator_feedback = "";
+  } else if (contract.status === "moderator_rejected") {
     contract.status = "draft";
   }
 
   await contract.save();
 
+  if (submit_immediately) {
+    await notifyManagers(
+      `📜 Hợp đồng #${contract.contract_code} (v${nextVersion}) gửi duyệt lại`,
+      `Owner ${req.user.name} đã cập nhật Hợp đồng ${contract.contract_code} (v${nextVersion}) và gửi Quản lý web duyệt.`,
+      contract._id
+    );
+  }
+
   res.json({
-    message: `Cập nhật hợp đồng thành công (phiên bản v${nextVersion})`,
+    message: submit_immediately
+      ? `Đã cập nhật phiên bản v${nextVersion} và gửi Quản lý web phê duyệt!`
+      : `Cập nhật hợp đồng thành công (phiên bản v${nextVersion})`,
     contract,
   });
 }
 
-// UC_O14: Submit Rental Contract for Approval to Rental Moderator
+// UC_O14: Submit Rental Contract for Approval to Web Manager (Rental Moderator)
 async function submitRentalContractForApproval(req, res) {
   const { id } = req.params;
   const contract = await RentalContract.findOne({
@@ -616,20 +766,39 @@ async function submitRentalContractForApproval(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
-  if (contract.status !== "draft") {
-    throw new AppError(400, "Chỉ có thể gửi phê duyệt đối với hợp đồng đang ở trạng thái Bản nháp (draft)");
+  if (!["draft", "moderator_rejected"].includes(contract.status)) {
+    throw new AppError(
+      400,
+      "Chỉ có thể gửi phê duyệt đối với hợp đồng đang ở trạng thái Bản nháp (draft) hoặc cần gửi duyệt lại."
+    );
+  }
+
+  if (!contract.owner_signature?.signed) {
+    contract.owner_signature = {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: `OWNER_SIG_${req.user._id}_${Date.now()}`,
+      signer_name: req.user.name,
+    };
   }
 
   contract.status = "pending_approval";
+  contract.moderator_feedback = "";
   await contract.save();
 
+  await notifyManagers(
+    `📜 Hợp đồng #${contract.contract_code} chờ Quản lý web duyệt`,
+    `Owner ${req.user.name} đã gửi Hợp đồng ${contract.contract_code} lên Quản lý web duyệt để chuyển cho Người thuê ký tên.`,
+    contract._id
+  );
+
   res.json({
-    message: "Đã gửi hợp đồng đến Rental Moderator để kiểm tra và phê duyệt",
+    message: "Đã gửi hợp đồng đến Quản lý web kiểm duyệt! Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên.",
     contract,
   });
 }
 
-// UC_O15: Confirm E-Contract (Owner confirms/signs approved e-contract)
+// UC_O15: Confirm E-Contract (Owner confirms/signs if not yet signed)
 async function confirmEContract(req, res) {
   const { id } = req.params;
   const { signature_note } = req.body;
@@ -643,40 +812,18 @@ async function confirmEContract(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
-  if (contract.status !== "moderator_approved" && contract.status !== "pending_approval") {
-    // For convenience in simulation, allow signing if moderator_approved or directly
-    // but check standard rule
-  }
-
   contract.owner_signature = {
     signed: true,
     signed_at: new Date(),
-    signature_data: `DIGITAL_SIG_${req.user._id}_${Date.now()}`,
+    signature_data: signature_note
+      ? `${signature_note} (DIGITAL_SIG_${req.user._id}_${Date.now()})`
+      : `DIGITAL_SIG_${req.user._id}_${Date.now()}`,
     signer_name: req.user.name,
   };
-  contract.status = "signed";
   await contract.save();
 
-  // Create initial settlement draft for tracking
-  const existingSettlement = await Settlement.findOne({ contract_id: contract._id });
-  if (!existingSettlement) {
-    const platformFee = Math.round(contract.rental_price * 0.05); // 5% fee
-    await Settlement.create({
-      settlement_code: generateCode("QT"),
-      contract_id: contract._id,
-      owner_id: contract.owner_id,
-      renter_id: contract.renter_id,
-      total_rental_fee: contract.rental_price,
-      deposit_paid: contract.deposit_amount,
-      deposit_refund_to_renter: contract.deposit_amount,
-      platform_fee: platformFee,
-      owner_payout_amount: contract.rental_price - platformFee,
-      payout_status: "pending_owner_confirmation",
-    });
-  }
-
   res.json({
-    message: "Xác nhận ký hợp đồng điện tử thành công",
+    message: "Đã ghi nhận chữ ký điện tử của Owner trên hợp đồng.",
     contract,
   });
 }
@@ -750,6 +897,13 @@ async function createHandoverRecord(req, res) {
 
   if (!contract) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
+  }
+
+  if (!["signed", "active"].includes(contract.status)) {
+    throw new AppError(
+      400,
+      "Chỉ có thể bàn giao thiết bị sau khi hợp đồng đã được Quản lý web phê duyệt và Người thuê đã ký tên xác nhận!"
+    );
   }
 
   if (!physical_condition) {

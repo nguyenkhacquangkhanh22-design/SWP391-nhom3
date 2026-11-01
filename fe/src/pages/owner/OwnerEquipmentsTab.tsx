@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Equipment } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
 
@@ -23,6 +23,9 @@ export default function OwnerEquipmentsTab({
   const [scheduleEquipment, setScheduleEquipment] = useState<Equipment | null>(null);
   const [statusRequestEquipment, setStatusRequestEquipment] = useState<Equipment | null>(null);
 
+  // Per-card image index for previewing multiple images in Owner list
+  const [cardImageIndex, setCardImageIndex] = useState<Record<string, number>>({});
+
   // Form states for Create/Edit
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Máy ảnh & Ống kính");
@@ -30,7 +33,12 @@ export default function OwnerEquipmentsTab({
   const [modelName, setModelName] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imagesList, setImagesList] = useState<string[]>([]);
+  const [isReadingFiles, setIsReadingFiles] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [accessoriesInput, setAccessoriesInput] = useState("");
   const [condition, setCondition] = useState("Tốt (95%)");
   const [pricePerDay, setPricePerDay] = useState(500000);
@@ -55,6 +63,96 @@ export default function OwnerEquipmentsTab({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function parseUrlsFromText(raw: string): string[] {
+    return raw
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:image/") || s.startsWith("/")));
+  }
+
+  function handleAddImageUrl() {
+    setPhotoError("");
+    const urls = parseUrlsFromText(imageUrlInput);
+    if (urls.length === 0) {
+      if (imageUrlInput.trim()) {
+        setPhotoError("Vui lòng nhập URL ảnh hợp lệ (bắt đầu bằng https:// hoặc http://).");
+      }
+      return;
+    }
+    setImagesList((prev) => {
+      const next = [...prev];
+      for (const u of urls) {
+        if (!next.includes(u)) {
+          next.push(u);
+        }
+      }
+      return next;
+    });
+    setImageUrlInput("");
+  }
+
+  async function handleSelectLocalFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setPhotoError("");
+    setIsReadingFiles(true);
+
+    try {
+      const fileArray = Array.from(files);
+      const readPromises = fileArray.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            if (!file.type.startsWith("image/")) {
+              reject(new Error(`File "${file.name}" không phải là định dạng ảnh.`));
+              return;
+            }
+            if (file.size > 8 * 1024 * 1024) {
+              reject(new Error(`Ảnh "${file.name}" vượt quá 8MB. Vui lòng chọn ảnh nhẹ hơn.`));
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(new Error(`Không thể đọc file "${file.name}".`));
+            reader.readAsDataURL(file);
+          })
+      );
+
+      const dataUrls = await Promise.all(readPromises);
+      setImagesList((prev) => [...prev, ...dataUrls.filter(Boolean)]);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Không thể tải ảnh từ máy.");
+    } finally {
+      setIsReadingFiles(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function handleRemoveImage(idx: number) {
+    setImagesList((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleSetCoverImage(idx: number) {
+    if (idx === 0) return;
+    setImagesList((prev) => {
+      const next = [...prev];
+      const [picked] = next.splice(idx, 1);
+      return [picked, ...next];
+    });
+  }
+
+  function handleMoveImage(idx: number, direction: -1 | 1) {
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= imagesList.length) return;
+    setImagesList((prev) => {
+      const next = [...prev];
+      const temp = next[idx];
+      next[idx] = next[targetIdx];
+      next[targetIdx] = temp;
+      return next;
+    });
+  }
+
   function resetForm() {
     setTitle("");
     setCategory("Máy ảnh & Ống kính");
@@ -62,7 +160,9 @@ export default function OwnerEquipmentsTab({
     setModelName("");
     setSerialNumber("");
     setDescription("");
-    setImageUrl("");
+    setImageUrlInput("");
+    setImagesList([]);
+    setPhotoError("");
     setAccessoriesInput("");
     setCondition("Tốt (95%)");
     setPricePerDay(500000);
@@ -81,7 +181,9 @@ export default function OwnerEquipmentsTab({
     setModelName(eq.model_name || "");
     setSerialNumber(eq.serial_number || "");
     setDescription(eq.description || "");
-    setImageUrl(eq.images?.[0] || "");
+    setImageUrlInput("");
+    setImagesList(Array.isArray(eq.images) ? [...eq.images] : []);
+    setPhotoError("");
     setAccessoriesInput(eq.accessories?.join(", ") || "");
     setCondition(eq.condition || "Tốt (95%)");
     setPricePerDay(eq.pricing.price_per_day);
@@ -103,6 +205,15 @@ export default function OwnerEquipmentsTab({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    // Combine imagesList + any pending URL in imageUrlInput
+    const pendingUrls = parseUrlsFromText(imageUrlInput);
+    const finalImages = [...imagesList];
+    for (const u of pendingUrls) {
+      if (!finalImages.includes(u)) {
+        finalImages.push(u);
+      }
+    }
+
     const payload = {
       title,
       category,
@@ -110,7 +221,7 @@ export default function OwnerEquipmentsTab({
       model_name: modelName,
       serial_number: serialNumber,
       description,
-      images: imageUrl ? [imageUrl] : undefined,
+      images: finalImages.length > 0 ? finalImages : undefined,
       accessories: accessoriesList,
       condition,
       pricing: {
@@ -127,12 +238,12 @@ export default function OwnerEquipmentsTab({
       if (editingEquipment) {
         // UC_O04 & UC_O06: Update Equipment
         await ownerApi.updateEquipment(token, editingEquipment._id, payload);
-        onSuccess(`Đã cập nhật thông tin thiết bị "${title}" thành công.`);
+        onSuccess(`Đã cập nhật thông tin thiết bị "${title}" (${finalImages.length || 1} ảnh) thành công.`);
         setEditingEquipment(null);
       } else {
         // UC_O03: Create Equipment Listing
         await ownerApi.createEquipment(token, payload);
-        onSuccess(`Đã tạo bài đăng thiết bị "${title}" thành công.`);
+        onSuccess(`Đã tạo bài đăng thiết bị "${title}" (${finalImages.length || 1} ảnh) thành công.`);
         setShowCreateModal(false);
       }
       resetForm();
@@ -212,17 +323,18 @@ export default function OwnerEquipmentsTab({
   return (
     <div className="owner-tab-content">
       {/* Header bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
             📦 Danh sách Thiết bị cho thuê của bạn
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-            Quản lý bài đăng (UC_O03, UC_O04), cấu hình giá & điều khoản (UC_O06), lịch khả dụng (UC_O05).
+            Quản lý bài đăng nhiều hình ảnh (UC_O03, UC_O04), cấu hình giá & điều khoản (UC_O06), lịch khả dụng (UC_O05).
           </p>
         </div>
         <button
           className="button button-primary"
+          style={{ width: "auto" }}
           onClick={() => {
             resetForm();
             setShowCreateModal(true);
@@ -239,7 +351,7 @@ export default function OwnerEquipmentsTab({
           <p>Bắt đầu đăng thiết bị máy ảnh, flycam, lens hoặc phụ kiện để tiếp cận khách thuê ngay hôm nay.</p>
           <button
             className="button button-primary"
-            style={{ marginTop: "12px" }}
+            style={{ marginTop: "12px", width: "auto" }}
             onClick={() => {
               resetForm();
               setShowCreateModal(true);
@@ -250,115 +362,207 @@ export default function OwnerEquipmentsTab({
         </div>
       ) : (
         <div className="owner-equipment-grid">
-          {equipments.map((eq) => (
-            <div key={eq._id} className="owner-equipment-card">
-              <div className="owner-card-img-wrap">
-                <img
-                  src={
-                    eq.images?.[0] ||
-                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
-                  }
-                  alt={eq.title}
-                />
-                <span className={`owner-vis-badge vis-${eq.visibility}`}>
-                  {eq.visibility === "published"
-                    ? "Đang hiển thị"
-                    : eq.visibility === "hidden"
-                    ? "Đang ẩn"
-                    : "Bản nháp"}
-                </span>
-                <span className={`owner-status-badge status-${eq.status}`}>
-                  {eq.status === "available"
-                    ? "Sẵn sàng"
-                    : eq.status === "rented"
-                    ? "Đang thuê"
-                    : "Bảo trì"}
-                </span>
-              </div>
+          {equipments.map((eq) => {
+            const imgs =
+              eq.images && eq.images.length > 0
+                ? eq.images
+                : ["https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"];
+            const currentIdx = cardImageIndex[eq._id] || 0;
+            const safeIdx = currentIdx < imgs.length ? currentIdx : 0;
 
-              <div className="owner-card-body">
-                <span className="owner-card-category">{eq.category}</span>
-                <h3 className="owner-card-title">{eq.title}</h3>
-                <div className="owner-card-brand">
-                  {eq.brand && <span>{eq.brand}</span>}
-                  {eq.model_name && <span> • {eq.model_name}</span>}
-                  {eq.condition && <span> • {eq.condition}</span>}
-                </div>
+            return (
+              <div key={eq._id} className="owner-equipment-card">
+                <div className="owner-card-img-wrap">
+                  <img
+                    src={imgs[safeIdx]}
+                    alt={eq.title}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src =
+                        "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80";
+                    }}
+                  />
 
-                <div className="owner-card-pricing">
-                  <div>
-                    <span className="price-label">Giá thuê ngày:</span>
-                    <strong className="price-num">
-                      {eq.pricing.price_per_day.toLocaleString("vi-VN")} đ
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="price-label">Tiền cọc:</span>
-                    <span className="deposit-num">
-                      {eq.pricing.deposit_amount.toLocaleString("vi-VN")} đ
-                    </span>
-                  </div>
-                </div>
-
-                {/* Availability schedule preview */}
-                {eq.availability_schedule && eq.availability_schedule.length > 0 && (
-                  <div className="schedule-pills">
-                    <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Lịch riêng:</span>
-                    {eq.availability_schedule.slice(-2).map((s, idx) => (
-                      <span key={idx} className={`schedule-pill pill-${s.status}`}>
-                        {s.status === "blocked" ? "⛔ Khóa" : "✅ Mở"}:{" "}
-                        {new Date(s.start_date).toLocaleDateString("vi-VN")} -{" "}
-                        {new Date(s.end_date).toLocaleDateString("vi-VN")}
+                  {imgs.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCardImageIndex((prev) => ({
+                            ...prev,
+                            [eq._id]: (safeIdx - 1 + imgs.length) % imgs.length,
+                          }))
+                        }
+                        title="Ảnh trước"
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "8px",
+                          transform: "translateY(-50%)",
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "50%",
+                          border: "1px solid rgba(255,255,255,0.25)",
+                          background: "rgba(15, 22, 35, 0.78)",
+                          color: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "1rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCardImageIndex((prev) => ({
+                            ...prev,
+                            [eq._id]: (safeIdx + 1) % imgs.length,
+                          }))
+                        }
+                        title="Ảnh tiếp theo"
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          right: "8px",
+                          transform: "translateY(-50%)",
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "50%",
+                          border: "1px solid rgba(255,255,255,0.25)",
+                          background: "rgba(15, 22, 35, 0.78)",
+                          color: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "1rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ›
+                      </button>
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "10px",
+                          left: "10px",
+                          fontSize: "0.72rem",
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          background: "rgba(15, 22, 35, 0.85)",
+                          color: "#fb923c",
+                          fontWeight: 700,
+                          backdropFilter: "blur(4px)",
+                        }}
+                      >
+                        📷 {safeIdx + 1}/{imgs.length} ảnh
                       </span>
-                    ))}
-                  </div>
-                )}
+                    </>
+                  )}
 
-                {/* Actions */}
-                <div className="owner-card-actions">
-                  <button
-                    className="button button-secondary action-btn"
-                    onClick={() => openEditModal(eq)}
-                    title="Chỉnh sửa thông tin, giá thuê & điều khoản"
-                  >
-                    ✏️ Sửa (UC_O04)
-                  </button>
-                  <button
-                    className="button button-quiet action-btn"
-                    onClick={() => handleToggleVisibility(eq)}
-                    title="Ẩn hoặc hiện bài đăng trên chợ"
-                  >
-                    {eq.visibility === "published" ? "👁️ Ẩn" : "✨ Hiện"}
-                  </button>
-                  <button
-                    className="button button-secondary action-btn"
-                    onClick={() => setScheduleEquipment(eq)}
-                    title="Thiết lập lịch khả dụng"
-                  >
-                    📅 Lịch (UC_O05)
-                  </button>
-                  <button
-                    className="button button-quiet action-btn"
-                    onClick={() => setStatusRequestEquipment(eq)}
-                    title="Gửi yêu cầu cập nhật trạng thái kiểm duyệt"
-                  >
-                    ⚙️ Trạng thái (UC_O16)
-                  </button>
+                  <span className={`owner-vis-badge vis-${eq.visibility}`}>
+                    {eq.visibility === "published"
+                      ? "Đang hiển thị"
+                      : eq.visibility === "hidden"
+                      ? "Đang ẩn"
+                      : "Bản nháp"}
+                  </span>
+                  <span className={`owner-status-badge status-${eq.status}`}>
+                    {eq.status === "available"
+                      ? "Sẵn sàng"
+                      : eq.status === "rented"
+                      ? "Đang thuê"
+                      : "Bảo trì"}
+                  </span>
+                </div>
+
+                <div className="owner-card-body">
+                  <span className="owner-card-category">{eq.category}</span>
+                  <h3 className="owner-card-title">{eq.title}</h3>
+                  <div className="owner-card-brand">
+                    {eq.brand && <span>{eq.brand}</span>}
+                    {eq.model_name && <span> • {eq.model_name}</span>}
+                    {eq.condition && <span> • {eq.condition}</span>}
+                  </div>
+
+                  <div className="owner-card-pricing">
+                    <div>
+                      <span className="price-label">Giá thuê ngày:</span>
+                      <strong className="price-num">
+                        {eq.pricing.price_per_day.toLocaleString("vi-VN")} đ
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="price-label">Tiền cọc:</span>
+                      <span className="deposit-num">
+                        {eq.pricing.deposit_amount.toLocaleString("vi-VN")} đ
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Availability schedule preview */}
+                  {eq.availability_schedule && eq.availability_schedule.length > 0 && (
+                    <div className="schedule-pills">
+                      <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Lịch riêng:</span>
+                      {eq.availability_schedule.slice(-2).map((s, idx) => (
+                        <span key={idx} className={`schedule-pill pill-${s.status}`}>
+                          {s.status === "blocked" ? "⛔ Khóa" : "✅ Mở"}:{" "}
+                          {new Date(s.start_date).toLocaleDateString("vi-VN")} -{" "}
+                          {new Date(s.end_date).toLocaleDateString("vi-VN")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="owner-card-actions">
+                    <button
+                      className="button button-secondary action-btn"
+                      onClick={() => openEditModal(eq)}
+                      title="Chỉnh sửa thông tin, hình ảnh, giá thuê & điều khoản"
+                    >
+                      ✏️ Sửa (UC_O04)
+                    </button>
+                    <button
+                      className="button button-quiet action-btn"
+                      onClick={() => handleToggleVisibility(eq)}
+                      title="Ẩn hoặc hiện bài đăng trên chợ"
+                    >
+                      {eq.visibility === "published" ? "👁️ Ẩn" : "✨ Hiện"}
+                    </button>
+                    <button
+                      className="button button-secondary action-btn"
+                      onClick={() => setScheduleEquipment(eq)}
+                      title="Thiết lập lịch khả dụng"
+                    >
+                      📅 Lịch (UC_O05)
+                    </button>
+                    <button
+                      className="button button-quiet action-btn"
+                      onClick={() => setStatusRequestEquipment(eq)}
+                      title="Gửi yêu cầu cập nhật trạng thái kiểm duyệt"
+                    >
+                      ⚙️ Trạng thái (UC_O16)
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* MODAL: Create or Edit Equipment Listing (UC_O03, UC_O04, UC_O06) */}
       {(showCreateModal || editingEquipment) && (
         <div className="owner-modal-overlay">
-          <div className="owner-modal-card">
+          <div className="owner-modal-card" style={{ maxWidth: "740px" }}>
             <div className="owner-modal-header">
               <h3>
                 {editingEquipment
-                  ? "✏️ Chỉnh sửa thông tin, giá & điều khoản (UC_O04, UC_O06)"
+                  ? "✏️ Chỉnh sửa thông tin, hình ảnh, giá & điều khoản (UC_O04, UC_O06)"
                   : "➕ Tạo bài đăng thiết bị mới (UC_O03)"}
               </h3>
               <button
@@ -463,15 +667,295 @@ export default function OwnerEquipmentsTab({
                   </select>
                 </div>
 
+                {/* MULTI-IMAGE UPLOAD & URL MANAGER (UC_O03) */}
                 <div className="form-col-span-2">
-                  <label className="field-label">URL Ảnh thực tế thiết bị (Upload Photos - UC_O03)</label>
-                  <input
-                    className="input-field"
-                    type="url"
-                    placeholder="https://images.unsplash.com/... hoặc link ảnh thực tế"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "8px",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    <label className="field-label" style={{ marginBottom: 0 }}>
+                      📸 Bộ ảnh thực tế thiết bị — Hỗ trợ nhiều ảnh (Upload Photos - UC_O03)
+                    </label>
+                    <span
+                      style={{
+                        fontSize: "0.78rem",
+                        color: imagesList.length > 0 ? "var(--orange)" : "var(--muted)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Đã thêm: {imagesList.length} ảnh{" "}
+                      {imagesList.length > 0 && "• Ảnh số 1 là Ảnh bìa chính"}
+                    </span>
+                  </div>
+
+                  {/* Box containing both URL input + Local File Upload */}
+                  <div
+                    style={{
+                      background: "#111827",
+                      border: "1px solid var(--border)",
+                      borderRadius: "12px",
+                      padding: "14px",
+                    }}
+                  >
+                    {/* 1. Add by URL (supports single URL or multiple URLs separated by comma) */}
+                    <div style={{ display: "flex", gap: "10px", alignItems: "stretch" }}>
+                      <input
+                        className="input-field"
+                        type="text"
+                        placeholder="Dán 1 hoặc nhiều link ảnh (cách nhau dấu phẩy) rồi bấm '+ Thêm ảnh'..."
+                        value={imageUrlInput}
+                        onChange={(e) => setImageUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddImageUrl();
+                          }
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        onClick={handleAddImageUrl}
+                        style={{
+                          width: "auto",
+                          minHeight: "42px",
+                          padding: "0 16px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        + Thêm ảnh
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isReadingFiles}
+                        style={{
+                          width: "auto",
+                          minHeight: "42px",
+                          padding: "0 14px",
+                          whiteSpace: "nowrap",
+                        }}
+                        title="Chọn một hoặc nhiều file ảnh từ máy tính"
+                      >
+                        {isReadingFiles ? "Đang đọc..." : "📁 Chọn nhiều ảnh từ máy"}
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: "none" }}
+                        onChange={(e) => void handleSelectLocalFiles(e.target.files)}
+                      />
+                    </div>
+
+                    <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginTop: "8px" }}>
+                      💡 Mẹo: Bạn có thể thêm nhiều góc chụp của thiết bị (mặt trước, mặt sau, ngàm lens, phụ kiện...). Người thuê sẽ chuyển qua lại xem từng ảnh chi tiết.
+                    </div>
+
+                    {photoError && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          color: "#f87171",
+                          fontSize: "0.8rem",
+                          background: "rgba(239, 68, 68, 0.12)",
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                        }}
+                      >
+                        ⚠️ {photoError}
+                      </div>
+                    )}
+
+                    {/* Preview Gallery of Added Images */}
+                    {imagesList.length > 0 ? (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(135px, 1fr))",
+                          gap: "12px",
+                          marginTop: "14px",
+                        }}
+                      >
+                        {imagesList.map((imgUrl, idx) => (
+                          <div
+                            key={`${idx}-${imgUrl.slice(0, 24)}`}
+                            style={{
+                              position: "relative",
+                              height: "110px",
+                              borderRadius: "10px",
+                              overflow: "hidden",
+                              border:
+                                idx === 0
+                                  ? "2px solid var(--orange)"
+                                  : "1px solid var(--border)",
+                              background: "#0b0f19",
+                            }}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Ảnh thiết bị ${idx + 1}`}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src =
+                                  "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80";
+                              }}
+                            />
+
+                            {/* Cover badge or Set Cover button */}
+                            {idx === 0 ? (
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  top: "6px",
+                                  left: "6px",
+                                  background: "var(--orange)",
+                                  color: "#fff",
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  boxShadow: "0 2px 6px rgba(0,0,0,0.45)",
+                                }}
+                              >
+                                ★ ẢNH BÌA (1)
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSetCoverImage(idx)}
+                                title="Đặt ảnh này làm ảnh bìa chính"
+                                style={{
+                                  position: "absolute",
+                                  top: "6px",
+                                  left: "6px",
+                                  background: "rgba(15, 22, 35, 0.85)",
+                                  color: "#e2e8f0",
+                                  border: "1px solid rgba(255,255,255,0.2)",
+                                  fontSize: "0.65rem",
+                                  fontWeight: 600,
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Đặt làm bìa
+                              </button>
+                            )}
+
+                            {/* Remove button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              title="Xóa ảnh này"
+                              style={{
+                                position: "absolute",
+                                top: "6px",
+                                right: "6px",
+                                width: "22px",
+                                height: "22px",
+                                borderRadius: "50%",
+                                border: "none",
+                                background: "rgba(239, 68, 68, 0.9)",
+                                color: "#fff",
+                                fontSize: "0.75rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              ✕
+                            </button>
+
+                            {/* Bottom bar: index & reorder left/right */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                background: "rgba(11, 15, 25, 0.82)",
+                                padding: "3px 6px",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                fontSize: "0.7rem",
+                                color: "#cbd5e1",
+                              }}
+                            >
+                              <span>Ảnh #{idx + 1}</span>
+                              <div style={{ display: "flex", gap: "4px" }}>
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveImage(idx, -1)}
+                                  title="Di chuyển sang trái"
+                                  style={{
+                                    background: "rgba(255,255,255,0.1)",
+                                    border: "none",
+                                    color: idx === 0 ? "#475569" : "#fff",
+                                    borderRadius: "4px",
+                                    padding: "1px 5px",
+                                    cursor: idx === 0 ? "default" : "pointer",
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  ◀
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === imagesList.length - 1}
+                                  onClick={() => handleMoveImage(idx, 1)}
+                                  title="Di chuyển sang phải"
+                                  style={{
+                                    background: "rgba(255,255,255,0.1)",
+                                    border: "none",
+                                    color: idx === imagesList.length - 1 ? "#475569" : "#fff",
+                                    borderRadius: "4px",
+                                    padding: "1px 5px",
+                                    cursor: idx === imagesList.length - 1 ? "default" : "pointer",
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          padding: "16px",
+                          borderRadius: "8px",
+                          border: "1px dashed rgba(148, 163, 184, 0.25)",
+                          textAlign: "center",
+                          color: "var(--muted)",
+                          fontSize: "0.82rem",
+                        }}
+                      >
+                        Chưa có ảnh nào trong danh sách. Hãy dán link ảnh rồi bấm <strong>+ Thêm ảnh</strong> hoặc chọn nhiều ảnh từ máy tính.
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="form-col-span-2">

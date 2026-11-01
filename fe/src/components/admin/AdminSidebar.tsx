@@ -99,6 +99,10 @@ export default function AdminSidebar({
             <span className="admin-nav-icon">📊</span>
             <span>Chỉ số hệ thống</span>
           </button>
+          <Link to="/moderator" className="admin-nav-item" onClick={onCloseMobile}>
+            <span className="admin-nav-icon">⚖️</span>
+            <span>Điều phối Thuê & Hợp đồng</span>
+          </Link>
           <Link to="/owner" className="admin-nav-item" onClick={onCloseMobile}>
             <span className="admin-nav-icon">💼</span>
             <span>Cổng Owner</span>

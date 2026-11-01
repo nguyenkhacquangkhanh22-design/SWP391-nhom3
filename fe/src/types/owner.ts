@@ -46,7 +46,7 @@ export interface RentalRequest {
   _id: string;
   request_code: string;
   equipment_id: Equipment;
-  owner_id: string;
+  owner_id: string | { _id: string; name: string; email: string };
   renter_id: string | { _id: string; name: string; email: string; phone?: string };
   renter_name: string;
   renter_phone?: string;
@@ -61,6 +61,8 @@ export interface RentalRequest {
   total_estimated_amount: number;
   renter_note?: string;
   status:
+    | "pending_moderator"
+    | "moderator_rejected"
     | "pending"
     | "approved"
     | "rejected"
@@ -68,6 +70,9 @@ export interface RentalRequest {
     | "active"
     | "completed"
     | "cancelled";
+  moderator_id?: { _id: string; name: string; email: string };
+  moderator_note?: string;
+  forwarded_to_owner_at?: string;
   rejection_reason?: string;
   responded_at?: string;
   createdAt: string;
@@ -83,9 +88,9 @@ export interface ContractVersionHistory {
 export interface RentalContract {
   _id: string;
   contract_code: string;
-  request_id: string;
+  request_id: string | { _id: string; request_code: string };
   equipment_id: Equipment;
-  owner_id: string;
+  owner_id: string | { _id: string; name: string; email: string };
   renter_id: { _id: string; name: string; email: string; phone?: string };
   title: string;
   terms_content: string;
@@ -106,6 +111,16 @@ export interface RentalContract {
     | "completed"
     | "cancelled";
   moderator_feedback?: string;
+  moderator_approved_at?: string;
+  moderator_approved_version?: number;
+  moderator_id?: { _id: string; name: string; email: string };
+  moderation_history?: {
+    action: "approved" | "rejected";
+    moderator_id?: { _id: string; name: string; email: string };
+    reason?: string;
+    version: number;
+    created_at: string;
+  }[];
   owner_signature?: {
     signed: boolean;
     signed_at?: string;
@@ -115,6 +130,8 @@ export interface RentalContract {
   renter_signature?: {
     signed: boolean;
     signed_at?: string;
+    signature_data?: string;
+    signer_name?: string;
   };
   createdAt: string;
 }
