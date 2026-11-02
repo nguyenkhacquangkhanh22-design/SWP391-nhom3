@@ -7,7 +7,7 @@ interface Props {
   token: string;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (updatedRental: Rental) => void;
 }
 
 export default function ContractConfirmationModal({
@@ -38,12 +38,12 @@ export default function ContractConfirmationModal({
     setLoading(true);
     setError("");
     try {
-      await smartEquipApi.confirmContract(token, rental._id, {
+      const res = await smartEquipApi.confirmContract(token, rental._id, {
         termsAccepted: true,
         renterSignature: signature.trim(),
         digitalSignature: signature.trim(),
       });
-      onSuccess();
+      onSuccess(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể ký hợp đồng");
     } finally {

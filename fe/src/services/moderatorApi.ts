@@ -50,6 +50,58 @@ export interface ModeratorRentalRequest {
   moderator_id?: { _id: string; name: string; email: string };
 }
 
+export interface ModeratorPaymentRental {
+  _id: string;
+  rentalCode: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  dailyRate: number;
+  rentalFee: number;
+  depositAmount: number;
+  discountAmount?: number;
+  totalAmount: number;
+  status: string;
+  deliveryAddress?: string;
+  renterNote?: string;
+  contract?: {
+    contractNumber?: string;
+    renterSignature?: string;
+    digitalSignature?: string;
+    signedAt?: string;
+  };
+  payment?: {
+    isPaid?: boolean;
+    paymentStatus?: "unpaid" | "verifying" | "paid" | "rejected" | "refunded" | string;
+    paymentMethod?: string;
+    transactionId?: string;
+    transferNote?: string;
+    senderName?: string;
+    proofImage?: string;
+    submittedAt?: string;
+    paidAt?: string;
+    amountPaid?: number;
+    verifiedBy?: { _id: string; name: string; email: string };
+    verifiedAt?: string;
+    moderatorNote?: string;
+  };
+  equipment?: {
+    _id: string;
+    title: string;
+    category?: string;
+    brand?: string;
+    model_name?: string;
+    serial_number?: string;
+    images?: string[];
+    dailyRate?: number;
+    depositAmount?: number;
+  };
+  owner?: { _id: string; name: string; email: string; phone?: string };
+  renter?: { _id: string; name: string; email: string; phone?: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ModeratorContract {
   _id: string;
   contract_code: string;
@@ -187,6 +239,17 @@ export const moderatorApi = {
   forwardRentalRequest: (token: string, id: string, action: "forward" | "reject", note?: string) =>
     request<{ message: string; rentalRequest: ModeratorRentalRequest }>(
       `/rental-requests/${id}/forward`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      }
+    ),
+  getPayments: (token: string) =>
+    request<{ payments: ModeratorPaymentRental[] }>("/payments", token),
+  verifyPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
+    request<{ message: string; notificationWarning?: string; paymentRental: ModeratorPaymentRental }>(
+      `/payments/${id}/verify`,
       token,
       {
         method: "PATCH",

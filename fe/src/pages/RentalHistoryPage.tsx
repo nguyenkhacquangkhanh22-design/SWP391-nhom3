@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
+import PaymentQRModal from "../components/PaymentQRModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
 
@@ -16,8 +17,8 @@ interface TabItem {
 
 const TABS: TabItem[] = [
   { key: "ALL", label: "Tất cả đơn" },
-  { key: "PENDING", label: "Chờ ký hợp đồng" },
-  { key: "CONTRACT_SIGNED", label: "Chờ thanh toán" },
+  { key: "PENDING", label: "Chờ duyệt & Ký HĐ" },
+  { key: "CONTRACT_SIGNED", label: "Thanh toán QR & Xác nhận" },
   { key: "ACTIVE", label: "Đang thuê" },
   { key: "RETURNED", label: "Đã trả / Hoàn tất" },
 ];
@@ -33,9 +34,14 @@ export default function RentalHistoryPage() {
   // Modal ký hợp đồng (UC_R08)
   const [signingRental, setSigningRental] = useState<Rental | null>(null);
 
+  // Modal thanh toán QR (UC_R09)
+  const [payingRental, setPayingRental] = useState<Rental | null>(null);
+
   // Modal trả thiết bị (UC_R10: hẹn giờ, địa điểm, tình trạng)
   const [returningRentalId, setReturningRentalId] = useState<string | null>(null);
-  const [returnCondition, setReturnCondition] = useState("Thiết bị nguyên vẹn, hoạt động bình thường, đầy đủ phụ kiện.");
+  const [returnCondition, setReturnCondition] = useState(
+    "Thiết bị nguyên vẹn, hoạt động bình thường, đầy đủ phụ kiện."
+  );
   const [returnNote, setReturnNote] = useState("");
   const [returnTime, setReturnTime] = useState("");
   const [returnLocation, setReturnLocation] = useState("");
@@ -56,9 +62,6 @@ export default function RentalHistoryPage() {
   const [cancellingRentalId, setCancellingRentalId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
-
-  // State thanh toán (UC_R09)
-  const [payingRentalId, setPayingRentalId] = useState<string | null>(null);
 
   const fetchHistory = () => {
     if (!token) return;
@@ -91,10 +94,15 @@ export default function RentalHistoryPage() {
     const s = r.status.toUpperCase();
     if (activeTab === "ALL") return true;
     if (activeTab === "PENDING") {
-      return s === "PENDING" || s === "CONTRACT_PENDING";
+      return s === "PENDING" || s === "APPROVED" || s === "CONTRACT_PENDING";
     }
     if (activeTab === "CONTRACT_SIGNED") {
-      return s === "CONTRACT_SIGNED" || s === "PAYMENT_PENDING";
+      return (
+        s === "CONTRACT_SIGNED" ||
+        s === "PAYMENT_PENDING" ||
+        s === "PAYMENT_VERIFYING" ||
+        s === "PAYMENT_REJECTED"
+      );
     }
     if (activeTab === "ACTIVE") {
       return s === "PAID" || s === "ACTIVE" || s === "CONFIRMED" || s === "IN_PROGRESS";
@@ -104,24 +112,6 @@ export default function RentalHistoryPage() {
     }
     return true;
   });
-
-  // Xử lý Thanh toán (UC_R09)
-  const handlePay = async (rentalId: string) => {
-    setPayingRentalId(rentalId);
-    setError("");
-    setNotice("");
-    try {
-      const res = await smartEquipApi.payRental(token, rentalId, {
-        paymentMethod: "vnpay",
-      });
-      setNotice(res.message || "Thanh toán thành công! Đơn thuê đã được chuyển sang trạng thái ĐÃ THANH TOÁN.");
-      fetchHistory();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể thanh toán");
-    } finally {
-      setPayingRentalId(null);
-    }
-  };
 
   // Mở modal báo trả máy
   const openReturnModal = (r: Rental) => {
@@ -224,21 +214,36 @@ export default function RentalHistoryPage() {
     const s = status.toUpperCase();
     switch (s) {
       case "PENDING":
+        return {
+          label: "⏳ Chờ Chủ máy (Owner) duyệt",
+          className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+        };
+      case "APPROVED":
       case "CONTRACT_PENDING":
         return {
-          label: "Chờ ký hợp đồng",
-          className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+          label: "✍️ Owner đã duyệt — Chờ ký hợp đồng",
+          className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
         };
       case "CONTRACT_SIGNED":
       case "PAYMENT_PENDING":
         return {
-          label: "Chờ thanh toán",
+          label: "💳 Đã ký HĐ — Chờ thanh toán QR",
           className: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+        };
+      case "PAYMENT_VERIFYING":
+        return {
+          label: "🔍 Đã CK QR — Chờ Rental Moderator xác nhận",
+          className: "bg-sky-500/10 text-sky-300 border-sky-500/30",
+        };
+      case "PAYMENT_REJECTED":
+        return {
+          label: "❌ Thanh toán QR bị từ chối (Cần gửi lại)",
+          className: "bg-rose-500/10 text-rose-400 border-rose-500/30",
         };
       case "PAID":
       case "CONFIRMED":
         return {
-          label: "Đã thanh toán (Sẵn sàng nhận máy)",
+          label: "✅ Đã xác nhận thanh toán (Sẵn sàng nhận máy)",
           className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
         };
       case "ACTIVE":
@@ -288,7 +293,7 @@ export default function RentalHistoryPage() {
               Quản Lý Đơn Thuê Của Bạn
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Ký hợp đồng điện tử, thanh toán phí thuê & tiền cọc, theo dõi lịch trình và báo trả đồ
+              Ký hợp đồng điện tử, quét mã QR thanh toán phí thuê & tiền cọc (Rental Moderator xác nhận), theo dõi lịch trình và báo trả đồ
             </p>
           </div>
           <Link
@@ -304,7 +309,9 @@ export default function RentalHistoryPage() {
         {notice && (
           <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center justify-between">
             <span>✅ {notice}</span>
-            <button onClick={() => setNotice("")} className="text-xs text-slate-400 hover:text-white">✕</button>
+            <button onClick={() => setNotice("")} className="text-xs text-slate-400 hover:text-white">
+              ✕
+            </button>
           </div>
         )}
 
@@ -312,7 +319,9 @@ export default function RentalHistoryPage() {
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-center justify-between">
             <span>⚠️ {error}</span>
-            <button onClick={() => setError("")} className="text-xs text-slate-400 hover:text-white">✕</button>
+            <button onClick={() => setError("")} className="text-xs text-slate-400 hover:text-white">
+              ✕
+            </button>
           </div>
         )}
 
@@ -363,7 +372,11 @@ export default function RentalHistoryPage() {
               const upperStatus = r.status.toUpperCase();
 
               const canSign = upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING";
-              const canPay = upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_PENDING";
+              const canPay =
+                upperStatus === "CONTRACT_SIGNED" ||
+                upperStatus === "PAYMENT_PENDING" ||
+                upperStatus === "PAYMENT_REJECTED";
+              const isPaymentVerifying = upperStatus === "PAYMENT_VERIFYING";
               const canReturn =
                 upperStatus === "PAID" ||
                 upperStatus === "ACTIVE" ||
@@ -382,9 +395,11 @@ export default function RentalHistoryPage() {
                 upperStatus === "RETURNED";
               const canCancel =
                 upperStatus === "PENDING" ||
+                upperStatus === "APPROVED" ||
                 upperStatus === "CONTRACT_PENDING" ||
                 upperStatus === "CONTRACT_SIGNED" ||
-                upperStatus === "PAYMENT_PENDING";
+                upperStatus === "PAYMENT_PENDING" ||
+                upperStatus === "PAYMENT_REJECTED";
 
               return (
                 <div
@@ -445,12 +460,24 @@ export default function RentalHistoryPage() {
                             ✓ Đã ký HĐ: {r.contract.renterSignature || r.contract.digitalSignature}
                           </span>
                         )}
+                        {isPaymentVerifying && (
+                          <span className="text-sky-300">
+                            ⏳ Đã gửi CK QR ({r.payment?.transactionId || "Chờ đối chiếu"})
+                          </span>
+                        )}
                         {r.payment?.isPaid && (
-                          <span className="text-blue-400">
-                            ✓ Đã thanh toán ({r.payment.paymentMethod || "VNPay"})
+                          <span className="text-emerald-400">
+                            ✓ Moderator đã xác nhận thanh toán QR
                           </span>
                         )}
                       </div>
+
+                      {upperStatus === "PAYMENT_REJECTED" && r.payment?.moderatorNote && (
+                        <div className="mt-1.5 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-[11px] text-rose-300">
+                          <strong>Lý do Rental Moderator từ chối xác nhận:</strong>{" "}
+                          {r.payment.moderatorNote}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -472,7 +499,7 @@ export default function RentalHistoryPage() {
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch min-w-[160px]">
+                  <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch min-w-[175px]">
                     {/* Chờ Owner duyệt */}
                     {upperStatus === "PENDING" && (
                       <div className="px-3.5 py-2 bg-[#1b2537] border border-[#27364f] rounded-xl text-center">
@@ -493,18 +520,28 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Nút thanh toán (UC_R09) */}
+                    {/* Nút thanh toán QR (UC_R09) */}
                     {canPay && (
                       <button
-                        onClick={() => handlePay(r._id)}
-                        disabled={payingRentalId === r._id}
+                        onClick={() => setPayingRental(r)}
                         className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-md text-center flex items-center justify-center gap-1.5"
                       >
                         <span>💳</span>
                         <span>
-                          {payingRentalId === r._id ? "Đang xử lý..." : "Thanh toán cọc & phí"}
+                          {upperStatus === "PAYMENT_REJECTED"
+                            ? "Quét QR & Gửi lại"
+                            : "Quét QR Thanh toán"}
                         </span>
                       </button>
+                    )}
+
+                    {/* Đang chờ Moderator xác nhận thanh toán */}
+                    {isPaymentVerifying && (
+                      <div className="px-3.5 py-2 bg-sky-500/10 border border-sky-500/30 rounded-xl text-center">
+                        <span className="text-[11px] text-sky-300 flex items-center justify-center gap-1.5 font-semibold">
+                          <span>🔍</span> Chờ Moderator xác nhận
+                        </span>
+                      </div>
                     )}
 
                     {/* Nút báo trả đồ (UC_R10) */}
@@ -570,9 +607,30 @@ export default function RentalHistoryPage() {
           token={token}
           isOpen={Boolean(signingRental)}
           onClose={() => setSigningRental(null)}
-          onSuccess={() => {
+          onSuccess={(updatedRental) => {
             setSigningRental(null);
-            setNotice("Ký hợp đồng thành công! Vui lòng tiến hành thanh toán tiền thuê và tiền cọc.");
+            setNotice(
+              "Đã ký hợp đồng điện tử thành công! Vui lòng quét mã QR để thanh toán tiền thuê và tiền cọc."
+            );
+            fetchHistory();
+            if (updatedRental) {
+              setPayingRental(updatedRental);
+            }
+          }}
+        />
+      )}
+
+      {/* Modal Quét QR Thanh toán (UC_R09) */}
+      {payingRental && (
+        <PaymentQRModal
+          rental={payingRental}
+          token={token}
+          isOpen={Boolean(payingRental)}
+          defaultSenderName={user.name || ""}
+          onClose={() => setPayingRental(null)}
+          onSuccess={(message) => {
+            setPayingRental(null);
+            setNotice(message);
             fetchHistory();
           }}
         />

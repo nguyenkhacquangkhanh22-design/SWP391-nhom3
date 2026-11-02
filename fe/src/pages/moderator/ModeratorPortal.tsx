@@ -9,11 +9,20 @@ import type {
   ModeratorContract,
   ModeratorEquipment,
   ModeratorHandoverRecord,
+  ModeratorPaymentRental,
   ModeratorRentalRequest,
   ModeratorStatusRequest,
 } from "../../services/moderatorApi";
 
-type Tab = "requests" | "contracts" | "equipment" | "handover" | "status" | "templates" | "support";
+type Tab =
+  | "payments"
+  | "requests"
+  | "contracts"
+  | "equipment"
+  | "handover"
+  | "status"
+  | "templates"
+  | "support";
 
 function dateTime(value?: string) {
   return value ? new Date(value).toLocaleString("vi-VN") : "—";
@@ -54,7 +63,8 @@ function parseTemplateFields(value: string): ContractTemplate["fields"] {
 
 export default function ModeratorPortal() {
   const { user, token, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>("requests");
+  const [activeTab, setActiveTab] = useState<Tab>("payments");
+  const [payments, setPayments] = useState<ModeratorPaymentRental[]>([]);
   const [rentalRequests, setRentalRequests] = useState<ModeratorRentalRequest[]>([]);
   const [contracts, setContracts] = useState<ModeratorContract[]>([]);
   const [equipments, setEquipments] = useState<ModeratorEquipment[]>([]);
@@ -65,6 +75,7 @@ export default function ModeratorPortal() {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
   const [forwardNotes, setForwardNotes] = useState<Record<string, string>>({});
   const [contractReasons, setContractReasons] = useState<Record<string, string>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
@@ -84,14 +95,17 @@ export default function ModeratorPortal() {
     setLoading(true);
     setError("");
     try {
-      const [reqData, contractData, equipmentData, recordData, statusData, templateData] = await Promise.all([
-        moderatorApi.getRentalRequests(token),
-        moderatorApi.getContracts(token),
-        moderatorApi.getEquipments(token),
-        moderatorApi.getHandoverRecords(token),
-        moderatorApi.getStatusRequests(token),
-        moderatorApi.getTemplates(token),
-      ]);
+      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData] =
+        await Promise.all([
+          moderatorApi.getPayments(token),
+          moderatorApi.getRentalRequests(token),
+          moderatorApi.getContracts(token),
+          moderatorApi.getEquipments(token),
+          moderatorApi.getHandoverRecords(token),
+          moderatorApi.getStatusRequests(token),
+          moderatorApi.getTemplates(token),
+        ]);
+      setPayments(paymentData.payments || []);
       setRentalRequests(reqData.rentalRequests || []);
       setContracts(contractData.contracts);
       setEquipments(equipmentData.equipments);
@@ -177,6 +191,16 @@ export default function ModeratorPortal() {
     }
   }
 
+  const pendingPayments = useMemo(
+    () =>
+      payments.filter(
+        (p) =>
+          String(p.status || "").toUpperCase() === "PAYMENT_VERIFYING" ||
+          p.payment?.paymentStatus === "verifying"
+      ),
+    [payments]
+  );
+
   const pendingForwardRequests = useMemo(
     () => rentalRequests.filter((r) => r.status === "pending_moderator"),
     [rentalRequests]
@@ -198,8 +222,21 @@ export default function ModeratorPortal() {
   }, [equipments, equipmentSearch]);
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
-    { id: "requests", label: "📬 1. Yêu cầu thuê từ Renter (Gửi Owner)", badge: pendingForwardRequests.length },
-    { id: "contracts", label: "📜 2. Duyệt Hợp đồng & Gửi Renter ký", badge: pendingContracts.length },
+    {
+      id: "payments",
+      label: "💳 Xác nhận Thanh toán QR",
+      badge: pendingPayments.length,
+    },
+    {
+      id: "requests",
+      label: "📬 Yêu cầu thuê từ Renter",
+      badge: pendingForwardRequests.length,
+    },
+    {
+      id: "contracts",
+      label: "📜 Duyệt Hợp đồng",
+      badge: pendingContracts.length,
+    },
     { id: "equipment", label: "📷 Thiết bị" },
     { id: "handover", label: "🤝 Bàn giao / hoàn trả" },
     { id: "status", label: "🔄 Yêu cầu trạng thái" },
@@ -212,7 +249,7 @@ export default function ModeratorPortal() {
       <header className="owner-topbar">
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <Brand compact />
-          <span className="owner-badge">TRUNG TÂM QUẢN LÝ WEB • ĐIỀU PHỐI THUÊ & HỢP ĐỒNG</span>
+          <span className="owner-badge">RENTAL MODERATOR • KIỂM DUYỆT HỢP ĐỒNG & XÁC NHẬN THANH TOÁN QR</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link to="/equipments" className="button button-quiet">🔍 Chợ thiết bị</Link>
@@ -227,14 +264,14 @@ export default function ModeratorPortal() {
       <main className="owner-container">
         <div className="admin-topbar" style={{ margin: "0 0 18px" }}>
           <div>
-            <span className="form-kicker">QUẢN LÝ WEB • KIỂM DUYỆT & ĐIỀU PHỐI TRUNG GIAN</span>
-            <h1 className="admin-page-title">Điều phối Yêu cầu thuê & Phê duyệt Hợp đồng</h1>
+            <span className="form-kicker">RENTAL MODERATOR • KIỂM DUYỆT & ĐỐI CHIẾU THANH TOÁN QR</span>
+            <h1 className="admin-page-title">Điều phối Thuê thiết bị, Hợp đồng & Xác nhận Thanh toán QR</h1>
             <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
               Quy trình chuẩn:{" "}
-              <strong style={{ color: "#fb923c" }}>1. Người thuê gửi YC tới Quản lý web</strong> ➔{" "}
-              <strong style={{ color: "#38bdf8" }}>2. Quản lý web gửi cho Owner duyệt</strong> ➔{" "}
-              <strong style={{ color: "#a78bfa" }}>3. Owner lập HĐ gửi Quản lý web duyệt</strong> ➔{" "}
-              <strong style={{ color: "#10b981" }}>4. Quản lý web duyệt & gửi cho Người thuê ký tên</strong>.
+              <strong style={{ color: "#fb923c" }}>1. Owner duyệt yêu cầu thuê</strong> ➔{" "}
+              <strong style={{ color: "#38bdf8" }}>2. Người thuê ký hợp đồng điện tử</strong> ➔{" "}
+              <strong style={{ color: "#a78bfa" }}>3. Người thuê quét mã QR chuyển khoản</strong> ➔{" "}
+              <strong style={{ color: "#10b981" }}>4. Rental Moderator đối chiếu & xác nhận thanh toán</strong>.
             </p>
           </div>
           <button className="button button-secondary" onClick={() => void loadData()} disabled={loading}>
@@ -243,25 +280,29 @@ export default function ModeratorPortal() {
         </div>
 
         <div className="moderator-stats">
-          <div>
+          <div style={{ cursor: "pointer" }} onClick={() => setActiveTab("payments")}>
+            <strong style={{ color: pendingPayments.length > 0 ? "#10b981" : undefined }}>
+              {pendingPayments.length}
+            </strong>
+            <span>Thanh toán QR chờ xác nhận</span>
+          </div>
+          <div style={{ cursor: "pointer" }} onClick={() => setActiveTab("requests")}>
             <strong style={{ color: pendingForwardRequests.length > 0 ? "#fb923c" : undefined }}>
               {pendingForwardRequests.length}
             </strong>
             <span>Yêu cầu thuê chờ gửi Owner</span>
           </div>
-          <div>
+          <div style={{ cursor: "pointer" }} onClick={() => setActiveTab("contracts")}>
             <strong style={{ color: pendingContracts.length > 0 ? "#38bdf8" : undefined }}>
               {pendingContracts.length}
             </strong>
-            <span>Hợp đồng chờ duyệt & gửi Renter ký</span>
+            <span>Hợp đồng chờ duyệt</span>
           </div>
-          <div>
-            <strong>{records.filter((record) => !record.moderator_review || record.moderator_review.status === "pending").length}</strong>
+          <div style={{ cursor: "pointer" }} onClick={() => setActiveTab("handover")}>
+            <strong>
+              {records.filter((record) => !record.moderator_review || record.moderator_review.status === "pending").length}
+            </strong>
             <span>Biên bản chờ xác minh</span>
-          </div>
-          <div>
-            <strong>{equipments.length}</strong>
-            <span>Thiết bị theo dõi</span>
           </div>
         </div>
 
@@ -286,6 +327,212 @@ export default function ModeratorPortal() {
         </nav>
 
         {loading && <div className="owner-section-card">Đang tải dữ liệu...</div>}
+
+        {/* TAB MỚI: XÁC NHẬN THANH TOÁN QR CỦA NGƯỜI THUÊ */}
+        {!loading && activeTab === "payments" && (
+          <section className="moderator-list">
+            <div
+              className="owner-section-card"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                borderLeft: "4px solid #10b981",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: "0 0 4px", fontSize: "1rem" }}>
+                  🏦 Tài khoản nhận thanh toán QR của hệ thống (VietQR MB Bank)
+                </h3>
+                <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.88rem" }}>
+                  Chủ TK: <strong>NGUYEN KHAC QUANG KHANH</strong> • Số TK: <strong>111105056666</strong> (MB Bank).
+                  Vui lòng đối chiếu đúng số tiền và nội dung chuyển khoản trước khi bấm Xác nhận.
+                </p>
+              </div>
+              <img
+                src="/qr-payment.jpg"
+                alt="VietQR MB Bank"
+                style={{ width: 68, height: 68, objectFit: "cover", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)" }}
+              />
+            </div>
+
+            {payments.length === 0 && (
+              <div className="owner-section-card">
+                Chưa có giao dịch chuyển khoản QR nào từ Người thuê cần đối chiếu.
+              </div>
+            )}
+
+            {payments.map((item) => {
+              const upperStatus = String(item.status || "").toUpperCase();
+              const isVerifying =
+                upperStatus === "PAYMENT_VERIFYING" || item.payment?.paymentStatus === "verifying";
+              const isRejected =
+                upperStatus === "PAYMENT_REJECTED" || item.payment?.paymentStatus === "rejected";
+
+              return (
+                <article className="owner-section-card moderator-card" key={item._id}>
+                  <div className="moderator-card-heading">
+                    <div>
+                      <span className="contract-code-tag">#{item.rentalCode}</span>
+                      <h2>{item.equipment?.title || "Thiết bị thuê"}</h2>
+                    </div>
+                    <span
+                      className={`status-badge ${
+                        isVerifying
+                          ? "status-pending_approval"
+                          : isRejected
+                          ? "status-rejected"
+                          : "status-signed"
+                      }`}
+                    >
+                      {isVerifying
+                        ? "⏳ Chờ Rental Moderator xác nhận thanh toán QR"
+                        : isRejected
+                        ? "❌ Đã từ chối thanh toán (Chờ Renter gửi lại)"
+                        : "✅ Đã xác nhận nhận đủ tiền QR"}
+                    </span>
+                  </div>
+
+                  <div className="moderator-detail-grid">
+                    <p>
+                      <b>Người thuê (Renter):</b> {item.renter?.name || "—"} ({item.renter?.email || "—"}) • SĐT:{" "}
+                      {item.renter?.phone || "—"}
+                    </p>
+                    <p>
+                      <b>Chủ thiết bị (Owner):</b> {item.owner?.name || "—"} ({item.owner?.email || "—"})
+                    </p>
+                    <p>
+                      <b>Thời gian thuê:</b> {dateTime(item.startDate)} — {dateTime(item.endDate)} ({item.totalDays} ngày)
+                    </p>
+                    <p>
+                      <b>Hợp đồng điện tử:</b>{" "}
+                      {item.contract?.signedAt ? (
+                        <strong style={{ color: "#10b981" }}>
+                          ✍️ Đã ký bởi {item.contract.renterSignature || item.contract.digitalSignature} (
+                          {dateTime(item.contract.signedAt)})
+                        </strong>
+                      ) : (
+                        "Đã xác nhận"
+                      )}
+                    </p>
+                    <p>
+                      <b>Tổng tiền cần nhận:</b>{" "}
+                      <strong style={{ color: "#fb923c", fontSize: "1.05rem" }}>
+                        {(item.totalAmount || 0).toLocaleString("vi-VN")} đ
+                      </strong>{" "}
+                      (Thuê: {(item.rentalFee || 0).toLocaleString("vi-VN")} đ + Cọc:{" "}
+                      {(item.depositAmount || 0).toLocaleString("vi-VN")} đ)
+                    </p>
+                    <p>
+                      <b>Người chuyển khoản khai báo:</b>{" "}
+                      <strong style={{ color: "#38bdf8" }}>{item.payment?.senderName || "—"}</strong>
+                    </p>
+                    <p>
+                      <b>Mã giao dịch / FT:</b>{" "}
+                      <code>{item.payment?.transactionId || "—"}</code>
+                    </p>
+                    <p>
+                      <b>Nội dung chuyển khoản:</b>{" "}
+                      <code>{item.payment?.transferNote || `${item.rentalCode} THANH TOAN`}</code>
+                    </p>
+                    <p>
+                      <b>Thời điểm gửi xác nhận:</b>{" "}
+                      {dateTime(item.payment?.submittedAt || item.updatedAt)}
+                    </p>
+                    {item.payment?.verifiedBy && (
+                      <p>
+                        <b>Xử lý bởi:</b> {item.payment.verifiedBy.name} ({dateTime(item.payment.verifiedAt)})
+                      </p>
+                    )}
+                  </div>
+
+                  {item.payment?.proofImage && (
+                    <div style={{ margin: "12px 0" }}>
+                      <p style={{ margin: "0 0 6px", fontWeight: 600 }}>📸 Ảnh biên lai chuyển khoản do Renter đính kèm:</p>
+                      <a href={item.payment.proofImage} target="_blank" rel="noreferrer">
+                        <img
+                          src={item.payment.proofImage}
+                          alt={`Biên lai ${item.rentalCode}`}
+                          style={{
+                            maxWidth: 260,
+                            maxHeight: 280,
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.16)",
+                            objectFit: "contain",
+                            background: "#0f1624",
+                          }}
+                        />
+                      </a>
+                    </div>
+                  )}
+
+                  {item.payment?.moderatorNote && (
+                    <p
+                      className={isRejected ? "moderator-warning" : ""}
+                      style={!isRejected ? { margin: "8px 0", color: "#10b981" } : undefined}
+                    >
+                      <b>Ghi chú đối chiếu của Rental Moderator:</b> {item.payment.moderatorNote}
+                    </p>
+                  )}
+
+                  {isVerifying && (
+                    <div className="moderator-actions" style={{ marginTop: 14 }}>
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        placeholder="Ghi chú xác nhận sao kê (hoặc nhập lý do bắt buộc nếu từ chối thanh toán để Renter kiểm tra lại)..."
+                        value={paymentNotes[item._id] || ""}
+                        onChange={(e) =>
+                          setPaymentNotes((prev) => ({ ...prev, [item._id]: e.target.value }))
+                        }
+                      />
+                      <button
+                        className="button button-primary"
+                        disabled={busyId === item._id}
+                        onClick={() =>
+                          void performAction(
+                            item._id,
+                            () =>
+                              moderatorApi.verifyPayment(
+                                token!,
+                                item._id,
+                                "approve",
+                                paymentNotes[item._id]
+                              ),
+                            `Đã xác nhận thanh toán QR thành công cho đơn #${item.rentalCode}!`
+                          )
+                        }
+                      >
+                        ✅ Xác nhận đã nhận tiền QR
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        disabled={busyId === item._id || !paymentNotes[item._id]?.trim()}
+                        onClick={() =>
+                          void performAction(
+                            item._id,
+                            () =>
+                              moderatorApi.verifyPayment(
+                                token!,
+                                item._id,
+                                "reject",
+                                paymentNotes[item._id]
+                              ),
+                            `Đã từ chối thanh toán đơn #${item.rentalCode} và thông báo cho Người thuê.`
+                          )
+                        }
+                      >
+                        ✕ Từ chối (Chưa nhận được / Sai số tiền)
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        )}
 
         {/* TAB 1: YÊU CẦU THUÊ TỪ RENTER -> QUẢN LÝ WEB GỬI CHO OWNER DUYỆT */}
         {!loading && activeTab === "requests" && (

@@ -64,11 +64,18 @@ export interface RentalContract {
 
 export interface RentalPayment {
   isPaid?: boolean;
-  paymentStatus: "unpaid" | "paid" | "refunded";
-  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | string;
+  paymentStatus: "unpaid" | "verifying" | "paid" | "rejected" | "refunded";
+  paymentMethod?: "qr_transfer" | "bank_transfer" | "vnpay" | "momo" | "wallet" | string;
   transactionId?: string;
+  transferNote?: string;
+  senderName?: string;
+  proofImage?: string;
+  submittedAt?: string;
   paidAt?: string;
   amountPaid: number;
+  verifiedBy?: { _id?: string; name: string; email: string } | string;
+  verifiedAt?: string;
+  moderatorNote?: string;
 }
 
 export interface RentalReturnRequest {
@@ -121,6 +128,8 @@ export interface Rental {
     | "PENDING"
     | "APPROVED"
     | "CONTRACT_SIGNED"
+    | "PAYMENT_VERIFYING"
+    | "PAYMENT_REJECTED"
     | "PAID"
     | "ACTIVE"
     | "RETURNED"
@@ -128,8 +137,11 @@ export interface Rental {
     | "CANCELLED"
     | "DISPUTED"
     | "pending"
+    | "approved"
     | "contract_pending"
     | "payment_pending"
+    | "payment_verifying"
+    | "payment_rejected"
     | "confirmed"
     | "in_progress"
     | "return_requested"

@@ -70,6 +70,8 @@ const rentalSchema = new mongoose.Schema(
         "PENDING",
         "APPROVED",
         "CONTRACT_SIGNED",
+        "PAYMENT_VERIFYING",
+        "PAYMENT_REJECTED",
         "PAID",
         "ACTIVE",
         "RETURNED",
@@ -78,8 +80,11 @@ const rentalSchema = new mongoose.Schema(
         "DISPUTED",
         // Hỗ trợ thêm cho tương thích ngược
         "pending",
+        "approved",
         "contract_pending",
         "payment_pending",
+        "payment_verifying",
+        "payment_rejected",
         "confirmed",
         "in_progress",
         "return_requested",
@@ -116,15 +121,22 @@ const rentalSchema = new mongoose.Schema(
     },
     payment: {
       isPaid: { type: Boolean, default: false },
+      submittedAt: { type: Date },
       paidAt: { type: Date },
       paymentMethod: { type: String, trim: true },
       transactionId: { type: String, trim: true },
+      transferNote: { type: String, trim: true, default: "" },
+      senderName: { type: String, trim: true, default: "" },
+      proofImage: { type: String, default: "" },
       amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
-        enum: ["unpaid", "paid", "refunded"],
+        enum: ["unpaid", "verifying", "paid", "rejected", "refunded"],
         default: "unpaid",
       },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      verifiedAt: { type: Date },
+      moderatorNote: { type: String, trim: true, default: "" },
     },
     returnInfo: {
       requestedAt: { type: Date },
@@ -187,6 +199,8 @@ rentalSchema.pre("save", function (next) {
       this.payment.paymentStatus = "paid";
     } else if (this.payment.paymentStatus === "paid" && !this.payment.isPaid) {
       this.payment.isPaid = true;
+    } else if (this.payment.paymentStatus === "verifying" || this.payment.paymentStatus === "rejected") {
+      this.payment.isPaid = false;
     }
   }
 

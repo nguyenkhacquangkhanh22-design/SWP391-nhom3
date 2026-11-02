@@ -38,9 +38,9 @@ async function request<T>(
   if (!response.ok) {
     const errorData = data as ApiErrorResponse;
     const message =
-      typeof errorData.message === "string"
+      typeof errorData.message === "string" && errorData.message.trim()
         ? errorData.message
-        : "Đã xảy ra lỗi. Vui lòng thử lại.";
+        : `Đã xảy ra lỗi (HTTP ${response.status}). Vui lòng thử lại hoặc khởi động lại backend.`;
     throw new ApiError(message, response.status);
   }
   return data as T;
@@ -154,11 +154,17 @@ export const smartEquipApi = {
       token,
     ),
 
-  // UC_R09: Thanh toán đơn thuê
+  // UC_R09: Thanh toán đơn thuê qua QR (chờ Rental Moderator xác nhận)
   payRental: (
     token: string,
     rentalId: string,
-    data: { paymentMethod?: string } = {},
+    data: {
+      paymentMethod?: string;
+      transactionId?: string;
+      transferNote?: string;
+      senderName?: string;
+      proofImage?: string;
+    } = {},
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/pay`,

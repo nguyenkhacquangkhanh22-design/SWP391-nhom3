@@ -20,6 +20,10 @@ router.patch("/rental-requests/:id/forward", asyncHandler(moderatorController.fo
 router.get("/contracts", asyncHandler(moderatorController.listContracts));
 router.patch("/contracts/:id/review", asyncHandler(moderatorController.reviewContract));
 
+// Bước 5: Rental Moderator đối chiếu & xác nhận thanh toán QR của Renter
+router.get("/payments", asyncHandler(moderatorController.listPayments));
+router.patch("/payments/:id/verify", asyncHandler(moderatorController.verifyPayment));
+
 router.get("/equipments", asyncHandler(moderatorController.listEquipments));
 router.get("/handover-records", asyncHandler(moderatorController.listHandoverRecords));
 router.patch("/handover-records/:id/review", asyncHandler(moderatorController.reviewHandoverRecord));

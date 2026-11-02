@@ -580,12 +580,53 @@ async function seedData() {
     payment: {
       isPaid: true,
       paymentStatus: "paid",
-      paymentMethod: "vnpay",
+      paymentMethod: "qr_transfer",
+      transactionId: "FT26306112233",
+      transferNote: "REQ-2026-PAID04 THANH TOAN",
+      senderName: "Trần Thị Khách Thuê",
       amountPaid: 19500000,
       paidAt: new Date(Date.now() - 3600000),
+      verifiedBy: moderator._id,
+      verifiedAt: new Date(Date.now() - 3600000),
+      moderatorNote: "Đã đối chiếu sao kê MB Bank khớp số tiền cọc và phí thuê.",
     },
   });
-  console.log("✓ Đã nạp 4 đơn thuê mẫu chuẩn chu trình: Chờ Owner duyệt -> Chờ ký HĐ -> Chờ thanh toán -> Đã thanh toán (UC_R07-UC_R10)");
+
+  await Rental.create({
+    rentalCode: "REQ-2026-VERIFY05",
+    renter: renter._id,
+    equipment: eq6._id,
+    owner: owner._id,
+    startDate: new Date(Date.now() + 86400000 * 2),
+    endDate: new Date(Date.now() + 86400000 * 4),
+    totalDays: 2,
+    dailyRate: 200000,
+    rentalFee: 400000,
+    depositAmount: 3000000,
+    totalAmount: 3400000,
+    status: "PAYMENT_VERIFYING",
+    deliveryAddress: "88 Đồng Khởi, Quận 1, TP.HCM",
+    renterNote: "Thuê bộ DJI Mic 2 thu âm phỏng vấn.",
+    contract: {
+      contractNumber: "HD-VERIFY-005",
+      contractTerms: "Hợp đồng thuê thiết bị công nghệ SmartEquip.",
+      termsAccepted: true,
+      renterSignature: "Trần Thị Khách Thuê",
+      digitalSignature: "Trần Thị Khách Thuê",
+      signedAt: new Date(Date.now() - 1800000),
+    },
+    payment: {
+      isPaid: false,
+      paymentStatus: "verifying",
+      paymentMethod: "qr_transfer",
+      transactionId: "FT26306998877",
+      transferNote: "REQ-2026-VERIFY05 THANH TOAN",
+      senderName: "TRAN THI KHACH THUE",
+      submittedAt: new Date(Date.now() - 600000),
+      amountPaid: 3400000,
+    },
+  });
+  console.log("✓ Đã nạp 5 đơn thuê mẫu chuẩn chu trình: Chờ Owner duyệt -> Chờ ký HĐ -> Chờ thanh toán QR -> Chờ Moderator xác nhận -> Đã xác nhận thanh toán");
 
 
   console.log("--- Hoàn tất nạp dữ liệu mẫu thành công! ---");

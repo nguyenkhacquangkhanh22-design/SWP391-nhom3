@@ -4,6 +4,7 @@ const ContractTemplate = require("../models/ContractTemplate");
 const Equipment = require("../models/Equipment");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const HandoverRecord = require("../models/HandoverRecord");
+const Rental = require("../models/Rental");
 const RentalContract = require("../models/RentalContract");
 const RentalRequest = require("../models/RentalRequest");
 const SupportTicket = require("../models/SupportTicket");
@@ -570,7 +571,173 @@ async function submitSupportTicket(req, res) {
   res.status(201).json({ message: "Đã gửi yêu cầu hỗ trợ.", ticket });
 }
 
+// -----------------------------------------------------------------------------
+// Bước Thanh Toán QR: Rental Moderator đối chiếu & xác nhận thanh toán của Renter
+// -----------------------------------------------------------------------------
+async function listPayments(req, res) {
+  const statusFilter = cleanText(req.query.status);
+  const filter = statusFilter
+    ? { status: statusFilter }
+    : {
+        $or: [
+          {
+            status: {
+              $in: [
+                "PAYMENT_VERIFYING",
+                "PAYMENT_REJECTED",
+                "PAID",
+                "ACTIVE",
+                "RETURNED",
+                "COMPLETED",
+                "payment_verifying",
+                "payment_rejected",
+                "confirmed",
+              ],
+            },
+          },
+          { "payment.paymentStatus": { $in: ["verifying", "paid", "rejected"] } },
+        ],
+      };
+
+  const items = await Rental.find(filter)
+    .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
+    .populate("owner", "name email phone")
+    .populate("renter", "name email phone")
+    .populate("payment.verifiedBy", "name email")
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const priority = (r) => {
+    const s = String(r.status || "").toUpperCase();
+    if (s === "PAYMENT_VERIFYING" || r.payment?.paymentStatus === "verifying") return 0;
+    if (s === "PAYMENT_REJECTED" || r.payment?.paymentStatus === "rejected") return 1;
+    return 2;
+  };
+  items.sort((a, b) => priority(a) - priority(b));
+
+  res.json({ payments: items });
+}
+
+async function verifyPayment(req, res) {
+  const { action } = req.body; // 'approve' | 'reject'
+  const note = cleanText(req.body.note);
+
+  if (!["approve", "reject"].includes(action)) {
+    throw new AppError(400, "Thao tác xác nhận thanh toán không hợp lệ (approve hoặc reject).");
+  }
+  if (action === "reject" && !note) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối xác nhận thanh toán để khách thuê kiểm tra lại.");
+  }
+
+  const rental = await Rental.findById(req.params.id)
+    .populate("equipment", "title images dailyRate depositAmount category")
+    .populate("owner", "name email phone")
+    .populate("renter", "name email phone");
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê cần xác nhận thanh toán.");
+  }
+
+  const upper = String(rental.status || "").toUpperCase();
+  if (upper !== "PAYMENT_VERIFYING" && rental.payment?.paymentStatus !== "verifying") {
+    throw new AppError(400, `Đơn thuê này không ở trạng thái chờ xác nhận thanh toán (hiện tại: ${rental.status}).`);
+  }
+
+  if (!rental.payment) {
+    rental.payment = {};
+  }
+
+  let notificationWarning = "";
+
+  if (action === "approve") {
+    rental.status = "PAID";
+    rental.payment.isPaid = true;
+    rental.payment.paymentStatus = "paid";
+    rental.payment.paidAt = new Date();
+    rental.payment.verifiedBy = req.user._id;
+    rental.payment.verifiedAt = new Date();
+    rental.payment.moderatorNote =
+      note || "Rental Moderator đã đối chiếu chuyển khoản QR và xác nhận thanh toán thành công.";
+    await rental.save();
+
+    const w1 = await notifyUsers(
+      [rental.renter?._id || rental.renter],
+      `✅ Đã xác nhận thanh toán QR đơn #${rental.rentalCode}`,
+      `Rental Moderator đã xác nhận khoản thanh toán ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ cho thiết bị "${rental.equipment?.title || ""}". Bạn đã sẵn sàng nhận bàn giao thiết bị!`,
+      rental._id
+    );
+    const w2 = await notifyUsers(
+      [rental.owner?._id || rental.owner],
+      `💰 Khách thuê đã thanh toán đủ cọc & phí đơn #${rental.rentalCode}`,
+      `Rental Moderator đã xác nhận khách thuê ${rental.renter?.name || ""} chuyển khoản đủ ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ. Bạn có thể tiến hành bàn giao thiết bị.`,
+      rental._id
+    );
+    notificationWarning = w1 || w2;
+
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("payment:verified", {
+        rentalId: rental._id.toString(),
+        rentalCode: rental.rentalCode,
+        status: "PAID",
+      });
+    } catch {}
+
+    const populated = await Rental.findById(rental._id)
+      .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
+      .populate("owner", "name email phone")
+      .populate("renter", "name email phone")
+      .populate("payment.verifiedBy", "name email")
+      .lean();
+
+    return res.json({
+      message: `Đã xác nhận thanh toán QR cho đơn #${rental.rentalCode} thành công!`,
+      notificationWarning,
+      paymentRental: populated,
+    });
+  } else {
+    rental.status = "PAYMENT_REJECTED";
+    rental.payment.isPaid = false;
+    rental.payment.paymentStatus = "rejected";
+    rental.payment.verifiedBy = req.user._id;
+    rental.payment.verifiedAt = new Date();
+    rental.payment.moderatorNote = note;
+    await rental.save();
+
+    notificationWarning = await notifyUsers(
+      [rental.renter?._id || rental.renter],
+      `❌ Chưa thể xác nhận thanh toán đơn #${rental.rentalCode}`,
+      `Rental Moderator phản hồi về giao dịch thanh toán QR của bạn: ${note}. Vui lòng kiểm tra và gửi xác nhận lại.`,
+      rental._id
+    );
+
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("payment:rejected", {
+        rentalId: rental._id.toString(),
+        rentalCode: rental.rentalCode,
+        reason: note,
+      });
+    } catch {}
+
+    const populated = await Rental.findById(rental._id)
+      .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
+      .populate("owner", "name email phone")
+      .populate("renter", "name email phone")
+      .populate("payment.verifiedBy", "name email")
+      .lean();
+
+    return res.json({
+      message: `Đã từ chối xác nhận thanh toán đơn #${rental.rentalCode} và thông báo cho khách thuê.`,
+      notificationWarning,
+      paymentRental: populated,
+    });
+  }
+}
+
 module.exports = {
+  listPayments,
+  verifyPayment,
   createTemplate,
   createTemplateVersion,
   forwardRentalRequest,
