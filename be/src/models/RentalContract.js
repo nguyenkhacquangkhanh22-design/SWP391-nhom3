@@ -84,12 +84,12 @@ const rentalContractSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "draft",                 // UC_O12: Mới tạo nháp
-        "pending_approval",      // UC_O14: Gửi Rental Moderator duyệt
-        "moderator_rejected",    // Moderator từ chối / trả về chỉnh sửa (UC_O13)
-        "moderator_approved",    // Moderator phê duyệt
-        "signed",                // UC_O15: Owner đã xác nhận/ký e-contract
-        "active",                // Đang trong thời gian thuê
+        "draft",                 // Owner mới tạo nháp
+        "pending_approval",      // Owner gửi Hợp đồng cho Quản lý web duyệt
+        "moderator_rejected",    // Quản lý web từ chối / trả về chỉnh sửa
+        "moderator_approved",    // Quản lý web đã duyệt & gửi cho Người thuê (Renter) ký tên
+        "signed",                // Người thuê đã ký tên hoàn tất
+        "active",                // Đang trong thời gian thuê (đã bàn giao)
         "completed",             // Đã kết thúc thuê
         "cancelled",             // Hủy
       ],
@@ -128,6 +128,8 @@ const rentalContractSchema = new mongoose.Schema(
     renter_signature: {
       signed: { type: Boolean, default: false },
       signed_at: { type: Date },
+      signature_data: { type: String, default: "" },
+      signer_name: { type: String, default: "" },
     },
   },
   {

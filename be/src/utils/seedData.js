@@ -8,7 +8,7 @@ const HandoverRecord = require("../models/HandoverRecord");
 const Settlement = require("../models/Settlement");
 
 async function seedData() {
-  console.log("--- Bắt đầu nạp dữ liệu mẫu cho Owner (10 Use Cases) ---");
+  console.log("--- Bắt đầu nạp dữ liệu mẫu cho Hệ thống Thuê Thiết Bị ---");
 
   // 1. Create or update Owner account (UC_O01)
   let owner = await User.findOne({ email: "owner@example.com" });
@@ -50,6 +50,27 @@ async function seedData() {
   } else {
     renter.password_hash = renterHash;
     await renter.save();
+  }
+
+  // 2b. Create sample Web Manager / Rental Moderator account
+  let moderator = await User.findOne({ email: "moderator@example.com" });
+  const modHash = await bcrypt.hash("Moderator@123456", 12);
+  if (!moderator) {
+    moderator = await User.create({
+      User_Id: "USR-MOD-01",
+      name: "Quản Lý Web (Rental Moderator)",
+      email: "moderator@example.com",
+      password_hash: modHash,
+      role: "rentalmoderator",
+      status: "active",
+      trust_score: 100,
+    });
+    console.log("✓ Đã tạo tài khoản Quản lý web (Moderator): moderator@example.com / Moderator@123456");
+  } else {
+    moderator.role = "rentalmoderator";
+    moderator.password_hash = modHash;
+    moderator.status = "active";
+    await moderator.save();
   }
 
   // 3. Create Owner Profile (UC_O02)
@@ -94,7 +115,11 @@ async function seedData() {
       { key: "Chống rung", value: "5 trục SteadyShot 5.5 stops" },
       { key: "Ngàm ống kính", value: "Sony E-mount" },
     ],
-    images: ["https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop"],
+    images: [
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1510127034890-ba27508e9f1c?w=800&auto=format&fit=crop",
+    ],
     accessories: ["2 Pin zin FZ100", "Sạc đôi nhanh", "Thẻ nhớ Sony Tough 128GB", "Dây đeo Peak Design", "Hộp chống sốc"],
     condition: "Như mới (98%)",
     pricing: {
@@ -136,7 +161,10 @@ async function seedData() {
       { key: "Khẩu độ tối đa", value: "f/2.8" },
       { key: "Kính lọc", value: "Phi 82mm" },
     ],
-    images: ["https://images.unsplash.com/photo-1617005082133-548c4dd27f35?w=800&auto=format&fit=crop"],
+    images: [
+      "https://images.unsplash.com/photo-1617005082133-548c4dd27f35?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop",
+    ],
     accessories: ["Hood zin che nắng", "Nắp trước sau", "Filter B+W nano phi 82mm", "Túi nhung chống sốc"],
     condition: "Rất tốt (95%)",
     pricing: {
@@ -173,15 +201,37 @@ async function seedData() {
     visibility: "published",
     status: "available",
   });
-  console.log("✓ Đã nạp 3 thiết bị mẫu kèm ảnh, bảng giá & lịch trống/bận (UC_O03-UC_O06)");
+  console.log("✓ Đã nạp 3 thiết bị mẫu kèm nhiều ảnh, bảng giá & lịch trống/bận (UC_O03-UC_O06)");
 
-  // 5. Create Intermediary Rental Requests (UC_O07)
+  // 5. Create Rental Requests demonstrating the 5-step flow:
+  // Request 0: Renter vừa bấm thuê -> Đang chờ Quản lý web gửi cho Owner (pending_moderator)
   await RentalRequest.create({
-    request_code: "REQ-IM-2026-001",
+    request_code: "YC-2026-MOD01",
     equipment_id: eq1._id,
     owner_id: owner._id,
     renter_id: renter._id,
-    renter_name: "Trần Thị Khách Thuê (Khách qua Trung Gian)",
+    renter_name: "Trần Thị Khách Thuê",
+    renter_phone: "0918 777 999",
+    renter_email: "renter@example.com",
+    rental_type: "daily",
+    start_date: new Date(Date.now() + 86400000 * 3),
+    end_date: new Date(Date.now() + 86400000 * 5),
+    duration_days: 2,
+    duration_hours: 48,
+    rental_fee: 1100000,
+    deposit_amount: 5000000,
+    total_estimated_amount: 6100000,
+    renter_note: "Em cần thuê máy Sony A7 IV quay phóng sự 2 ngày cuối tuần. Nhờ Quản lý web chuyển cho Owner duyệt giúp em.",
+    status: "pending_moderator",
+  });
+
+  // Request 1: Quản lý web đã chuyển tiếp cho Owner -> Chờ Owner duyệt (pending)
+  await RentalRequest.create({
+    request_code: "YC-2026-OWN01",
+    equipment_id: eq1._id,
+    owner_id: owner._id,
+    renter_id: renter._id,
+    renter_name: "Trần Thị Khách Thuê",
     renter_phone: "0918 777 999",
     renter_email: "renter@example.com",
     rental_type: "daily",
@@ -192,31 +242,38 @@ async function seedData() {
     rental_fee: 1100000,
     deposit_amount: 5000000,
     total_estimated_amount: 6100000,
-    renter_note: "Bộ phận Trung gian hỏi: Khách cần quay TVC quảng cáo tại Đà Lạt trong 2 ngày, Owner xác nhận thiết bị có sẵn sàng cho thuê không?",
+    renter_note: "Khách cần quay TVC quảng cáo tại Đà Lạt trong 2 ngày.",
+    moderator_id: moderator._id,
+    moderator_note: "Quản lý web đã xác minh thông tin người thuê, chuyển tiếp cho Owner duyệt.",
+    forwarded_to_owner_at: new Date(),
     status: "pending",
   });
 
+  // Request 2: Owner đã duyệt -> Sẵn sàng để Owner lập hợp đồng gửi Quản lý web duyệt (approved)
   const req2 = await RentalRequest.create({
-    request_code: "REQ-IM-2026-002",
+    request_code: "YC-2026-APP02",
     equipment_id: eq2._id,
     owner_id: owner._id,
     renter_id: renter._id,
-    renter_name: "Lê Hoàng Long (Studio Cưới Sài Gòn)",
+    renter_name: "Trần Thị Khách Thuê",
     renter_phone: "0903 888 222",
-    renter_email: "long.le@example.com",
+    renter_email: "renter@example.com",
     rental_type: "daily",
-    start_date: new Date(Date.now() - 86400000 * 4),
-    end_date: new Date(Date.now() - 86400000 * 2),
+    start_date: new Date(Date.now() + 86400000 * 1),
+    end_date: new Date(Date.now() + 86400000 * 3),
     duration_days: 2,
     duration_hours: 48,
     rental_fee: 700000,
     deposit_amount: 3500000,
     total_estimated_amount: 4200000,
     renter_note: "Chụp album ngoại cảnh Vũng Tàu.",
+    moderator_id: moderator._id,
+    moderator_note: "Quản lý web đã chuyển cho Owner.",
+    forwarded_to_owner_at: new Date(Date.now() - 86400000),
     status: "approved",
-    responded_at: new Date(Date.now() - 86400000 * 5),
+    responded_at: new Date(),
   });
-  console.log("✓ Đã nạp yêu cầu hỏi thuê từ bộ phận Trung gian (UC_O07)");
+  console.log("✓ Đã nạp yêu cầu thuê mẫu ở từng bước (Chờ Quản lý web -> Chờ Owner duyệt -> Chờ Owner lập HĐ)");
 
   // 6. Create Contracts & Return Inspection (UC_O09)
   const contract1 = await RentalContract.create({
@@ -231,14 +288,15 @@ async function seedData() {
     deposit_amount: 4000000,
     start_date: new Date(Date.now() - 86400000 * 3),
     end_date: new Date(Date.now() - 86400000),
-    rental_period: {
-      start_date: new Date(Date.now() - 86400000 * 3),
-      end_date: new Date(Date.now() - 86400000),
+    owner_signature: {
+      signed: true,
+      signed_at: new Date(Date.now() - 86400000 * 4),
+      signer_name: owner.name,
     },
-    financials: {
-      rental_fee: 800000,
-      deposit_amount: 4000000,
-      total_amount: 4800000,
+    renter_signature: {
+      signed: true,
+      signed_at: new Date(Date.now() - 86400000 * 3),
+      signer_name: renter.name,
     },
     terms_content: "Điều khoản thuê máy chuẩn sàn SWP391.",
   });
@@ -279,10 +337,10 @@ async function seedData() {
     owner_id: owner._id,
     renter_id: renter._id,
     total_rental_fee: 1650000,
-    platform_fee: 165000, // 10%
+    platform_fee: 165000,
     deposit_paid: 5000000,
     deposit_refund_to_renter: 5000000,
-    owner_payout_amount: 1485000, // 1650000 - 165000
+    owner_payout_amount: 1485000,
     owner_confirmed: false,
     payout_status: "pending_owner_confirmation",
     bank_info: {
@@ -298,7 +356,7 @@ async function seedData() {
     owner_id: owner._id,
     renter_id: renter._id,
     total_rental_fee: 2400000,
-    platform_fee: 240000, // 10%
+    platform_fee: 240000,
     deposit_paid: 4000000,
     deposit_refund_to_renter: 4000000,
     owner_payout_amount: 2160000,
@@ -314,7 +372,7 @@ async function seedData() {
   });
   console.log("✓ Đã nạp hồ sơ quyết toán tiền & lịch sử giải ngân doanh thu (UC_O10, UC_O11)");
 
-  console.log("--- Hoàn tất nạp dữ liệu mẫu 10 Use Cases cho Owner thành công! ---");
+  console.log("--- Hoàn tất nạp dữ liệu mẫu thành công! ---");
 }
 
 module.exports = seedData;

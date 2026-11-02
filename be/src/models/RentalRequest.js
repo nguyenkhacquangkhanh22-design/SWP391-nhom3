@@ -81,16 +81,29 @@ const rentalRequestSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "pending",
-        "approved",
-        "rejected",
-        "contract_created",
+        "pending_moderator", // Bước 1: Renter bấm thuê -> gửi tới Quản lý web
+        "moderator_rejected", // Quản lý web từ chối yêu cầu thuê
+        "pending",           // Bước 2: Quản lý web đã gửi yêu cầu cho Owner duyệt
+        "approved",          // Bước 3a: Owner đã duyệt yêu cầu thuê
+        "rejected",          // Owner từ chối yêu cầu thuê
+        "contract_created",  // Bước 3b: Owner đã lập hợp đồng cho thuê
         "active",
         "completed",
         "cancelled",
       ],
-      default: "pending",
+      default: "pending_moderator",
       index: true,
+    },
+    moderator_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    moderator_note: {
+      type: String,
+      default: "",
+    },
+    forwarded_to_owner_at: {
+      type: Date,
     },
     rejection_reason: {
       type: String,

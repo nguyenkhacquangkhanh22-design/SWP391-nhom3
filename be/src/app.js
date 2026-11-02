@@ -20,8 +20,8 @@ app.setServerReady = (ready = true) => {
   isReady = ready;
 };
 
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ limit: "20mb", extended: true }));
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ limit: "25mb", extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Enable CORS for local dev

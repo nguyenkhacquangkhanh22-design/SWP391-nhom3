@@ -51,13 +51,13 @@ export default function OwnerPortal() {
 
   useEffect(() => {
     if (token) {
-      loadAllData();
+      void loadAllData(true);
     }
   }, [token]);
 
-  async function loadAllData() {
+  async function loadAllData(showSpinner = false) {
     if (!token) return;
-    setIsLoading(true);
+    if (showSpinner) setIsLoading(true);
     try {
       const [overviewData, equipmentsData, requestsData, contractsData] =
         await Promise.all([
@@ -75,7 +75,7 @@ export default function OwnerPortal() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu.");
     } finally {
-      setIsLoading(false);
+      if (showSpinner) setIsLoading(false);
     }
   }
 
@@ -86,8 +86,15 @@ export default function OwnerPortal() {
   }
 
   function handleCreateContractFromRequest(req: RentalRequest) {
-    setRequestForContract(req);
-    handleTabChange("contracts");
+    const approvedReq: RentalRequest = { ...req, status: "approved" };
+    setRequests((prev) =>
+      prev.some((item) => item._id === approvedReq._id)
+        ? prev.map((item) => (item._id === approvedReq._id ? approvedReq : item))
+        : [approvedReq, ...prev]
+    );
+    setRequestForContract(approvedReq);
+    setError("");
+    setActiveTab("contracts");
   }
 
   function handleOpenHandover(con: RentalContract) {
@@ -95,9 +102,7 @@ export default function OwnerPortal() {
     handleTabChange("handover");
   }
 
-  const approvedRequests = requests.filter(
-    (r) => r.status === "approved" || r.status === "contract_created"
-  );
+  const approvedRequests = requests.filter((r) => r.status === "approved");
 
   return (
     <div className="owner-portal-layout">
@@ -228,7 +233,7 @@ export default function OwnerPortal() {
               <OwnerEquipmentsTab
                 equipments={equipments}
                 token={token || ""}
-                onRefresh={loadAllData}
+                onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
               />
@@ -238,7 +243,7 @@ export default function OwnerPortal() {
               <OwnerRequestsTab
                 requests={requests}
                 token={token || ""}
-                onRefresh={loadAllData}
+                onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
                 onCreateContract={handleCreateContractFromRequest}
@@ -250,7 +255,7 @@ export default function OwnerPortal() {
                 contracts={contracts}
                 approvedRequests={approvedRequests}
                 token={token || ""}
-                onRefresh={loadAllData}
+                onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
                 initialSelectedRequest={requestForContract}
@@ -265,7 +270,7 @@ export default function OwnerPortal() {
                 onError={setError}
                 onSuccess={setSuccess}
                 selectedContract={contractForHandover}
-                onRefreshContracts={loadAllData}
+                onRefreshContracts={() => void loadAllData(false)}
               />
             )}
 

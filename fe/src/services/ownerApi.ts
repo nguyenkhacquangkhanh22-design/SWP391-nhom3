@@ -196,6 +196,7 @@ export const ownerApi = {
       custom_terms?: string;
       template_id?: string;
       template_values?: Record<string, string>;
+      submit_immediately?: boolean;
     }
   ) =>
     request<{ message: string; contract: RentalContract }>(
@@ -207,7 +208,12 @@ export const ownerApi = {
   updateDraftContract: (
     token: string,
     id: string,
-    data: { terms_content: string; special_conditions?: string; changes_summary?: string }
+    data: {
+      terms_content: string;
+      special_conditions?: string;
+      changes_summary?: string;
+      submit_immediately?: boolean;
+    }
   ) =>
     request<{ message: string; contract: RentalContract }>(
       `/api/owner/contracts/${id}`,
@@ -326,7 +332,7 @@ export const ownerApi = {
       token
     ),
 
-  // 8. Public Marketplace (UC_O19, UC_O20)
+  // 8. Public Marketplace & Renter Actions (UC_O19, UC_O20, Renter Sign Contract)
   browseEquipments: (params?: Record<string, string>) => {
     const searchParams = new URLSearchParams(params || {}).toString();
     const query = searchParams ? `?${searchParams}` : "";
@@ -350,6 +356,20 @@ export const ownerApi = {
     request<{ message: string; request: RentalRequest }>(
       `/api/equipments/${equipmentId}/request-rental`,
       { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  getMyRentals: (token: string) =>
+    request<{ requests: RentalRequest[]; contracts: RentalContract[] }>(
+      "/api/equipments/my/rentals",
+      { method: "GET" },
+      token
+    ),
+
+  signMyContract: (token: string, contractId: string, signature_note?: string) =>
+    request<{ message: string; contract: RentalContract }>(
+      `/api/equipments/my/contracts/${contractId}/sign`,
+      { method: "POST", body: JSON.stringify({ signature_note }) },
       token
     ),
 

@@ -16,6 +16,40 @@ async function request<T>(
   return data as T;
 }
 
+export interface ModeratorRentalRequest {
+  _id: string;
+  request_code: string;
+  renter_name: string;
+  renter_email?: string;
+  renter_phone?: string;
+  rental_type: "daily" | "hourly";
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  duration_hours: number;
+  rental_fee: number;
+  deposit_amount: number;
+  total_estimated_amount: number;
+  renter_note?: string;
+  status: string;
+  moderator_note?: string;
+  forwarded_to_owner_at?: string;
+  rejection_reason?: string;
+  createdAt: string;
+  equipment_id: {
+    _id: string;
+    title: string;
+    category?: string;
+    brand?: string;
+    model_name?: string;
+    serial_number?: string;
+    images?: string[];
+  };
+  owner_id: { _id: string; name: string; email: string };
+  renter_id: { _id: string; name: string; email: string };
+  moderator_id?: { _id: string; name: string; email: string };
+}
+
 export interface ModeratorContract {
   _id: string;
   contract_code: string;
@@ -31,6 +65,16 @@ export interface ModeratorContract {
   moderator_feedback?: string;
   moderator_approved_at?: string;
   moderator_id?: { name: string; email: string };
+  owner_signature?: {
+    signed: boolean;
+    signed_at?: string;
+    signer_name?: string;
+  };
+  renter_signature?: {
+    signed: boolean;
+    signed_at?: string;
+    signer_name?: string;
+  };
   moderation_history?: {
     action: string;
     reason: string;
@@ -138,6 +182,17 @@ export interface ModeratorTicket {
 }
 
 export const moderatorApi = {
+  getRentalRequests: (token: string) =>
+    request<{ rentalRequests: ModeratorRentalRequest[] }>("/rental-requests", token),
+  forwardRentalRequest: (token: string, id: string, action: "forward" | "reject", note?: string) =>
+    request<{ message: string; rentalRequest: ModeratorRentalRequest }>(
+      `/rental-requests/${id}/forward`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      }
+    ),
   getContracts: (token: string) =>
     request<{ contracts: ModeratorContract[] }>("/contracts", token),
   reviewContract: (token: string, id: string, action: "approve" | "reject", reason?: string) =>

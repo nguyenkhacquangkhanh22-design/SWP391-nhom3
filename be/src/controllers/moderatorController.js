@@ -5,6 +5,7 @@ const Equipment = require("../models/Equipment");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const HandoverRecord = require("../models/HandoverRecord");
 const RentalContract = require("../models/RentalContract");
+const RentalRequest = require("../models/RentalRequest");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -40,6 +41,94 @@ async function notifyUsers(userIds, title, message, relatedRecordId) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Bước 2: Quản lý web xem Yêu cầu thuê từ Renter & Gửi cho Owner duyệt
+// -----------------------------------------------------------------------------
+async function listRentalRequests(req, res) {
+  const status = cleanText(req.query.status);
+  const filter = status ? { status } : {};
+  const rentalRequests = await RentalRequest.find(filter)
+    .populate("equipment_id", "title category brand model_name serial_number images pricing status")
+    .populate("owner_id", "name email")
+    .populate("renter_id", "name email")
+    .populate("moderator_id", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.json({ rentalRequests });
+}
+
+async function forwardRentalRequest(req, res) {
+  const { action } = req.body; // 'forward' | 'reject'
+  const note = cleanText(req.body.note);
+
+  if (!["forward", "reject"].includes(action)) {
+    throw new AppError(400, "Thao tác không hợp lệ (forward hoặc reject).");
+  }
+  if (action === "reject" && !note) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối yêu cầu thuê.");
+  }
+
+  const rentalReq = await RentalRequest.findById(req.params.id)
+    .populate("equipment_id", "title")
+    .populate("owner_id", "name email")
+    .populate("renter_id", "name email");
+
+  if (!rentalReq) {
+    throw new AppError(404, "Không tìm thấy yêu cầu thuê.");
+  }
+
+  if (rentalReq.status !== "pending_moderator") {
+    throw new AppError(400, `Yêu cầu thuê này đã được xử lý (trạng thái hiện tại: ${rentalReq.status}).`);
+  }
+
+  if (action === "forward") {
+    rentalReq.status = "pending"; // Chuyển sang chờ Owner duyệt
+    rentalReq.moderator_id = req.user._id;
+    rentalReq.moderator_note = note || "Quản lý web đã kiểm tra và chuyển yêu cầu cho Owner duyệt.";
+    rentalReq.forwarded_to_owner_at = new Date();
+    await rentalReq.save();
+
+    await notifyUsers(
+      [rentalReq.owner_id?._id],
+      `📬 Yêu cầu thuê mới #${rentalReq.request_code} từ Quản lý web`,
+      `Quản lý web đã gửi yêu cầu thuê thiết bị "${rentalReq.equipment_id?.title || ""}" của khách ${rentalReq.renter_name} cho bạn duyệt. Vui lòng vào Cổng Owner để duyệt và lập hợp đồng.`,
+      rentalReq._id
+    );
+
+    await notifyUsers(
+      [rentalReq.renter_id?._id],
+      `✅ Yêu cầu thuê #${rentalReq.request_code} đã được chuyển cho Owner`,
+      `Quản lý web đã tiếp nhận và gửi yêu cầu thuê của bạn tới Chủ thiết bị (${rentalReq.owner_id?.name || "Owner"}) để duyệt và lập hợp đồng.`,
+      rentalReq._id
+    );
+
+    res.json({
+      message: "Đã gửi yêu cầu thuê sang cho Owner duyệt thành công!",
+      rentalRequest: rentalReq,
+    });
+  } else {
+    rentalReq.status = "moderator_rejected";
+    rentalReq.moderator_id = req.user._id;
+    rentalReq.moderator_note = note;
+    rentalReq.rejection_reason = note;
+    rentalReq.responded_at = new Date();
+    await rentalReq.save();
+
+    await notifyUsers(
+      [rentalReq.renter_id?._id],
+      `❌ Yêu cầu thuê #${rentalReq.request_code} bị từ chối`,
+      `Quản lý web đã từ chối yêu cầu thuê: ${note}`,
+      rentalReq._id
+    );
+
+    res.json({
+      message: "Đã từ chối yêu cầu thuê.",
+      rentalRequest: rentalReq,
+    });
+  }
+}
+
 function validateTemplate(name, termsContent, fields) {
   if (!cleanText(name) || !cleanText(termsContent)) {
     throw new AppError(400, "Vui lòng nhập tên mẫu và nội dung điều khoản.");
@@ -70,7 +159,7 @@ async function listContracts(req, res) {
   const status = cleanText(req.query.status);
   const filter = status
     ? { status }
-    : { status: { $in: ["pending_approval", "moderator_rejected", "moderator_approved"] } };
+    : { status: { $in: ["pending_approval", "moderator_rejected", "moderator_approved", "signed", "active", "completed"] } };
   const contracts = await RentalContract.find(filter)
     .populate(contractPopulate)
     .sort({ updatedAt: -1 })
@@ -78,6 +167,7 @@ async function listContracts(req, res) {
   res.json({ contracts });
 }
 
+// Bước 4: Quản lý web duyệt Hợp đồng của Owner và gửi cho Người thuê ký tên
 async function reviewContract(req, res) {
   const { action } = req.body;
   const reason = cleanText(req.body.reason);
@@ -141,17 +231,36 @@ async function reviewContract(req, res) {
   if (!updated) {
     throw new AppError(409, "Hồ sơ đã thay đổi hoặc được xử lý. Vui lòng tải lại dữ liệu.");
   }
-  const decisionText = action === "approve"
-    ? `Hợp đồng ${updated.contract_code} phiên bản v${updated.version} đã được phê duyệt.`
-    : `Hợp đồng ${updated.contract_code} phiên bản v${updated.version} bị từ chối: ${reason}`;
-  const notificationWarning = await notifyUsers(
-    [updated.owner_id?._id, updated.renter_id?._id],
-    action === "approve" ? "Hợp đồng đã được phê duyệt" : "Hợp đồng cần chỉnh sửa",
-    decisionText,
-    updated._id
-  );
+
+  let notificationWarning = "";
+  if (action === "approve") {
+    const w1 = await notifyUsers(
+      [updated.renter_id?._id],
+      `✍️ Hợp đồng #${updated.contract_code} đã được gửi tới bạn để ký tên`,
+      `Quản lý web đã phê duyệt Hợp đồng thuê "${updated.title}" (v${updated.version}) và gửi cho bạn. Vui lòng vào trang Hồ sơ cá nhân -> Đơn thuê & Hợp đồng để ký tên điện tử!`,
+      updated._id
+    );
+    const w2 = await notifyUsers(
+      [updated.owner_id?._id],
+      `✅ Hợp đồng #${updated.contract_code} đã được duyệt & gửi cho Người thuê ký`,
+      `Quản lý web đã phê duyệt Hợp đồng ${updated.contract_code} (v${updated.version}) và chuyển cho Người thuê (${updated.renter_id?.name || "Renter"}) ký tên.`,
+      updated._id
+    );
+    notificationWarning = w1 || w2;
+  } else {
+    notificationWarning = await notifyUsers(
+      [updated.owner_id?._id],
+      "Hợp đồng cần chỉnh sửa lại",
+      `Hợp đồng ${updated.contract_code} phiên bản v${updated.version} bị Quản lý web từ chối: ${reason}`,
+      updated._id
+    );
+  }
+
   res.json({
-    message: action === "approve" ? "Đã phê duyệt hợp đồng." : "Đã từ chối hợp đồng.",
+    message:
+      action === "approve"
+        ? "Đã phê duyệt hợp đồng và gửi cho Người thuê (Renter) ký tên!"
+        : "Đã từ chối hợp đồng và yêu cầu Owner chỉnh sửa.",
     notificationWarning,
     contract: updated,
   });
@@ -464,10 +573,12 @@ async function submitSupportTicket(req, res) {
 module.exports = {
   createTemplate,
   createTemplateVersion,
+  forwardRentalRequest,
   listContracts,
   listEquipments,
   listHandoverRecords,
   listPublishedTemplates,
+  listRentalRequests,
   listStatusRequests,
   listTemplates,
   publishTemplate,
