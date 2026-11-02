@@ -24,10 +24,15 @@ async function request<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại backend.", 0);
+  }
 
   const data = await response.json().catch(() => ({}));
 
@@ -48,6 +53,62 @@ export const ownerApi = {
     ),
 
   // 2. Equipment Management (UC_O03, UC_O04, UC_O05, UC_O06, UC_O16)
+  uploadPhoto: async (token: string, file: File): Promise<{ url: string; filename: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch("/api/owner/upload-photo", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+    } catch {
+      throw new ApiError("Không thể kết nối đến máy chủ để tải ảnh lên.", 0);
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
+    }
+
+    return data as { url: string; filename: string };
+  },
+
+  uploadPhotos: async (token: string, files: File[]): Promise<{ urls: string[] }> => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch("/api/owner/upload-photos", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+    } catch {
+      throw new ApiError("Không thể kết nối đến máy chủ để tải ảnh lên.", 0);
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
+    }
+
+    return data as { urls: string[] };
+  },
+
   getEquipments: (token: string) =>
     request<{ equipments: Equipment[] }>("/api/owner/equipments", { method: "GET" }, token),
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Equipment } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
 
@@ -31,6 +31,14 @@ export default function OwnerEquipmentsTab({
   const [serialNumber, setSerialNumber] = useState("");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imagesList, setImagesList] = useState<string[]>([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState("");
+  const [externalUrlInput, setExternalUrlInput] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const proofFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+
   const [accessoriesInput, setAccessoriesInput] = useState("");
   const [condition, setCondition] = useState("Tốt (95%)");
   const [pricePerDay, setPricePerDay] = useState(500000);
@@ -55,6 +63,59 @@ export default function OwnerEquipmentsTab({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setPhotoUploadError("");
+    setIsUploadingPhoto(true);
+
+    try {
+      const fileArray = Array.from(files);
+      const res = await ownerApi.uploadPhotos(token, fileArray);
+      setImagesList((prev) => [...prev, ...res.urls]);
+    } catch (err) {
+      setPhotoUploadError(err instanceof Error ? err.message : "Tải ảnh lên thất bại.");
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleAddExternalUrl() {
+    const trimmed = externalUrlInput.trim();
+    if (!trimmed) return;
+    if (!imagesList.includes(trimmed)) {
+      setImagesList((prev) => [...prev, trimmed]);
+    }
+    setExternalUrlInput("");
+  }
+
+  function handleRemovePhoto(index: number) {
+    setImagesList((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleSetPrimaryPhoto(index: number) {
+    if (index === 0) return;
+    setImagesList((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(index, 1);
+      return [item, ...copy];
+    });
+  }
+
+  async function handleProofFileUpload(file: File | null) {
+    if (!file) return;
+    setIsUploadingProof(true);
+    try {
+      const res = await ownerApi.uploadPhoto(token, file);
+      setStatusProofUrl(res.url);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Tải ảnh minh chứng thất bại.");
+    } finally {
+      setIsUploadingProof(false);
+      if (proofFileInputRef.current) proofFileInputRef.current.value = "";
+    }
+  }
+
   function resetForm() {
     setTitle("");
     setCategory("Máy ảnh & Ống kính");
@@ -63,6 +124,9 @@ export default function OwnerEquipmentsTab({
     setSerialNumber("");
     setDescription("");
     setImageUrl("");
+    setImagesList([]);
+    setPhotoUploadError("");
+    setExternalUrlInput("");
     setAccessoriesInput("");
     setCondition("Tốt (95%)");
     setPricePerDay(500000);
@@ -82,6 +146,9 @@ export default function OwnerEquipmentsTab({
     setSerialNumber(eq.serial_number || "");
     setDescription(eq.description || "");
     setImageUrl(eq.images?.[0] || "");
+    setImagesList(Array.isArray(eq.images) && eq.images.length > 0 ? eq.images : []);
+    setPhotoUploadError("");
+    setExternalUrlInput("");
     setAccessoriesInput(eq.accessories?.join(", ") || "");
     setCondition(eq.condition || "Tốt (95%)");
     setPricePerDay(eq.pricing.price_per_day);
@@ -103,6 +170,8 @@ export default function OwnerEquipmentsTab({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const finalImages = imagesList.length > 0 ? imagesList : (imageUrl ? [imageUrl] : undefined);
+
     const payload = {
       title,
       category,
@@ -110,7 +179,7 @@ export default function OwnerEquipmentsTab({
       model_name: modelName,
       serial_number: serialNumber,
       description,
-      images: imageUrl ? [imageUrl] : undefined,
+      images: finalImages,
       accessories: accessoriesList,
       condition,
       pricing: {
@@ -260,19 +329,38 @@ export default function OwnerEquipmentsTab({
                   }
                   alt={eq.title}
                 />
+                {eq.images && eq.images.length > 1 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "10px",
+                      background: "rgba(0, 0, 0, 0.75)",
+                      color: "#fff",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      backdropFilter: "blur(4px)",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                    }}
+                  >
+                    📷 {eq.images.length} ảnh
+                  </span>
+                )}
                 <span className={`owner-vis-badge vis-${eq.visibility}`}>
                   {eq.visibility === "published"
                     ? "Đang hiển thị"
                     : eq.visibility === "hidden"
-                    ? "Đang ẩn"
-                    : "Bản nháp"}
+                      ? "Đang ẩn"
+                      : "Bản nháp"}
                 </span>
                 <span className={`owner-status-badge status-${eq.status}`}>
                   {eq.status === "available"
                     ? "Sẵn sàng"
                     : eq.status === "rented"
-                    ? "Đang thuê"
-                    : "Bảo trì"}
+                      ? "Đang thuê"
+                      : "Bảo trì"}
                 </span>
               </div>
 
@@ -464,14 +552,215 @@ export default function OwnerEquipmentsTab({
                 </div>
 
                 <div className="form-col-span-2">
-                  <label className="field-label">URL Ảnh thực tế thiết bị (Upload Photos - UC_O03)</label>
-                  <input
-                    className="input-field"
-                    type="url"
-                    placeholder="https://images.unsplash.com/... hoặc link ảnh thực tế"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <label className="field-label" style={{ margin: 0, fontWeight: 600, fontSize: "0.92rem", color: "#fff" }}>
+                      📸 Hình ảnh thực tế thiết bị (Upload Photos - UC_O03)
+                    </label>
+                    <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                      {imagesList.length} ảnh đã chọn {imagesList.length > 0 && "(Ảnh đầu tiên là ảnh bìa)"}
+                    </span>
+                  </div>
+
+                  {/* Drop zone / Upload area */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.dataTransfer.files) {
+                        void handleFileUpload(e.dataTransfer.files);
+                      }
+                    }}
+                    style={{
+                      border: "2px dashed rgba(249, 115, 22, 0.4)",
+                      borderRadius: "12px",
+                      padding: "22px 16px",
+                      textAlign: "center",
+                      cursor: isUploadingPhoto ? "not-allowed" : "pointer",
+                      background: "rgba(249, 115, 22, 0.03)",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/jpg"
+                      multiple
+                      style={{ display: "none" }}
+                      onChange={(e) => void handleFileUpload(e.target.files)}
+                      disabled={isUploadingPhoto}
+                    />
+
+                    {isUploadingPhoto ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                        <div
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            border: "3px solid rgba(249,115,22,0.2)",
+                            borderTopColor: "var(--orange)",
+                            borderRadius: "50%",
+                            animation: "spin 0.8s linear infinite",
+                          }}
+                        />
+                        <span style={{ color: "var(--orange)", fontWeight: 500, fontSize: "0.9rem" }}>
+                          Đang tải ảnh lên máy chủ...
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "2rem" }}>📤</span>
+                        <div style={{ color: "#fff", fontWeight: 600, fontSize: "0.95rem" }}>
+                          Bấm để chọn ảnh từ máy tính hoặc kéo thả ảnh vào đây
+                        </div>
+                        <div style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
+                          Hỗ trợ JPG, PNG, WEBP, GIF (Tối đa 10MB / file. Có thể chọn cùng lúc nhiều ảnh)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {photoUploadError && (
+                    <div style={{ color: "#ef4444", fontSize: "0.82rem", marginTop: "8px" }}>
+                      ⚠️ {photoUploadError}
+                    </div>
+                  )}
+
+                  {/* Add by link fallback */}
+                  <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                    <input
+                      className="input-field"
+                      type="url"
+                      placeholder="Hoặc dán URL ảnh trực tuyến (https://images.unsplash.com/...)"
+                      value={externalUrlInput}
+                      onChange={(e) => setExternalUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddExternalUrl();
+                        }
+                      }}
+                      style={{ margin: 0 }}
+                    />
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={handleAddExternalUrl}
+                      style={{ whiteSpace: "nowrap", padding: "0 16px" }}
+                    >
+                      + Thêm URL
+                    </button>
+                  </div>
+
+                  {/* Image thumbnails list */}
+                  {imagesList.length > 0 && (
+                    <div style={{ marginTop: "14px" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+                          gap: "12px",
+                        }}
+                      >
+                        {imagesList.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              position: "relative",
+                              borderRadius: "10px",
+                              overflow: "hidden",
+                              border: idx === 0 ? "2px solid var(--orange)" : "1px solid var(--border)",
+                              background: "#0b0f19",
+                              height: "110px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Ảnh ${idx + 1}`}
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src =
+                                  "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80";
+                              }}
+                            />
+
+                            {/* Badge cover photo */}
+                            {idx === 0 ? (
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  top: "6px",
+                                  left: "6px",
+                                  background: "var(--orange)",
+                                  color: "#000",
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  boxShadow: "0 2px 4px rgba(0,0,0,0.4)",
+                                }}
+                              >
+                                ★ ẢNH BÌA
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                title="Đặt làm ảnh bìa"
+                                onClick={() => handleSetPrimaryPhoto(idx)}
+                                style={{
+                                  position: "absolute",
+                                  top: "6px",
+                                  left: "6px",
+                                  background: "rgba(0,0,0,0.75)",
+                                  color: "#fff",
+                                  border: "1px solid rgba(255,255,255,0.2)",
+                                  borderRadius: "4px",
+                                  fontSize: "0.65rem",
+                                  padding: "2px 6px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Đặt bìa
+                              </button>
+                            )}
+
+                            {/* Delete button */}
+                            <button
+                              type="button"
+                              title="Xóa ảnh"
+                              onClick={() => handleRemovePhoto(idx)}
+                              style={{
+                                position: "absolute",
+                                top: "6px",
+                                right: "6px",
+                                background: "rgba(239, 68, 68, 0.9)",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "50%",
+                                width: "22px",
+                                height: "22px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                fontSize: "0.75rem",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-col-span-2">
@@ -699,14 +988,41 @@ export default function OwnerEquipmentsTab({
                   />
                 </div>
                 <div>
-                  <label className="field-label">Link ảnh minh chứng (nếu có)</label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label className="field-label" style={{ margin: 0 }}>Ảnh minh chứng hư hại / bảo trì (nếu có)</label>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      style={{ fontSize: "0.78rem", padding: "2px 8px" }}
+                      onClick={() => proofFileInputRef.current?.click()}
+                      disabled={isUploadingProof}
+                    >
+                      {isUploadingProof ? "Đang tải ảnh..." : "📁 Tải ảnh từ máy"}
+                    </button>
+                    <input
+                      ref={proofFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={(e) => void handleProofFileUpload(e.target.files?.[0] || null)}
+                    />
+                  </div>
                   <input
                     className="input-field"
                     type="url"
-                    placeholder="https://... ảnh hóa đơn bảo trì hoặc vết hư hỏng"
+                    placeholder="https://... hoặc tải ảnh từ máy tính ở trên"
                     value={statusProofUrl}
                     onChange={(e) => setStatusProofUrl(e.target.value)}
                   />
+                  {statusProofUrl && (
+                    <div style={{ marginTop: "6px" }}>
+                      <img
+                        src={statusProofUrl}
+                        alt="Ảnh minh chứng"
+                        style={{ height: "60px", borderRadius: "6px", objectFit: "cover" }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

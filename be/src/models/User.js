@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       required: true,
-      default: "user",
+      default: "renter",
     },
     status: {
       type: String,
@@ -38,6 +38,21 @@ const userSchema = new mongoose.Schema(
     trust_score: {
       type: Number,
       default: 0,
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    address: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    avatarUrl: {
+      type: String,
+      trim: true,
+      default: "",
     },
     kycStatus: {
       type: String,

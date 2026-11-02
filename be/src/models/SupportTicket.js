@@ -2,49 +2,52 @@ const mongoose = require("mongoose");
 
 const supportTicketSchema = new mongoose.Schema(
   {
+    ticketCode: {
+      type: String,
+      trim: true,
+    },
     ticket_code: {
       type: String,
-      required: true,
-      unique: true,
       trim: true,
+    },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
       index: true,
     },
     user_role: {
       type: String,
-      default: "owner",
+      default: "user",
     },
-    category: {
-      type: String,
-      required: true,
-      enum: [
-        "Kỹ thuật hệ thống",
-        "Quyết toán & Tiền cọc",
-        "Hợp đồng & Pháp lý",
-        "Xác minh danh tính",
-        "Khác",
-      ],
-      default: "Kỹ thuật hệ thống",
+    rental: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Rental",
+    },
+    related_record_id: {
+      type: mongoose.Schema.Types.ObjectId,
     },
     subject: {
       type: String,
       required: true,
       trim: true,
     },
+    category: {
+      type: String,
+      default: "general",
+    },
     message: {
       type: String,
       required: true,
-    },
-    related_record_id: {
-      type: mongoose.Schema.Types.ObjectId,
+      trim: true,
     },
     priority: {
       type: String,
-      enum: ["low", "medium", "high"],
+      enum: ["low", "normal", "medium", "high", "urgent"],
       default: "medium",
     },
     status: {
@@ -68,5 +71,27 @@ const supportTicketSchema = new mongoose.Schema(
     collection: "support_tickets",
   }
 );
+
+supportTicketSchema.pre("save", function (next) {
+  if (this.ticketCode && !this.ticket_code) {
+    this.ticket_code = this.ticketCode;
+  } else if (this.ticket_code && !this.ticketCode) {
+    this.ticketCode = this.ticket_code;
+  }
+
+  if (this.user && !this.user_id) {
+    this.user_id = this.user;
+  } else if (this.user_id && !this.user) {
+    this.user = this.user_id;
+  }
+
+  if (this.rental && !this.related_record_id) {
+    this.related_record_id = this.rental;
+  } else if (this.related_record_id && !this.rental) {
+    this.rental = this.related_record_id;
+  }
+
+  next();
+});
 
 module.exports = mongoose.model("SupportTicket", supportTicketSchema);

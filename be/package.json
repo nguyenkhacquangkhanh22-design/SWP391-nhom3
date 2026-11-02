@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "seed": "node src/utils/runSeed.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -15,10 +16,12 @@
     "google-auth-library": "^11.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
+    "multer": "^2.5.0",
     "nodemailer": "^10.0.14",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.9"
   }
 }

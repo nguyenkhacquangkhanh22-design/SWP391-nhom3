@@ -5,13 +5,22 @@ const equipmentSchema = new mongoose.Schema(
     owner_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      index: true,
+    },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       index: true,
     },
     title: {
       type: String,
       required: true,
       trim: true,
+      index: true,
+    },
+    description: {
+      type: String,
+      default: "",
     },
     category: {
       type: String,
@@ -21,10 +30,15 @@ const equipmentSchema = new mongoose.Schema(
     },
     brand: {
       type: String,
+      trim: true,
+      default: "",
+    },
+    model_name: {
+      type: String,
       default: "",
       trim: true,
     },
-    model_name: {
+    modelNumber: {
       type: String,
       default: "",
       trim: true,
@@ -34,27 +48,16 @@ const equipmentSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-    description: {
-      type: String,
-      default: "",
+    dailyRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
     },
-    specifications: [
-      {
-        key: { type: String, required: true },
-        value: { type: String, required: true },
-      },
-    ],
-    images: {
-      type: [String],
-      default: [],
-    },
-    accessories: {
-      type: [String],
-      default: [],
-    },
-    condition: {
-      type: String,
-      default: "Tốt (95%)",
+    depositAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     pricing: {
       price_per_hour: {
@@ -64,18 +67,53 @@ const equipmentSchema = new mongoose.Schema(
       },
       price_per_day: {
         type: Number,
-        required: true,
+        default: 0,
         min: 0,
       },
       deposit_amount: {
         type: Number,
-        required: true,
+        default: 0,
         min: 0,
       },
       weekend_rate: {
         type: Number,
         default: 0,
       },
+    },
+    status: {
+      type: String,
+      default: "available",
+      index: true,
+    },
+    visibility: {
+      type: String,
+      enum: ["published", "hidden", "draft"],
+      default: "published",
+      index: true,
+    },
+    images: {
+      type: [String],
+      default: [],
+    },
+    accessories: {
+      type: [String],
+      default: [],
+    },
+    specifications: {
+      type: mongoose.Schema.Types.Mixed,
+      default: [],
+    },
+    condition: {
+      type: String,
+      default: "good",
+    },
+    location: {
+      address: { type: String, trim: true, default: "" },
+      city: { type: String, trim: true, default: "TP. Hồ Chí Minh" },
+    },
+    isFeatured: {
+      type: Boolean,
+      default: false,
     },
     rental_terms: {
       type: String,
@@ -84,12 +122,6 @@ const equipmentSchema = new mongoose.Schema(
     cancellation_policy: {
       type: String,
       default: "Miễn phí hủy đơn trước 24 giờ. Hủy sau thời gian này phí phạt 20% giá trị hợp đồng.",
-    },
-    visibility: {
-      type: String,
-      enum: ["published", "hidden", "draft"],
-      default: "published",
-      index: true,
     },
     approval_status: {
       type: String,
@@ -111,12 +143,6 @@ const equipmentSchema = new mongoose.Schema(
     hidden_reason: {
       type: String,
       default: "",
-    },
-    status: {
-      type: String,
-      enum: ["available", "rented", "maintenance", "reserved", "damaged", "retired", "hidden"],
-      default: "available",
-      index: true,
     },
     availability_schedule: [
       {
@@ -146,5 +172,37 @@ const equipmentSchema = new mongoose.Schema(
     collection: "equipments",
   }
 );
+
+equipmentSchema.pre("save", function (next) {
+  if (this.owner && !this.owner_id) {
+    this.owner_id = this.owner;
+  } else if (this.owner_id && !this.owner) {
+    this.owner = this.owner_id;
+  }
+
+  if (this.dailyRate && (!this.pricing || !this.pricing.price_per_day)) {
+    if (!this.pricing) this.pricing = {};
+    this.pricing.price_per_day = this.dailyRate;
+  } else if (this.pricing?.price_per_day && !this.dailyRate) {
+    this.dailyRate = this.pricing.price_per_day;
+  }
+
+  if (this.depositAmount && (!this.pricing || !this.pricing.deposit_amount)) {
+    if (!this.pricing) this.pricing = {};
+    this.pricing.deposit_amount = this.depositAmount;
+  } else if (this.pricing?.deposit_amount && !this.depositAmount) {
+    this.depositAmount = this.pricing.deposit_amount;
+  }
+
+  if (this.modelNumber && !this.model_name) {
+    this.model_name = this.modelNumber;
+  } else if (this.model_name && !this.modelNumber) {
+    this.modelNumber = this.model_name;
+  }
+
+  next();
+});
+
+equipmentSchema.index({ title: "text", description: "text", brand: "text" });
 
 module.exports = mongoose.model("Equipment", equipmentSchema);

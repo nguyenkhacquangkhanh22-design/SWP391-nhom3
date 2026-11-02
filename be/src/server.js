@@ -29,13 +29,40 @@ function configureDnsServers() {
 }
 
 async function startServer() {
-  configureDnsServers();
-  await connectDB();
   const httpServer = http.createServer(app);
   initSocket(httpServer);
-  httpServer.listen(port, () => {
-    console.log(`Server is running on port ${port} with Socket.IO enabled`);
+
+  httpServer.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`\n❌ CỔNG ${port} ĐANG BỊ CHIẾM DỤNG (EADDRINUSE)!`);
+      console.error(`Có một cửa sổ terminal khác đang chạy server ngầm.`);
+      console.error(`👉 Khắc phục: Chạy lệnh sau trong PowerShell để giải phóng cổng:`);
+      console.error(`   Stop-Process -Name node -Force\n`);
+      process.exit(1);
+    } else {
+      console.error("Server listen error:", err.message);
+      process.exit(1);
+    }
   });
+
+  httpServer.listen(port, () => {
+    console.log(`Server listening on port ${port} with Socket.IO enabled (initializing database...)`);
+  });
+
+  configureDnsServers();
+  await connectDB();
+
+  try {
+    const seedData = require("./utils/seedData");
+    await seedData();
+  } catch (seedErr) {
+    console.warn("Seed data notice:", seedErr.message);
+  }
+
+  if (typeof app.setServerReady === "function") {
+    app.setServerReady(true);
+  }
+  console.log(`✓ Database & Seed Data ready! Server is fully operational on port ${port}`);
 }
 
 startServer().catch((error) => {

@@ -7,12 +7,14 @@ import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import HomePage from "./pages/HomePage";
+import EquipmentListPage from "./pages/EquipmentListPage";
+import EquipmentDetailPage from "./pages/EquipmentDetailPage";
+import RentalHistoryPage from "./pages/RentalHistoryPage";
 import AdminRoute from "./routes/AdminRoute";
 import OwnerRoute from "./routes/OwnerRoute";
 import OwnerPortal from "./pages/owner/OwnerPortal";
 import RegisterOwnerPage from "./pages/RegisterOwnerPage";
-import EquipmentMarketplacePage from "./pages/marketplace/EquipmentMarketplacePage";
-import EquipmentDetailPage from "./pages/marketplace/EquipmentDetailPage";
 import ModeratorPortal from "./pages/moderator/ModeratorPortal";
 import ModeratorRoute from "./routes/ModeratorRoute";
 
@@ -22,7 +24,7 @@ function HomeRedirect() {
     return <div className="app-loading">Đang tải tài khoản...</div>;
   }
   if (!user) {
-    return <Navigate to="/equipments" replace />;
+    return <HomePage />;
   }
   const role = (user.role || "").toLowerCase();
   if (role === "systemadmin") {
@@ -34,13 +36,22 @@ function HomeRedirect() {
   if (role.replace(/[\s_-]/g, "") === "rentalmoderator") {
     return <Navigate to="/moderator" replace />;
   }
-  return <Navigate to="/profile" replace />;
+  return <HomePage />;
 }
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
+        {/* Guest & Public routes */}
+        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/equipment" element={<EquipmentListPage />} />
+        <Route path="/equipment/:id" element={<EquipmentDetailPage />} />
+        <Route path="/equipments" element={<EquipmentListPage />} />
+        <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
+        <Route path="/register-owner" element={<RegisterOwnerPage />} />
+
+        {/* Auth routes */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -48,10 +59,9 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
-        {/* Public marketplace routes */}
-        <Route path="/equipments" element={<EquipmentMarketplacePage />} />
-        <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
-        <Route path="/register-owner" element={<RegisterOwnerPage />} />
+        {/* Renter & User routes */}
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/rentals/history" element={<RentalHistoryPage />} />
 
         {/* Owner portal protected routes */}
         <Route element={<OwnerRoute />}>
@@ -68,8 +78,7 @@ function App() {
           <Route path="/admin" element={<AdminDashboard />} />
         </Route>
 
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/" element={<HomeRedirect />} />
+        {/* Fallback */}
         <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </AuthProvider>

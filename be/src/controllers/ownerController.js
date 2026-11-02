@@ -95,6 +95,23 @@ async function getEquipmentDetail(req, res) {
   res.json({ equipment });
 }
 
+// UC_O03: Upload Equipment Photos
+async function uploadEquipmentPhoto(req, res) {
+  if (!req.file) {
+    throw new AppError(400, "Vui lòng chọn file ảnh để tải lên");
+  }
+  const fileUrl = `/uploads/${req.file.filename}`;
+  res.json({ url: fileUrl, filename: req.file.filename });
+}
+
+async function uploadEquipmentPhotos(req, res) {
+  if (!req.files || req.files.length === 0) {
+    throw new AppError(400, "Vui lòng chọn ít nhất một file ảnh");
+  }
+  const urls = req.files.map((file) => `/uploads/${file.filename}`);
+  res.json({ urls });
+}
+
 // UC_O03: Create Equipment Listing (including photo uploads)
 async function createEquipmentListing(req, res) {
   const ownerId = req.user._id;
@@ -1038,7 +1055,6 @@ async function submitSupportTicket(req, res) {
     .populate("user_id", "name email role")
     .lean();
 
-  // Realtime notification via Socket.IO
   try {
     const { getIO } = require("../config/socket");
     getIO().emit("ticket:created", {
@@ -1095,7 +1111,6 @@ async function replySupportTicket(req, res) {
     .populate("replies.sender_id", "name email role")
     .lean();
 
-  // Realtime socket emit
   try {
     const { getIO } = require("../config/socket");
     getIO().emit("ticket:replied", {
@@ -1115,6 +1130,8 @@ async function replySupportTicket(req, res) {
 }
 
 module.exports = {
+  uploadEquipmentPhoto,
+  uploadEquipmentPhotos,
   getOverview,
   getOwnerEquipments,
   getEquipmentDetail,

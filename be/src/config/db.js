@@ -1,14 +1,39 @@
 const mongoose = require("mongoose");
 
-async function connectDB() {
-  const { MONGODB_URI } = process.env;
+let memoryServer = null;
 
-  if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI is not set in the environment");
+async function connectDB() {
+  const uri = process.env.MONGODB_URI;
+  const isPlaceholder =
+    !uri ||
+    uri.includes("YOUR_USER") ||
+    uri.includes("YOUR_PASSWORD") ||
+    uri.includes("cluster.mongodb.net");
+
+  if (!isPlaceholder) {
+    try {
+      console.log("Connecting to configured MongoDB...");
+      await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+      console.log("MongoDB connected successfully");
+      return;
+    } catch (err) {
+      console.warn("Failed to connect to configured MONGODB_URI:", err.message);
+      console.warn("Falling back to local in-memory MongoDB database...");
+    }
+  } else {
+    console.log("No valid external MONGODB_URI configured. Starting in-memory MongoDB for local dev...");
   }
 
-  await mongoose.connect(MONGODB_URI);
-  console.log("MongoDB connected");
+  try {
+    const { MongoMemoryServer } = require("mongodb-memory-server");
+    memoryServer = await MongoMemoryServer.create();
+    const memoryUri = memoryServer.getUri();
+    await mongoose.connect(memoryUri);
+    console.log(`In-memory MongoDB connected successfully at ${memoryUri}`);
+  } catch (memErr) {
+    console.error("Failed to start in-memory MongoDB:", memErr.message);
+    throw memErr;
+  }
 }
 
 module.exports = connectDB;
