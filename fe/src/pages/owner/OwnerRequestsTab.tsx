@@ -8,7 +8,6 @@ interface Props {
   onRefresh: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
-  onCreateContract: (req: RentalRequest) => void;
 }
 
 export default function OwnerRequestsTab({
@@ -17,9 +16,9 @@ export default function OwnerRequestsTab({
   onRefresh,
   onError,
   onSuccess,
-  onCreateContract,
 }: Props) {
   const [selectedRequest, setSelectedRequest] = useState<RentalRequest | null>(null);
+  const [viewingRequest, setViewingRequest] = useState<RentalRequest | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -27,6 +26,8 @@ export default function OwnerRequestsTab({
 
   const filteredRequests = requests.filter((r) => {
     if (statusFilter === "all") return true;
+    if (statusFilter === "approved") return r.status === "approved" || r.status === "contract_created";
+    if (statusFilter === "rejected") return r.status === "rejected" || r.status === "moderator_rejected";
     return r.status === statusFilter;
   });
 
@@ -37,12 +38,12 @@ export default function OwnerRequestsTab({
     try {
       await ownerApi.respondRentalRequest(token, req._id, "approve");
       onRefresh();
-      onCreateContract({ ...req, status: "approved" });
-      onSuccess(
-        `Đã duyệt yêu cầu thuê "${req.request_code}"! Hệ thống đã chuyển sang màn hình lập Hợp đồng cho thuê để gửi Quản lý web duyệt.`
-      );
+      onSuccess(`Đã phê duyệt yêu cầu thuê "${req.request_code}" thành công!`);
+      if (viewingRequest && viewingRequest._id === req._id) {
+        setViewingRequest({ ...viewingRequest, status: "approved" });
+      }
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Chấp nhận yêu cầu thất bại.");
+      onError(err instanceof Error ? err.message : "Phê duyệt yêu cầu thất bại.");
     } finally {
       setIsProcessing(false);
     }
@@ -77,14 +78,13 @@ export default function OwnerRequestsTab({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
-            📬 Yêu cầu thuê do Quản lý web gửi sang (UC_O07)
+            📬 Quản lý Yêu cầu thuê (UC_O07)
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
             Quy trình:{" "}
-            <strong style={{ color: "#fb923c" }}>1. Người thuê gửi YC cho Quản lý web</strong> ➔{" "}
-            <strong style={{ color: "#38bdf8" }}>2. Quản lý web gửi cho Owner duyệt</strong> ➔{" "}
-            <strong style={{ color: "#10b981" }}>3. Owner duyệt & lập Hợp đồng gửi Quản lý web</strong> ➔{" "}
-            <strong style={{ color: "#fff" }}>4. Quản lý web duyệt & gửi Người thuê ký tên</strong>.
+            <strong style={{ color: "#38bdf8" }}>1. Người thuê gửi yêu cầu</strong> ➔{" "}
+            <strong style={{ color: "#fb923c" }}>2. Quản lý web kiểm tra & chuyển tiếp</strong> ➔{" "}
+            <strong style={{ color: "#10b981" }}>3. Owner xem xét Phê duyệt hoặc Từ chối</strong>.
           </p>
         </div>
 
@@ -99,19 +99,16 @@ export default function OwnerRequestsTab({
           >
             <option value="all">Tất cả ({requests.length})</option>
             <option value="pending">
-              📬 Quản lý web đã gửi - Chờ Owner duyệt ({requests.filter((r) => r.status === "pending").length})
-            </option>
-            <option value="pending_moderator">
-              ⏳ Đang ở Quản lý web ({requests.filter((r) => r.status === "pending_moderator").length})
+              📬 Chờ Owner duyệt ({requests.filter((r) => r.status === "pending").length})
             </option>
             <option value="approved">
-              ✅ Đã duyệt - Chờ lập HĐ ({requests.filter((r) => r.status === "approved").length})
-            </option>
-            <option value="contract_created">
-              📜 Đã lập HĐ ({requests.filter((r) => r.status === "contract_created").length})
+              ✅ Đã phê duyệt ({requests.filter((r) => r.status === "approved" || r.status === "contract_created").length})
             </option>
             <option value="rejected">
               ❌ Đã từ chối ({requests.filter((r) => r.status === "rejected" || r.status === "moderator_rejected").length})
+            </option>
+            <option value="pending_moderator">
+              ⏳ Chờ Quản lý web chuyển tiếp ({requests.filter((r) => r.status === "pending_moderator").length})
             </option>
           </select>
         </div>
@@ -137,7 +134,7 @@ export default function OwnerRequestsTab({
                   <th>Tiền cọc</th>
                   <th>Ghi chú Renter & Quản lý web</th>
                   <th>Trạng thái</th>
-                  <th style={{ textAlign: "right" }}>Thao tác của Owner (UC_O07)</th>
+                  <th style={{ textAlign: "right" }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -212,13 +209,11 @@ export default function OwnerRequestsTab({
                     <td>
                       <span className={`status-badge status-${req.status}`}>
                         {req.status === "pending_moderator"
-                          ? "⏳ Đang ở Quản lý web"
+                          ? "⏳ Chờ Quản lý web"
                           : req.status === "pending"
-                          ? "📬 Quản lý web gửi — Chờ Owner duyệt"
-                          : req.status === "approved"
-                          ? "⏳ Đang chờ lập hợp đồng"
-                          : req.status === "contract_created"
-                          ? "📜 Đã lập HĐ gửi Quản lý web"
+                          ? "📬 Chờ Owner duyệt"
+                          : (req.status === "approved" || req.status === "contract_created")
+                          ? "✅ Đã phê duyệt"
                           : req.status === "moderator_rejected"
                           ? "❌ Quản lý web từ chối"
                           : req.status === "rejected"
@@ -227,10 +222,10 @@ export default function OwnerRequestsTab({
                       </span>
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
                         {req.status === "pending_moderator" && (
-                          <span style={{ fontSize: "0.78rem", color: "#fb923c" }}>
-                            ⏳ Chờ Quản lý web gửi sang
+                          <span style={{ fontSize: "0.78rem", color: "#fb923c", alignSelf: "center", marginRight: "4px" }}>
+                            ⏳ Chờ Quản lý web
                           </span>
                         )}
 
@@ -241,9 +236,9 @@ export default function OwnerRequestsTab({
                               style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto" }}
                               onClick={() => void handleApprove(req)}
                               disabled={isProcessing}
-                              title="Duyệt yêu cầu thuê và chuyển sang tạo Hợp đồng"
+                              title="Phê duyệt chấp nhận yêu cầu thuê này"
                             >
-                              ✓ Duyệt & Lập HĐ
+                              ✓ Phê duyệt
                             </button>
                             <button
                               className="button button-quiet"
@@ -253,34 +248,212 @@ export default function OwnerRequestsTab({
                                 setShowRejectModal(true);
                               }}
                               disabled={isProcessing}
-                              title="Từ chối cho thuê và ghi lý do"
+                              title="Từ chối cho thuê và ghi rõ lý do"
                             >
                               ✕ Từ chối
                             </button>
                           </>
                         )}
 
-                        {req.status === "approved" && (
-                          <button
-                            className="button button-primary"
-                            style={{ padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
-                            onClick={() => onCreateContract(req)}
-                          >
-                            + Lập HĐ gửi Quản lý web 📜
-                          </button>
-                        )}
-
-                        {req.status === "contract_created" && (
-                          <span style={{ fontSize: "0.8rem", color: "#10b981" }}>
-                            ✓ Đã lập HĐ gửi Quản lý web
-                          </span>
-                        )}
+                        <button
+                          className="button button-secondary"
+                          style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto" }}
+                          onClick={() => setViewingRequest(req)}
+                          title="Xem thông tin chi tiết yêu cầu thuê"
+                        >
+                          👁️ Chi tiết
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW REQUEST DETAIL MODAL */}
+      {viewingRequest && (
+        <div className="owner-modal-overlay">
+          <div className="owner-modal-card" style={{ maxWidth: "600px" }}>
+            <div className="owner-modal-header">
+              <div>
+                <span className="contract-code-tag">{viewingRequest.request_code}</span>
+                <h3 style={{ margin: "6px 0 0", color: "#fff" }}>Chi tiết yêu cầu thuê thiết bị</h3>
+              </div>
+              <button className="close-modal-btn" onClick={() => setViewingRequest(null)}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: "16px", marginTop: "10px" }}>
+              {/* Status Banner */}
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "rgba(255,255,255,0.05)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Trạng thái yêu cầu:</span>
+                <span className={`status-badge status-${viewingRequest.status}`}>
+                  {viewingRequest.status === "pending_moderator"
+                    ? "⏳ Chờ Quản lý web"
+                    : viewingRequest.status === "pending"
+                    ? "📬 Chờ Owner duyệt"
+                    : (viewingRequest.status === "approved" || viewingRequest.status === "contract_created")
+                    ? "✅ Đã phê duyệt"
+                    : viewingRequest.status === "moderator_rejected"
+                    ? "❌ Quản lý web từ chối"
+                    : viewingRequest.status === "rejected"
+                    ? "❌ Owner từ chối"
+                    : viewingRequest.status}
+                </span>
+              </div>
+
+              {/* Equipment info */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "14px",
+                  alignItems: "center",
+                  padding: "12px",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <img
+                  src={
+                    viewingRequest.equipment_id?.images?.[0] ||
+                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
+                  }
+                  alt=""
+                  style={{ width: "60px", height: "60px", borderRadius: "8px", objectFit: "cover" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "0.95rem" }}>
+                    {viewingRequest.equipment_id?.title || "Thiết bị cho thuê"}
+                  </h4>
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                    {viewingRequest.equipment_id?.brand} {viewingRequest.equipment_id?.model_name} • Danh mục:{" "}
+                    {viewingRequest.equipment_id?.category}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "#10b981", marginTop: "2px" }}>
+                    Giá niêm yết: {viewingRequest.equipment_id?.pricing?.price_per_day?.toLocaleString("vi-VN")} đ/ngày
+                  </div>
+                </div>
+              </div>
+
+              {/* Renter & Schedule Details */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "4px" }}>
+                    👤 NGƯỜI THUÊ
+                  </div>
+                  <div style={{ fontWeight: 600, color: "#fff" }}>{viewingRequest.renter_name}</div>
+                  <div style={{ fontSize: "0.82rem", color: "#cbd5e1", marginTop: "2px" }}>
+                    📞 {viewingRequest.renter_phone || "N/A"}
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
+                    ✉️ {viewingRequest.renter_email || "N/A"}
+                  </div>
+                </div>
+
+                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "4px" }}>
+                    📅 THỜI GIAN THUÊ
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "#fff" }}>
+                    Bắt đầu: {new Date(viewingRequest.start_date).toLocaleString("vi-VN")}
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "#fff" }}>
+                    Kết thúc: {new Date(viewingRequest.end_date).toLocaleString("vi-VN")}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--orange)", marginTop: "2px" }}>
+                    Tổng: {viewingRequest.duration_days} ngày ({viewingRequest.rental_type === "hourly" ? "Theo giờ" : "Theo ngày"})
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing breakdown */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>TIỀN THUÊ THIẾT BỊ</div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
+                    {viewingRequest.rental_fee.toLocaleString("vi-VN")} đ
+                  </div>
+                </div>
+                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>TIỀN ĐẶT CỌC BẢO ĐẢM</div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#f59e0b", marginTop: "2px" }}>
+                    {viewingRequest.deposit_amount.toLocaleString("vi-VN")} đ
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {viewingRequest.renter_note && (
+                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                  <strong style={{ color: "#fff" }}>📝 Ghi chú của Người thuê:</strong>
+                  <div style={{ color: "var(--muted)", marginTop: "2px" }}>{viewingRequest.renter_note}</div>
+                </div>
+              )}
+
+              {viewingRequest.moderator_note && (
+                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "6px" }}>
+                  <strong style={{ color: "#38bdf8" }}>🛡️ Ý kiến Quản lý web:</strong>
+                  <div style={{ color: "#bae6fd", marginTop: "2px" }}>{viewingRequest.moderator_note}</div>
+                </div>
+              )}
+
+              {viewingRequest.rejection_reason && (
+                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "6px" }}>
+                  <strong style={{ color: "#ef4444" }}>❌ Lý do từ chối:</strong>
+                  <div style={{ color: "#fca5a5", marginTop: "2px" }}>{viewingRequest.rejection_reason}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: "20px" }}>
+              <button
+                type="button"
+                className="button button-quiet"
+                onClick={() => setViewingRequest(null)}
+              >
+                Đóng
+              </button>
+
+              {viewingRequest.status === "pending" && (
+                <>
+                  <button
+                    type="button"
+                    className="button"
+                    style={{ background: "#ef4444", color: "#fff", width: "auto" }}
+                    onClick={() => {
+                      setSelectedRequest(viewingRequest);
+                      setShowRejectModal(true);
+                    }}
+                    disabled={isProcessing}
+                  >
+                    ✕ Từ chối
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    style={{ width: "auto" }}
+                    onClick={() => void handleApprove(viewingRequest)}
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? "Đang xử lý..." : "✓ Phê duyệt yêu cầu"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -225,7 +225,7 @@ export default function OwnerPortal() {
                 stats={stats}
                 recentRequests={recentRequests}
                 onNavigateTab={(tab) => handleTabChange(tab as any)}
-                onSelectRequest={handleCreateContractFromRequest}
+                onSelectRequest={() => handleTabChange("requests")}
               />
             )}
 
@@ -246,7 +246,6 @@ export default function OwnerPortal() {
                 onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
-                onCreateContract={handleCreateContractFromRequest}
               />
             )}
 
