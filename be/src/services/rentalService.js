@@ -149,6 +149,32 @@ class RentalService {
 
     await rental.save();
 
+    // Đồng bộ tạo bản ghi RentalRequest cho Cổng Người Cho Thuê (Owner Portal)
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.create({
+        request_code: rentalCode,
+        equipment_id: equipment._id,
+        owner_id: equipment.owner || equipment.owner_id,
+        renter_id: renterUser._id,
+        renter_name: renterUser.name || "Khách thuê",
+        renter_phone: renterUser.phone || "",
+        renter_email: renterUser.email || "",
+        rental_type: "daily",
+        start_date: start,
+        end_date: end,
+        duration_days: totalDays,
+        duration_hours: totalDays * 24,
+        rental_fee: rentalFee,
+        deposit_amount: depositAmount,
+        total_estimated_amount: totalAmount,
+        renter_note: renterNote || notes || "",
+        status: "pending",
+      });
+    } catch (rrErr) {
+      console.warn("Lưu RentalRequest đồng bộ:", rrErr.message);
+    }
+
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category brand modelNumber")
       .populate("owner", "name email phone trust_score")
@@ -180,8 +206,11 @@ class RentalService {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
-    const signableStatuses = ["PENDING", "contract_pending", "pending"];
+    const signableStatuses = ["APPROVED", "approved", "CONTRACT_PENDING", "contract_pending"];
     if (!signableStatuses.includes(rental.status)) {
+      if (rental.status === "PENDING" || rental.status === "pending") {
+        throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng");
+      }
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
@@ -220,11 +249,17 @@ class RentalService {
       throw new AppError(403, "Bạn không có quyền thanh toán cho đơn thuê này");
     }
 
-    const payableStatuses = ["CONTRACT_SIGNED", "payment_pending", "PENDING", "contract_pending"];
+    const payableStatuses = ["CONTRACT_SIGNED", "payment_pending"];
     if (!payableStatuses.includes(rental.status)) {
+      if (rental.status === "PENDING" || rental.status === "pending") {
+        throw new AppError(400, "Đơn thuê đang chờ Chủ thiết bị (Owner) phê duyệt, chưa thể thanh toán");
+      }
+      if (rental.status === "APPROVED" || rental.status === "approved" || rental.status === "CONTRACT_PENDING" || rental.status === "contract_pending") {
+        throw new AppError(400, "Bạn cần ký hợp đồng điện tử trước khi thanh toán tiền cọc và tiền thuê");
+      }
       throw new AppError(
         400,
-        `Không thể thanh toán đơn thuê ở trạng thái: ${rental.status}`,
+        `Không thể thanh toán đơn thuê ở trạng thái: ${rental.status}`
       );
     }
 
@@ -540,6 +575,74 @@ class RentalService {
       ticket,
     };
   }
+
+  /**
+   * Owner duyệt yêu cầu thuê
+   */
+  async approveRental(rentalId, ownerUser) {
+    const rental = await Rental.findById(rentalId);
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+    if (rental.owner.toString() !== ownerUser._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền duyệt đơn thuê này");
+    }
+    if (rental.status !== "PENDING" && rental.status !== "pending") {
+      throw new AppError(400, `Đơn thuê đã ở trạng thái: ${rental.status}`);
+    }
+    rental.status = "APPROVED";
+    await rental.save();
+
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment, status: "pending" },
+          ],
+        },
+        { status: "approved", responded_at: new Date() }
+      );
+    } catch (err) {}
+
+    return await Rental.findById(rental._id)
+      .populate("equipment", "title images dailyRate depositAmount category")
+      .populate("owner", "name email phone trust_score")
+      .populate("renter", "name email phone");
+  }
+
+  /**
+   * Owner từ chối yêu cầu thuê
+   */
+  async rejectRental(rentalId, ownerUser, reason = "") {
+    const rental = await Rental.findById(rentalId);
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+    if (rental.owner.toString() !== ownerUser._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền từ chối đơn thuê này");
+    }
+    rental.status = "CANCELLED";
+    rental.cancelReason = reason;
+    await rental.save();
+
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment, status: "pending" },
+          ],
+        },
+        { status: "rejected", rejection_reason: reason, responded_at: new Date() }
+      );
+    } catch (err) {}
+
+    return rental;
+  }
+
 }
 
 module.exports = new RentalService();

@@ -126,6 +126,22 @@ export const smartEquipApi = {
       token,
     ),
 
+  // Owner phê duyệt yêu cầu thuê
+  approveRental: (token: string, rentalId: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/approve`,
+      { method: "PATCH" },
+      token,
+    ),
+
+  // Owner từ chối yêu cầu thuê
+  rejectRental: (token: string, rentalId: string, reason: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/reject`,
+      { method: "PATCH", body: JSON.stringify({ reason }) },
+      token,
+    ),
+
   // UC_R08: Ký hợp đồng điện tử
   confirmContract: (
     token: string,

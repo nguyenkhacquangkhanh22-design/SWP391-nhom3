@@ -1,3 +1,4 @@
+const Rental = require("../models/Rental");
 const bcrypt = require("bcrypt");
 const User = require("../models/User");
 const Equipment = require("../models/Equipment");
@@ -97,6 +98,7 @@ async function seedData() {
   await Equipment.deleteMany({ owner_id: owner._id });
   await RentalRequest.deleteMany({ owner_id: owner._id });
   await RentalContract.deleteMany({ owner_id: owner._id });
+  await Rental.deleteMany({});
   await HandoverRecord.deleteMany({ owner_id: owner._id });
   await Settlement.deleteMany({ owner_id: owner._id });
 
@@ -478,6 +480,113 @@ async function seedData() {
     },
   });
   console.log("✓ Đã nạp hồ sơ quyết toán tiền & lịch sử giải ngân doanh thu (UC_O10, UC_O11)");
+
+  // 8. Create sample Rentals for Renter History (demonstrating: Owner duyệt -> Ký HĐ -> Thanh toán)
+  await Rental.create({
+    rentalCode: "REQ-2026-PEND01",
+    renter: renter._id,
+    equipment: eq1._id,
+    owner: owner._id,
+    startDate: new Date(Date.now() + 86400000 * 3),
+    endDate: new Date(Date.now() + 86400000 * 5),
+    totalDays: 2,
+    dailyRate: 550000,
+    rentalFee: 1100000,
+    depositAmount: 5000000,
+    totalAmount: 6100000,
+    status: "PENDING",
+    deliveryAddress: "123 Lê Lợi, Phường Bến Nghé, Quận 1, TP.HCM",
+    renterNote: "Quay phóng sự cuối tuần, nhờ Owner duyệt giúp em.",
+    contract: {
+      contractNumber: "HD-PEND-001",
+      contractTerms: "Hợp đồng thuê thiết bị công nghệ SmartEquip.",
+      termsAccepted: false,
+    },
+    payment: { isPaid: false, paymentStatus: "unpaid" },
+  });
+
+  await Rental.create({
+    rentalCode: "REQ-2026-APPR02",
+    renter: renter._id,
+    equipment: eq2._id,
+    owner: owner._id,
+    startDate: new Date(Date.now() + 86400000 * 2),
+    endDate: new Date(Date.now() + 86400000 * 4),
+    totalDays: 2,
+    dailyRate: 350000,
+    rentalFee: 700000,
+    depositAmount: 3500000,
+    totalAmount: 4200000,
+    status: "APPROVED",
+    deliveryAddress: "45 Lê Duẩn, Quận 1, TP.HCM",
+    renterNote: "Chụp ảnh sản phẩm.",
+    contract: {
+      contractNumber: "HD-APPR-002",
+      contractTerms: "Hợp đồng thuê thiết bị công nghệ SmartEquip.",
+      termsAccepted: false,
+    },
+    payment: { isPaid: false, paymentStatus: "unpaid" },
+  });
+
+  await Rental.create({
+    rentalCode: "REQ-2026-SIGN03",
+    renter: renter._id,
+    equipment: eq4._id,
+    owner: owner._id,
+    startDate: new Date(Date.now() + 86400000 * 1),
+    endDate: new Date(Date.now() + 86400000 * 3),
+    totalDays: 2,
+    dailyRate: 350000,
+    rentalFee: 700000,
+    depositAmount: 8000000,
+    totalAmount: 8700000,
+    status: "CONTRACT_SIGNED",
+    deliveryAddress: "12 Nguyễn Thị Minh Khai, Quận 1, TP.HCM",
+    renterNote: "Quay flycam toàn cảnh resort.",
+    contract: {
+      contractNumber: "HD-SIGN-003",
+      contractTerms: "Hợp đồng thuê thiết bị công nghệ SmartEquip.",
+      termsAccepted: true,
+      renterSignature: "Trần Thị Khách Thuê",
+      digitalSignature: "Trần Thị Khách Thuê",
+      signedAt: new Date(Date.now() - 3600000),
+    },
+    payment: { isPaid: false, paymentStatus: "unpaid" },
+  });
+
+  await Rental.create({
+    rentalCode: "REQ-2026-PAID04",
+    renter: renter._id,
+    equipment: eq5._id,
+    owner: owner._id,
+    startDate: new Date(Date.now()),
+    endDate: new Date(Date.now() + 86400000 * 3),
+    totalDays: 3,
+    dailyRate: 500000,
+    rentalFee: 1500000,
+    depositAmount: 18000000,
+    totalAmount: 19500000,
+    status: "PAID",
+    deliveryAddress: "207 Cống Quỳnh, Quận 1, TP.HCM",
+    renterNote: "Dựng video 4K cho khách hàng.",
+    contract: {
+      contractNumber: "HD-PAID-004",
+      contractTerms: "Hợp đồng thuê thiết bị công nghệ SmartEquip.",
+      termsAccepted: true,
+      renterSignature: "Trần Thị Khách Thuê",
+      digitalSignature: "Trần Thị Khách Thuê",
+      signedAt: new Date(Date.now() - 7200000),
+    },
+    payment: {
+      isPaid: true,
+      paymentStatus: "paid",
+      paymentMethod: "vnpay",
+      amountPaid: 19500000,
+      paidAt: new Date(Date.now() - 3600000),
+    },
+  });
+  console.log("✓ Đã nạp 4 đơn thuê mẫu chuẩn chu trình: Chờ Owner duyệt -> Chờ ký HĐ -> Chờ thanh toán -> Đã thanh toán (UC_R07-UC_R10)");
+
 
   console.log("--- Hoàn tất nạp dữ liệu mẫu thành công! ---");
 }

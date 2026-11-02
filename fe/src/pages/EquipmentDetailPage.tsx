@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
-import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import { smartEquipApi } from "../services/smartEquipApi";
-import type { Equipment, Rental } from "../types/smartequip";
+import type { Equipment } from "../types/smartequip";
 
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,7 +23,6 @@ export default function EquipmentDetailPage() {
   const [renterNote, setRenterNote] = useState("");
 
   // Modal ký hợp đồng sau khi tạo đơn thành công
-  const [createdRental, setCreatedRental] = useState<Rental | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -106,8 +104,11 @@ export default function EquipmentDetailPage() {
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });
-      // Mở modal ký hợp đồng điện tử ngay lập tức
-      setCreatedRental(res.data);
+      alert(
+        res.message ||
+          "Đã gửi yêu cầu thuê thành công! Vui lòng chờ Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng và thanh toán."
+      );
+      navigate("/rentals/history");
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Không thể tạo yêu cầu thuê thiết bị",
@@ -415,7 +416,7 @@ export default function EquipmentDetailPage() {
                   className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
                 >
                   {submitting ? (
-                    "Đang tạo yêu cầu thuê..."
+                    "Đang gửi yêu cầu thuê..."
                   ) : (
                     <>
                       <span>📋</span>
@@ -435,22 +436,6 @@ export default function EquipmentDetailPage() {
         </div>
       </main>
 
-      {/* Modal Ký hợp đồng điện tử sau khi đơn được tạo */}
-      {createdRental && token && (
-        <ContractConfirmationModal
-          rental={createdRental}
-          token={token}
-          isOpen={Boolean(createdRental)}
-          onClose={() => {
-            setCreatedRental(null);
-            navigate("/rentals/history");
-          }}
-          onSuccess={() => {
-            setCreatedRental(null);
-            navigate("/rentals/history");
-          }}
-        />
-      )}
-    </div>
+      </div>
   );
 }

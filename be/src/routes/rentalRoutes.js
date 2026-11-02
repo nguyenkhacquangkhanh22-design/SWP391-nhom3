@@ -20,7 +20,11 @@ router.use(verifyToken);
 router.post("/request", requireObjectBody, asyncHandler(rentalController.createRentalRequest));
 
 // UC_R08: POST /api/rentals/:id/confirm-contract (Ký hợp đồng điện tử)
-router.post("/:id/confirm-contract", requireObjectBody, asyncHandler(rentalController.confirmContract));
+// Owner phê duyệt / từ chối yêu cầu thuê
+router.patch("/:id/approve", asyncHandler(rentalController.approveRental));
+router.patch("/:id/reject", requireObjectBody, asyncHandler(rentalController.rejectRental));
+
+// UC_R08: POST /api/rentals/:id/confirm-contract (Ký hợp đồng điện tử)
 
 // UC_R09: POST /api/rentals/:id/pay (Thanh toán tiền thuê & tiền cọc)
 router.post("/:id/pay", requireObjectBody, asyncHandler(rentalController.payRental));

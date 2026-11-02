@@ -362,7 +362,7 @@ export default function RentalHistoryPage() {
               const statusBadge = getStatusBadge(r.status);
               const upperStatus = r.status.toUpperCase();
 
-              const canSign = upperStatus === "PENDING" || upperStatus === "CONTRACT_PENDING";
+              const canSign = upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING";
               const canPay = upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_PENDING";
               const canReturn =
                 upperStatus === "PAID" ||
@@ -473,6 +473,15 @@ export default function RentalHistoryPage() {
 
                   {/* Right: Actions */}
                   <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch min-w-[160px]">
+                    {/* Chờ Owner duyệt */}
+                    {upperStatus === "PENDING" && (
+                      <div className="px-3.5 py-2 bg-[#1b2537] border border-[#27364f] rounded-xl text-center">
+                        <span className="text-[11px] text-amber-400 flex items-center justify-center gap-1.5 font-medium">
+                          <span>⏳</span> Đang chờ Chủ máy duyệt
+                        </span>
+                      </div>
+                    )}
+
                     {/* Nút ký hợp đồng (UC_R08) */}
                     {canSign && (
                       <button

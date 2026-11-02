@@ -8,7 +8,7 @@ class RentalController {
     const rental = await rentalService.createRentalRequest(req.user, req.body);
     res.status(201).json({
       success: true,
-      message: "Yêu cầu thuê đã được tạo thành công. Vui lòng ký hợp đồng để tiếp tục.",
+      message: "Yêu cầu thuê đã được gửi thành công. Vui lòng chờ Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng và thanh toán.",
       data: rental,
     });
   }
@@ -109,6 +109,31 @@ class RentalController {
       data: result.ticket,
     });
   }
+
+  /**
+   * Owner duyệt yêu cầu thuê
+   */
+  async approveRental(req, res) {
+    const rental = await rentalService.approveRental(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: "Phê duyệt yêu cầu thuê thành công. Khách thuê có thể ký hợp đồng.",
+      data: rental,
+    });
+  }
+
+  /**
+   * Owner từ chối yêu cầu thuê
+   */
+  async rejectRental(req, res) {
+    const rental = await rentalService.rejectRental(req.params.id, req.user, req.body.reason);
+    res.status(200).json({
+      success: true,
+      message: "Từ chối yêu cầu thuê thành công.",
+      data: rental,
+    });
+  }
+
 }
 
 module.exports = new RentalController();

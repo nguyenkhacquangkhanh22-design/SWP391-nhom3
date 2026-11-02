@@ -415,9 +415,37 @@ async function respondRentalRequest(req, res) {
 
   if (action === "approve") {
     rentalReq.status = "approved";
+    try {
+      const Rental = require("../models/Rental");
+      await Rental.updateMany(
+        {
+          $or: [
+            { rentalCode: rentalReq.request_code },
+            { renter: rentalReq.renter_id, equipment: rentalReq.equipment_id, status: "PENDING" },
+          ],
+        },
+        { status: "APPROVED" }
+      );
+    } catch (rErr) {
+      console.warn("Lỗi đồng bộ Rental:", rErr.message);
+    }
   } else {
     rentalReq.status = "rejected";
     rentalReq.rejection_reason = rejection_reason.trim();
+    try {
+      const Rental = require("../models/Rental");
+      await Rental.updateMany(
+        {
+          $or: [
+            { rentalCode: rentalReq.request_code },
+            { renter: rentalReq.renter_id, equipment: rentalReq.equipment_id, status: "PENDING" },
+          ],
+        },
+        { status: "CANCELLED", cancelReason: rejection_reason.trim() }
+      );
+    } catch (rErr) {
+      console.warn("Lỗi đồng bộ Rental:", rErr.message);
+    }
   }
 
   rentalReq.responded_at = new Date();
