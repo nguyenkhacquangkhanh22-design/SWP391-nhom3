@@ -4,7 +4,7 @@ interface Props {
   stats: OwnerStats | null;
   recentRequests: RentalRequest[];
   onNavigateTab: (tab: string) => void;
-  onSelectRequest: (req: RentalRequest) => void;
+  onSelectRequest?: (req: RentalRequest) => void;
 }
 
 export default function OwnerOverviewTab({
@@ -219,9 +219,9 @@ export default function OwnerOverviewTab({
                       <button
                         className="button button-secondary"
                         style={{ padding: "6px 12px", fontSize: "0.8rem" }}
-                        onClick={() => onNavigateTab("requests")}
+                        onClick={() => { if (req.status === "approved" && onSelectRequest) { onSelectRequest(req); } else { onNavigateTab("requests"); } }}
                       >
-                        Xem yêu cầu →
+                        {req.status === "approved" ? "Lập hợp đồng →" : "Xem yêu cầu →"}
                       </button>
                     </td>
                   </tr>
