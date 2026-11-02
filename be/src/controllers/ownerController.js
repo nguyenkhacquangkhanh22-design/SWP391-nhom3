@@ -162,6 +162,7 @@ async function createEquipmentListing(req, res) {
 
   const equipment = await Equipment.create({
     owner_id: ownerId,
+    owner: ownerId,
     title: title.trim(),
     category: category.trim(),
     brand: (brand || "").trim(),
@@ -174,30 +175,32 @@ async function createEquipmentListing(req, res) {
     ],
     accessories: Array.isArray(accessories) ? accessories : [],
     condition: condition || "Tốt (95%)",
+    dailyRate: Number(pricing.price_per_day) || 0,
+    depositAmount: 0,
     pricing: {
       price_per_hour: Number(pricing.price_per_hour) || 0,
-      price_per_day: Number(pricing.price_per_day),
+      price_per_day: Number(pricing.price_per_day) || 0,
       deposit_amount: 0,
       weekend_rate: Number(pricing.weekend_rate) || 0,
     },
     rental_terms: rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.",
     cancellation_policy: cancellation_policy || "Miễn phí hủy trước 24 giờ.",
     visibility: "published",
-    approval_status: "pending",
+    approval_status: "approved",
     status: "available",
   });
 
   try {
     getIO().emit("equipment:created", {
       equipment,
-      message: `Thiết bị mới "${equipment.title}" vừa được tạo và đang chờ xét duyệt!`,
+      message: `Thiết bị mới "${equipment.title}" vừa được đăng và sẵn sàng cho thuê!`,
     });
   } catch (err) {
     console.error("Socket emit equipment:created error:", err);
   }
 
   res.status(201).json({
-    message: "Tạo bài đăng thiết bị thành công và đang chờ quản trị viên phê duyệt",
+    message: "Tạo bài đăng thiết bị thành công",
     equipment,
   });
 }
@@ -241,10 +244,20 @@ async function updateEquipment(req, res) {
   if (condition) equipment.condition = condition;
 
   if (pricing) {
-    if (pricing.price_per_day !== undefined) equipment.pricing.price_per_day = Number(pricing.price_per_day);
-    if (pricing.deposit_amount !== undefined) equipment.pricing.deposit_amount = Number(pricing.deposit_amount);
+    if (pricing.price_per_day !== undefined) {
+      equipment.pricing.price_per_day = Number(pricing.price_per_day);
+      equipment.dailyRate = Number(pricing.price_per_day);
+    }
+    if (pricing.deposit_amount !== undefined) equipment.pricing.deposit_amount = 0;
     if (pricing.price_per_hour !== undefined) equipment.pricing.price_per_hour = Number(pricing.price_per_hour);
     if (pricing.weekend_rate !== undefined) equipment.pricing.weekend_rate = Number(pricing.weekend_rate);
+  }
+
+  if (!equipment.owner) {
+    equipment.owner = ownerId;
+  }
+  if (equipment.approval_status === "pending") {
+    equipment.approval_status = "approved";
   }
 
   if (rental_terms !== undefined) equipment.rental_terms = rental_terms;

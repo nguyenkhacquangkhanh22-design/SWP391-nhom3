@@ -22,10 +22,10 @@ class EquipmentService {
     const filter = {};
 
     // Chỉ hiển thị thiết bị công khai (không bị ẩn hoặc nháp)
-    filter.visibility = { $ne: "hidden" };
+    filter.visibility = { $nin: ["hidden", "draft"] };
 
-    // Chỉ hiển thị thiết bị đã được duyệt hoặc chưa phân loại duyệt
-    filter.approval_status = { $in: ["approved", "APPROVED", undefined] };
+    // Không hiển thị thiết bị bị từ chối phê duyệt (cho phép cả approved, pending hoặc chưa phân loại)
+    filter.approval_status = { $ne: "rejected" };
 
     // Trạng thái khả dụng (hỗ trợ cả chữ thường và chữ hoa)
     if (status && typeof status === "string" && status.trim() && status !== "all") {
@@ -41,6 +41,8 @@ class EquipmentService {
           "ACTIVE",
           "published",
           "PUBLISHED",
+          undefined,
+          null,
         ],
       };
     }
@@ -60,9 +62,20 @@ class EquipmentService {
       filter.$or = kwCond;
     }
 
-    // Lọc theo danh mục
+    // Lọc theo danh mục (thông minh với alias danh mục tương đương)
     if (category && typeof category === "string" && category.trim() && category !== "all") {
-      const catRegex = { $regex: category.trim(), $options: "i" };
+      const catTrim = category.trim();
+      let catPattern = catTrim;
+      if (/máy ảnh|quay phim|ống kính/i.test(catTrim)) {
+        catPattern = "máy ảnh|quay phim|ống kính";
+      } else if (/laptop|công nghệ|thiết bị dựng/i.test(catTrim)) {
+        catPattern = "laptop|công nghệ|thiết bị dựng";
+      } else if (/âm thanh|ánh sáng|micro|studio/i.test(catTrim)) {
+        catPattern = "âm thanh|ánh sáng|micro|studio";
+      } else if (/flycam|drone/i.test(catTrim)) {
+        catPattern = "flycam|drone";
+      }
+      const catRegex = { $regex: catPattern, $options: "i" };
       if (filter.$or) {
         filter.$and = filter.$and || [];
         filter.$and.push({ $or: filter.$or });

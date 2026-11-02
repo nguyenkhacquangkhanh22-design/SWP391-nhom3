@@ -18,8 +18,8 @@ async function browseEquipments(req, res) {
   const { search, category, minPrice, maxPrice, status, sortBy } = req.query;
 
   const query = {
-    visibility: "published",
-    approval_status: { $in: ["approved", undefined] },
+    visibility: { $in: ["published", "PUBLISHED", undefined] },
+    approval_status: { $ne: "rejected" },
   };
 
   if (status) {

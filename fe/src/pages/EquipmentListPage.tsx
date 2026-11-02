@@ -6,11 +6,16 @@ import type { Equipment } from "../types/smartequip";
 
 const CATEGORIES = [
   "Tất cả danh mục",
+  "Máy ảnh & Ống kính",
   "Máy ảnh & Quay phim",
   "Laptop & Công nghệ",
-  "Âm thanh & Ánh sáng",
-  "Thiết bị đo lường & Cơ khí",
+  "Laptop & Thiết bị dựng",
   "Flycam & Drone",
+  "Âm thanh & Micro",
+  "Ánh sáng & Studio",
+  "Gimbal & Chân máy",
+  "Thiết bị đo lường & Cơ khí",
+  "Phụ kiện khác",
 ];
 
 const PRICE_PRESETS = [
