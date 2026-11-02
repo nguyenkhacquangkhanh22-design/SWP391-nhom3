@@ -1,4 +1,6 @@
 const express = require("express");
+const path = require("node:path");
+const fs = require("node:fs");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
@@ -16,6 +18,13 @@ app.setServerReady = (ready = true) => {
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
+
+// Phục vụ thư mục ảnh tĩnh upload
+const uploadDir = path.resolve(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadDir));
 
 // Enable CORS for local dev
 app.use((req, res, next) => {

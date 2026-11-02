@@ -219,12 +219,9 @@ export default function OwnerOverviewTab({
                       <button
                         className="button button-secondary"
                         style={{ padding: "6px 12px", fontSize: "0.8rem" }}
-                        onClick={() => {
-                          onSelectRequest(req);
-                          onNavigateTab("requests");
-                        }}
+                        onClick={() => onNavigateTab("requests")}
                       >
-                        Chi tiết
+                        Xem yêu cầu →
                       </button>
                     </td>
                   </tr>

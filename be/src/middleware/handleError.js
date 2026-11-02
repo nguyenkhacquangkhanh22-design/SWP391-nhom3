@@ -14,6 +14,14 @@ function handleError(error, _req, res, _next) {
     return res.status(400).json({ message: error.message });
   }
 
+  if (error.name === "MulterError") {
+    return res.status(400).json({
+      message: error.code === "LIMIT_FILE_SIZE"
+        ? "Kích thước ảnh tối đa là 10MB."
+        : error.message,
+    });
+  }
+
   const databaseUnavailable =
     error.name === "MongoServerSelectionError" ||
     error.name === "MongoNetworkError" ||
