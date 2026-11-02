@@ -43,7 +43,7 @@ export default function OwnerEquipmentsTab({
   const [condition, setCondition] = useState("Tốt (95%)");
   const [pricePerDay, setPricePerDay] = useState(500000);
   const [pricePerHour, setPricePerHour] = useState(50000);
-  const [depositAmount, setDepositAmount] = useState(10000000);
+  const [depositAmount, setDepositAmount] = useState(0);
   const [rentalTerms, setRentalTerms] = useState(
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   );
@@ -131,7 +131,7 @@ export default function OwnerEquipmentsTab({
     setCondition("Tốt (95%)");
     setPricePerDay(500000);
     setPricePerHour(50000);
-    setDepositAmount(10000000);
+    setDepositAmount(0);
     setRentalTerms("Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.");
     setCancellationPolicy("Miễn phí hủy trước 24 giờ.");
     setVisibility("published");
@@ -382,8 +382,8 @@ export default function OwnerEquipmentsTab({
                   </div>
                   <div>
                     <span className="price-label">Tiền cọc:</span>
-                    <span className="deposit-num">
-                      {eq.pricing.deposit_amount.toLocaleString("vi-VN")} đ
+                    <span className="deposit-num" style={{ color: "#10b981" }}>
+                      Không cần cọc (0 đ)
                     </span>
                   </div>
                 </div>
@@ -814,14 +814,13 @@ export default function OwnerEquipmentsTab({
                     />
                   </div>
                   <div>
-                    <label className="field-label">Tiền đặt cọc cam kết (VND) *</label>
+                    <label className="field-label">Tiền đặt cọc (VND - Không cần cọc: 0 đ)</label>
                     <input
                       className="input-field"
                       type="number"
-                      step={100000}
+                      step={50000}
                       value={depositAmount}
-                      onChange={(e) => setDepositAmount(Number(e.target.value))}
-                      required
+                      onChange={(e) => setDepositAmount(Number(e.target.value) || 0)}
                     />
                   </div>
                 </div>

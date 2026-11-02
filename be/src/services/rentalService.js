@@ -115,15 +115,15 @@ class RentalService {
     }
 
     const dailyRate = equipment.dailyRate || (equipment.pricing ? equipment.pricing.price_per_day : 0) || 0;
-    const depositAmount = equipment.depositAmount || (equipment.pricing ? equipment.pricing.deposit_amount : 0) || 0;
+    const depositAmount = 0;
     const subtotalRentalFee = dailyRate * totalDays;
     const discountAmount = Math.round(subtotalRentalFee * discountRate);
     const rentalFee = subtotalRentalFee - discountAmount;
-    const totalAmount = rentalFee + depositAmount;
+    const totalAmount = rentalFee;
 
     const rentalCode = `REQ-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const contractNumber = `HD-${Date.now().toString().slice(-6)}`;
-    const standardContractTerms = `Hợp đồng thuê thiết bị công nghệ SmartEquip số ${contractNumber}. Người thuê cam kết sử dụng đúng quy chuẩn kỹ thuật, bảo quản nguyên vẹn linh kiện và hoàn trả đúng hẹn. Tiền đặt cọc ${depositAmount.toLocaleString("vi-VN")} đ sẽ được hoàn trả đầy đủ sau khi kiểm tra thiết bị nguyên vẹn.`;
+    const standardContractTerms = `Hợp đồng thuê thiết bị công nghệ SmartEquip số ${contractNumber} (Không yêu cầu tiền cọc). Người thuê cam kết sử dụng đúng quy chuẩn kỹ thuật, bảo quản nguyên vẹn linh kiện và hoàn trả đúng hẹn. Trường hợp hư hỏng hoặc mất mát linh kiện do lỗi chủ quan, người thuê chịu trách nhiệm bồi thường chi phí khắc phục thực tế.`;
 
     const rental = new Rental({
       rentalCode,
@@ -316,7 +316,7 @@ class RentalService {
         rental.status === "CONTRACT_PENDING" ||
         rental.status === "contract_pending"
       ) {
-        throw new AppError(400, "Bạn cần ký hợp đồng điện tử trước khi thanh toán tiền cọc và tiền thuê");
+        throw new AppError(400, "Bạn cần ký hợp đồng điện tử trước khi thanh toán phí thuê thiết bị");
       }
       if (rental.status === "PAYMENT_VERIFYING" || rental.status === "payment_verifying") {
         throw new AppError(400, "Giao dịch thanh toán của bạn đang chờ Rental Moderator xác nhận");

@@ -47,7 +47,7 @@ const rentalContractSchema = new mongoose.Schema(
     },
     deposit_amount: {
       type: Number,
-      required: true,
+      default: 0,
       min: 0,
     },
     start_date: {

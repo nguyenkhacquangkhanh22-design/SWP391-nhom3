@@ -39,7 +39,6 @@ export default function RentalRequestModal({
   }
 
   const dailyRate = equipment.dailyRate || 0;
-  const depositAmount = equipment.depositAmount || 0;
 
   // Giảm giá thuê dài hạn (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -55,7 +54,7 @@ export default function RentalRequestModal({
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
-  const totalAmount = rentalFee + depositAmount;
+  const totalAmount = rentalFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,9 +206,9 @@ export default function RentalRequestModal({
             )}
 
             <div className="flex justify-between text-xs text-slate-400">
-              <span>Tiền cọc bảo đảm (Hoàn lại):</span>
-              <span className="text-white font-medium">
-                {depositAmount.toLocaleString("vi-VN")} đ
+              <span>Tiền cọc thiết bị:</span>
+              <span className="text-emerald-400 font-medium">
+                Miễn phí (0 đ)
               </span>
             </div>
 

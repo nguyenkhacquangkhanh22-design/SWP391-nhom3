@@ -115,8 +115,8 @@ async function requestRental(req, res) {
     ? diffHours * equipment.pricing.price_per_hour
     : diffDays * equipment.pricing.price_per_day;
 
-  const depositAmount = equipment.pricing.deposit_amount;
-  const totalEstimatedAmount = rentalFee + depositAmount;
+  const depositAmount = 0;
+  const totalEstimatedAmount = rentalFee;
 
   const rentalReq = await RentalRequest.create({
     request_code: generateCode("YC"),
@@ -243,8 +243,8 @@ async function signMyContract(req, res) {
       owner_id: contract.owner_id,
       renter_id: contract.renter_id,
       total_rental_fee: contract.rental_price,
-      deposit_paid: contract.deposit_amount,
-      deposit_refund_to_renter: contract.deposit_amount,
+      deposit_paid: 0,
+      deposit_refund_to_renter: 0,
       platform_fee: platformFee,
       owner_payout_amount: contract.rental_price - platformFee,
       payout_status: "pending_owner_confirmation",

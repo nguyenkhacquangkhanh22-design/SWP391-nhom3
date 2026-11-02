@@ -422,8 +422,7 @@ export default function ModeratorPortal() {
                       <strong style={{ color: "#fb923c", fontSize: "1.05rem" }}>
                         {(item.totalAmount || 0).toLocaleString("vi-VN")} đ
                       </strong>{" "}
-                      (Thuê: {(item.rentalFee || 0).toLocaleString("vi-VN")} đ + Cọc:{" "}
-                      {(item.depositAmount || 0).toLocaleString("vi-VN")} đ)
+                      (Phí thuê: {(item.rentalFee || 0).toLocaleString("vi-VN")} đ • Không cần cọc)
                     </p>
                     <p>
                       <b>Người chuyển khoản khai báo:</b>{" "}
@@ -581,7 +580,7 @@ export default function ModeratorPortal() {
                   <p>
                     <b>Tiền thuê / Tiền cọc:</b>{" "}
                     <strong style={{ color: "#10b981" }}>{req.rental_fee.toLocaleString("vi-VN")} đ</strong> /{" "}
-                    {req.deposit_amount.toLocaleString("vi-VN")} đ
+                    <span style={{ color: "#10b981" }}>0 đ (Miễn cọc)</span>
                   </p>
                   <p>
                     <b>Ngày gửi yêu cầu:</b> {dateTime(req.createdAt)}
@@ -698,7 +697,7 @@ export default function ModeratorPortal() {
                     <p><b>Thiết bị:</b> {contract.equipment_id?.title} • {contract.equipment_id?.brand} {contract.equipment_id?.model_name}</p>
                     <p><b>Số serial / tình trạng:</b> {contract.equipment_id?.serial_number || "—"} / {contract.equipment_id?.condition || "—"}</p>
                     <p><b>Thời gian thuê:</b> {dateTime(contract.start_date)} — {dateTime(contract.end_date)}</p>
-                    <p><b>Giá thuê / tiền cọc:</b> {contract.rental_price.toLocaleString("vi-VN")} đ / {contract.deposit_amount.toLocaleString("vi-VN")} đ</p>
+                    <p><b>Giá thuê / tiền cọc:</b> {contract.rental_price.toLocaleString("vi-VN")} đ / <span style={{ color: "#10b981" }}>0 đ (Miễn cọc)</span></p>
                     <p><b>Phiên bản hợp đồng:</b> v{contract.version} • gửi lúc {dateTime(contract.createdAt)}</p>
                     <p>
                       <b>Trạng thái chữ ký:</b>{" "}

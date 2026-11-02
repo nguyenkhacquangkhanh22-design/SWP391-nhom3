@@ -318,8 +318,8 @@ export default function EquipmentListPage() {
                           <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
                             Tiền cọc
                           </span>
-                          <span className="text-slate-300 font-semibold text-xs">
-                            {(item.depositAmount || (item as any).pricing?.deposit_amount || 0).toLocaleString("vi-VN")} đ
+                          <span className="text-emerald-400 font-semibold text-xs">
+                            Miễn phí (0 đ)
                           </span>
                         </div>
                       </div>

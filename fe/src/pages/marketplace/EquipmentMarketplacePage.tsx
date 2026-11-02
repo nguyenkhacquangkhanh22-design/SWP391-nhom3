@@ -480,11 +480,9 @@ export default function EquipmentMarketplacePage() {
                             </span>
                             <span className="price-unit">/ ngày</span>
                           </div>
-                          {eq.pricing?.deposit_amount ? (
-                            <span style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "2px" }}>
-                              Cọc: {eq.pricing.deposit_amount.toLocaleString("vi-VN")} đ
-                            </span>
-                          ) : null}
+                          <span style={{ fontSize: "0.72rem", color: "#10b981", marginTop: "2px" }}>
+                            Cọc: Miễn phí (0 đ)
+                          </span>
                         </div>
 
                         <Link to={`/equipments/${eq._id}`} className="equipment-cta-btn">

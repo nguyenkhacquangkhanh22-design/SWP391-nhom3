@@ -107,8 +107,7 @@ export default function EquipmentDetailPage() {
       ? hours * equipment.pricing.price_per_hour
       : days * equipment.pricing.price_per_day;
 
-    const deposit = equipment.pricing.deposit_amount;
-    return { rentalFee, deposit, total: rentalFee + deposit };
+    return { rentalFee, deposit: 0, total: rentalFee };
   }
 
   async function handleSendRentalRequest(e: React.FormEvent) {
@@ -629,8 +628,8 @@ export default function EquipmentDetailPage() {
                 }}
               >
                 <span style={{ color: "var(--muted)" }}>Tiền đặt cọc bảo đảm:</span>
-                <strong style={{ color: "#fff" }}>
-                  {equipment.pricing.deposit_amount.toLocaleString("vi-VN")} đ
+                <strong style={{ color: "#10b981" }}>
+                  Miễn phí (0 đ)
                 </strong>
               </div>
 
@@ -974,7 +973,7 @@ export default function EquipmentDetailPage() {
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.88rem", marginBottom: "6px" }}>
                       <span style={{ color: "var(--muted)" }}>Tiền đặt cọc cam kết:</span>
-                      <strong style={{ color: "#fff" }}>{calculation.deposit.toLocaleString("vi-VN")} đ</strong>
+                      <strong style={{ color: "#10b981" }}>Miễn phí (0 đ)</strong>
                     </div>
                     <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "6px 0" }} />
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>

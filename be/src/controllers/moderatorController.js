@@ -195,8 +195,7 @@ async function reviewContract(req, res) {
     !contract.equipment_id ||
     !Number.isFinite(contract.rental_price) ||
     contract.rental_price < 0 ||
-    !Number.isFinite(contract.deposit_amount) ||
-    contract.deposit_amount < 0 ||
+    (contract.deposit_amount !== undefined && contract.deposit_amount < 0) ||
     !contract.start_date ||
     !contract.end_date ||
     new Date(contract.end_date) <= new Date(contract.start_date)
@@ -668,7 +667,7 @@ async function verifyPayment(req, res) {
     );
     const w2 = await notifyUsers(
       [rental.owner?._id || rental.owner],
-      `💰 Khách thuê đã thanh toán đủ cọc & phí đơn #${rental.rentalCode}`,
+      `💰 Khách thuê đã thanh toán phí thuê đơn #${rental.rentalCode}`,
       `Rental Moderator đã xác nhận khách thuê ${rental.renter?.name || ""} chuyển khoản đủ ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ. Bạn có thể tiến hành bàn giao thiết bị.`,
       rental._id
     );

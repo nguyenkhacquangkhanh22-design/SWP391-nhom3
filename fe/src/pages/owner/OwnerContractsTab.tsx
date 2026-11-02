@@ -66,18 +66,14 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
       : `Thuê theo ngày (${req.duration_days || 1} ngày)`
   }
 
-ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG, TIỀN ĐẶT CỌC & THANH TOÁN
-3.1. Tổng tiền thuê thiết bị: ${req.rental_fee.toLocaleString("vi-VN")} VND
-3.2. Khoản tiền đặt cọc bảo đảm: ${req.deposit_amount.toLocaleString("vi-VN")} VND
-3.3. Tổng số tiền tạm tính (Tiền thuê + Tiền cọc): ${(
-    req.rental_fee + req.deposit_amount
-  ).toLocaleString("vi-VN")} VND
+ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG & THANH TOÁN
+3.1. Tổng phí thuê thiết bị: ${req.rental_fee.toLocaleString("vi-VN")} VND (Không cần tiền cọc)
 3.4. Chính sách hủy đơn: ${eq?.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
 
 ĐIỀU 4: QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (OWNER)
 4.1. Bàn giao thiết bị đúng chủng loại, số serial, phụ kiện và tình trạng hoạt động tốt đúng thời gian đã thỏa thuận.
 4.2. Lập Biên bản bàn giao (UC_O08) và Biên bản kiểm tra hoàn trả (UC_O09) có đầy đủ hình ảnh minh chứng.
-4.3. Hoàn trả khoản tiền đặt cọc cho Bên B sau khi nghiệm thu thiết bị không phát sinh hư hại hoặc mất mát phụ kiện.
+4.3. Xác nhận hoàn tất nghiệm thu thiết bị sau khi Bên B hoàn trả đầy đủ không phát sinh hư hại.
 
 ĐIỀU 5: QUYỀN VÀ NGHĨA VỤ CỦA BÊN B (RENTER)
 5.1. Kiểm tra kỹ tình trạng vật lý và hoạt động của thiết bị khi nhận bàn giao.
@@ -86,7 +82,7 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
     eq?.rental_terms ||
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   }
-5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý khấu trừ chi phí khắc phục thực tế vào khoản tiền đặt cọc theo Biên bản hoàn trả được Quản lý web xác minh.
+5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý thanh toán chi phí khắc phục thực tế theo Biên bản hoàn trả được Quản lý web xác minh.
 
 ĐIỀU 6: ĐIỀU KHOẢN BỔ SUNG CỦA OWNER
 ${specialConditions.trim() || "Không có điều khoản bổ sung đặc biệt."}
@@ -660,7 +656,7 @@ export default function OwnerContractsTab({
                 </div>
                 <div>
                   <span className="meta-label">Tiền cọc cam kết:</span>
-                  <span className="meta-val">{c.deposit_amount.toLocaleString("vi-VN")} đ</span>
+                  <span className="meta-val" style={{ color: "#10b981" }}>0 đ (Miễn cọc)</span>
                 </div>
                 <div>
                   <span className="meta-label">Chữ ký Người thuê (Bên B):</span>
@@ -829,7 +825,7 @@ export default function OwnerContractsTab({
                       <strong style={{ color: "#10b981" }}>
                         {activeRequestObj.rental_fee.toLocaleString("vi-VN")} đ
                       </strong>{" "}
-                      / {activeRequestObj.deposit_amount.toLocaleString("vi-VN")} đ
+                      / 0 đ (Miễn cọc)
                     </div>
                   </div>
                 )}

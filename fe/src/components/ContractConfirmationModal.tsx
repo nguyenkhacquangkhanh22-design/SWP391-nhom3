@@ -149,7 +149,7 @@ export default function ContractConfirmationModal({
               </div>
               <div>
                 <span className="text-slate-400 block">Tiền cọc</span>
-                <span className="text-white font-bold">{rental.depositAmount.toLocaleString("vi-VN")} đ</span>
+                <span className="text-emerald-400 font-bold">Miễn phí (0 đ)</span>
               </div>
               <div>
                 <span className="text-slate-400 block">Tổng thanh toán</span>
@@ -168,10 +168,10 @@ export default function ContractConfirmationModal({
                 <strong className="text-slate-300">Bảo quản thiết bị:</strong> Bên Thuê cam kết sử dụng thiết bị đúng chức năng kỹ thuật, bảo quản nguyên vẹn ngoại quan, linh kiện và phụ kiện đi kèm.
               </li>
               <li>
-                <strong className="text-slate-300">Hoàn tiền đặt cọc:</strong> Số tiền cọc sẽ được hoàn trả 100% trong vòng 24 giờ sau khi hai bên nghiệm thu hoàn trả thiết bị thành công không phát sinh hư hại.
+                <strong className="text-slate-300">Chính sách đặt cọc:</strong> Giao dịch thuê áp dụng chính sách ưu đãi không cần đặt cọc tiền mặt.
               </li>
               <li>
-                <strong className="text-slate-300">Bồi thường hư tổn:</strong> Trường hợp rơi vỡ, vô nước hoặc hư hỏng linh kiện do lỗi chủ quan của Bên Thuê, chi phí sửa chữa hoặc thay thế sẽ được khấu trừ vào tiền cọc theo biểu giá thỏa thuận.
+                <strong className="text-slate-300">Bồi thường hư tổn:</strong> Trường hợp rơi vỡ, vô nước hoặc hư hỏng linh kiện do lỗi chủ quan của Bên Thuê, chi phí sửa chữa hoặc thay thế sẽ được thanh toán theo biểu giá thỏa thuận.
               </li>
               <li>
                 <strong className="text-slate-300">Tính pháp lý:</strong> Chữ ký điện tử dưới đây có giá trị pháp lý ràng buộc nghĩa vụ thực hiện hợp đồng theo quy định pháp luật về giao dịch điện tử.

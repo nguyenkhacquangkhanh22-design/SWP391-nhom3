@@ -190,7 +190,7 @@ export default function OwnerRequestsTab({
                         {req.rental_fee.toLocaleString("vi-VN")} đ
                       </strong>
                     </td>
-                    <td>{req.deposit_amount.toLocaleString("vi-VN")} đ</td>
+                    <td style={{ color: "#10b981" }}>0 đ (Miễn cọc)</td>
                     <td style={{ maxWidth: "220px" }}>
                       <div style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
                         {req.renter_note || "Không có ghi chú"}
@@ -391,7 +391,7 @@ export default function OwnerRequestsTab({
                 <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
                   <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>TIỀN ĐẶT CỌC BẢO ĐẢM</div>
                   <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#f59e0b", marginTop: "2px" }}>
-                    {viewingRequest.deposit_amount.toLocaleString("vi-VN")} đ
+                    0 đ (Miễn cọc)
                   </div>
                 </div>
               </div>

@@ -53,7 +53,6 @@ export default function EquipmentDetailPage() {
   }
 
   const dailyRate = equipment?.dailyRate || (equipment as any)?.pricing?.price_per_day || 0;
-  const depositAmount = equipment?.depositAmount || (equipment as any)?.pricing?.deposit_amount || 0;
 
   // Giảm giá thuê dài ngày (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -69,7 +68,7 @@ export default function EquipmentDetailPage() {
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
-  const totalAmount = rentalFee + depositAmount;
+  const totalAmount = rentalFee;
 
   const handleCreateRental = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,8 +281,8 @@ export default function EquipmentDetailPage() {
                     </span>
                     <span className="text-xs text-slate-400"> /ngày</span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-300">
-                    Cọc: {depositAmount.toLocaleString("vi-VN")} đ
+                  <span className="text-xs font-semibold text-emerald-400">
+                    Cọc: Miễn phí (0 đ)
                   </span>
                 </div>
               </div>
@@ -388,9 +387,9 @@ export default function EquipmentDetailPage() {
                   ) : null}
 
                   <div className="flex justify-between text-xs text-slate-400">
-                    <span>Tiền cọc bảo đảm (Hoàn lại 100%):</span>
-                    <span className="text-white font-medium">
-                      {depositAmount.toLocaleString("vi-VN")} đ
+                    <span>Tiền cọc thiết bị:</span>
+                    <span className="text-emerald-400 font-medium">
+                      Miễn phí (0 đ)
                     </span>
                   </div>
 
@@ -400,7 +399,7 @@ export default function EquipmentDetailPage() {
                         Tổng cộng tạm tính:
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        (Tiền thuê sau giảm + Tiền cọc)
+                        (Tiền thuê sau giảm • Không cần cọc)
                       </span>
                     </div>
                     <span className="text-2xl font-extrabold text-orange-400">

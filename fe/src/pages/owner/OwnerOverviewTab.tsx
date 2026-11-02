@@ -203,7 +203,7 @@ export default function OwnerOverviewTab({
                     <td style={{ color: "var(--orange)", fontWeight: 600 }}>
                       {req.rental_fee.toLocaleString("vi-VN")} đ
                     </td>
-                    <td>{req.deposit_amount.toLocaleString("vi-VN")} đ</td>
+                    <td style={{ color: "#10b981" }}>0 đ (Miễn cọc)</td>
                     <td>
                       <span className={`status-badge status-${req.status}`}>
                         {req.status === "pending"

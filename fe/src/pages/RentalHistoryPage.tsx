@@ -293,7 +293,7 @@ export default function RentalHistoryPage() {
               Quản Lý Đơn Thuê Của Bạn
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Ký hợp đồng điện tử, quét mã QR thanh toán phí thuê & tiền cọc (Rental Moderator xác nhận), theo dõi lịch trình và báo trả đồ
+              Ký hợp đồng điện tử, quét mã QR thanh toán phí thuê (Rental Moderator xác nhận), theo dõi lịch trình và báo trả đồ
             </p>
           </div>
           <Link
@@ -489,7 +489,7 @@ export default function RentalHistoryPage() {
                     </span>
                     <div className="text-[11px] text-slate-400 text-right space-y-0.5">
                       <div>Tiền thuê: {r.rentalFee.toLocaleString("vi-VN")} đ</div>
-                      <div>Tiền cọc: {r.depositAmount.toLocaleString("vi-VN")} đ</div>
+                      <div className="text-emerald-400">Tiền cọc: Miễn phí (0 đ)</div>
                       {r.discountAmount ? (
                         <div className="text-emerald-400 font-semibold">
                           Giảm giá: -{r.discountAmount.toLocaleString("vi-VN")} đ
@@ -610,7 +610,7 @@ export default function RentalHistoryPage() {
           onSuccess={(updatedRental) => {
             setSigningRental(null);
             setNotice(
-              "Đã ký hợp đồng điện tử thành công! Vui lòng quét mã QR để thanh toán tiền thuê và tiền cọc."
+              "Đã ký hợp đồng điện tử thành công! Vui lòng quét mã QR để thanh toán phí thuê thiết bị."
             );
             fetchHistory();
             if (updatedRental) {
@@ -644,7 +644,7 @@ export default function RentalHistoryPage() {
               <span>📦</span> Yêu Cầu Hoàn Trả Thiết Bị
             </h3>
             <p className="text-xs text-slate-400">
-              Gửi thông tin hẹn giờ và địa điểm để Chủ máy chuẩn bị nghiệm thu thiết bị và hoàn trả tiền cọc cho bạn.
+              Gửi thông tin hẹn giờ và địa điểm để Chủ máy chuẩn bị nghiệm thu thiết bị và hoàn tất đơn thuê cho bạn.
             </p>
 
             <form onSubmit={handleReturnSubmit} className="space-y-3.5 text-xs">

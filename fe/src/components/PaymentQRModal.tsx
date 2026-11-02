@@ -233,8 +233,8 @@ export default function PaymentQRModal({
                 </div>
 
                 <div className="text-[11px] text-slate-400 flex flex-wrap justify-between gap-2 bg-[#162136] px-3 py-1.5 rounded-lg">
-                  <span>Tiền thuê ({rental.totalDays} ngày): <strong className="text-slate-200">{rental.rentalFee.toLocaleString("vi-VN")} đ</strong></span>
-                  <span>Tiền cọc thiết bị: <strong className="text-slate-200">{rental.depositAmount.toLocaleString("vi-VN")} đ</strong></span>
+                  <span>Phí thuê ({rental.totalDays} ngày): <strong className="text-slate-200">{rental.rentalFee.toLocaleString("vi-VN")} đ</strong></span>
+                  <span>Tiền cọc: <strong className="text-emerald-400 font-bold">Miễn phí (0 đ)</strong></span>
                 </div>
 
                 <div className="flex items-center justify-between gap-2">
@@ -363,3 +363,4 @@ export default function PaymentQRModal({
     </div>
   );
 }
+

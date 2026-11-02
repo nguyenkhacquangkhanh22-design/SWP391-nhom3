@@ -128,7 +128,7 @@ class EquipmentService {
     const normalizedEquipments = items.map((item) => ({
       ...item,
       dailyRate: item.dailyRate || item.pricing?.price_per_day || 0,
-      depositAmount: item.depositAmount || item.pricing?.deposit_amount || 0,
+      depositAmount: 0,
       owner: item.owner || item.owner_id,
       owner_id: item.owner_id || item.owner,
     }));
@@ -167,7 +167,7 @@ class EquipmentService {
     }
 
     equipment.dailyRate = equipment.dailyRate || equipment.pricing?.price_per_day || 0;
-    equipment.depositAmount = equipment.depositAmount || equipment.pricing?.deposit_amount || 0;
+    equipment.depositAmount = 0;
     equipment.owner = equipment.owner || equipment.owner_id;
     equipment.owner_id = equipment.owner_id || equipment.owner;
 

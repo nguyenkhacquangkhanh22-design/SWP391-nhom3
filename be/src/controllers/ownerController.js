@@ -156,8 +156,8 @@ async function createEquipmentListing(req, res) {
     cancellation_policy,
   } = req.body;
 
-  if (!title || !category || !pricing || !pricing.price_per_day || !pricing.deposit_amount) {
-    throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục, giá thuê ngày và tiền cọc");
+  if (!title || !category || !pricing || !pricing.price_per_day) {
+    throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục và giá thuê ngày");
   }
 
   const equipment = await Equipment.create({
@@ -177,7 +177,7 @@ async function createEquipmentListing(req, res) {
     pricing: {
       price_per_hour: Number(pricing.price_per_hour) || 0,
       price_per_day: Number(pricing.price_per_day),
-      deposit_amount: Number(pricing.deposit_amount),
+      deposit_amount: 0,
       weekend_rate: Number(pricing.weekend_rate) || 0,
     },
     rental_terms: rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.",
@@ -608,22 +608,20 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
 2.2. Thời gian hoàn trả máy: ${new Date(rentalReq.end_date).toLocaleString("vi-VN")}
 2.3. Hình thức tính thuê: ${rentalReq.rental_type === "hourly" ? "Thuê theo giờ" : `Thuê theo ngày (${rentalReq.duration_days || 1} ngày)`}
 
-ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG, TIỀN ĐẶT CỌC & THANH TOÁN
-3.1. Tổng tiền thuê thiết bị: ${rentalReq.rental_fee.toLocaleString("vi-VN")} VND
-3.2. Khoản tiền đặt cọc bảo đảm: ${rentalReq.deposit_amount.toLocaleString("vi-VN")} VND
-3.3. Tổng số tiền tạm tính (Tiền thuê + Tiền cọc): ${(rentalReq.rental_fee + rentalReq.deposit_amount).toLocaleString("vi-VN")} VND
-3.4. Chính sách hủy đơn: ${equipment.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
+ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG & THANH TOÁN
+3.1. Tổng phí thuê thiết bị: ${rentalReq.rental_fee.toLocaleString("vi-VN")} VND (Miễn tiền đặt cọc)
+3.2. Chính sách hủy đơn: ${equipment.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
 
 ĐIỀU 4: QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (OWNER)
 4.1. Bàn giao thiết bị đúng chủng loại, số serial, phụ kiện và tình trạng hoạt động tốt đúng thời gian đã thỏa thuận.
 4.2. Lập Biên bản bàn giao (UC_O08) và Biên bản kiểm tra hoàn trả (UC_O09) có đầy đủ hình ảnh minh chứng.
-4.3. Hoàn trả khoản tiền đặt cọc cho Bên B sau khi nghiệm thu thiết bị không phát sinh hư hại hoặc mất mát phụ kiện.
+4.3. Xác nhận hoàn tất hợp đồng cho Bên B sau khi nghiệm thu thiết bị không phát sinh hư hại hoặc mất mát phụ kiện.
 
 ĐIỀU 5: QUYỀN VÀ NGHĨA VỤ CỦA BÊN B (RENTER)
 5.1. Kiểm tra kỹ tình trạng vật lý và hoạt động của thiết bị khi nhận bàn giao.
 5.2. Sử dụng thiết bị đúng mục đích, tự bảo quản thiết bị, không tự ý tháo mở, sửa chữa hoặc cho bên thứ ba thuê lại.
 5.3. Quy định của Owner: ${equipment.rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."}
-5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý khấu trừ chi phí khắc phục thực tế vào khoản tiền đặt cọc theo Biên bản hoàn trả được Quản lý web xác minh.
+5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý thanh toán chi phí khắc phục thực tế theo Biên bản hoàn trả được Quản lý web xác minh.
 
 ĐIỀU 6: ĐIỀU KHOẢN BỔ SUNG CỦA OWNER
 ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
@@ -666,7 +664,7 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
       start_date: new Date(rentalReq.start_date).toLocaleString("vi-VN"),
       end_date: new Date(rentalReq.end_date).toLocaleString("vi-VN"),
       rental_price: rentalReq.rental_fee.toLocaleString("vi-VN"),
-      deposit_amount: rentalReq.deposit_amount.toLocaleString("vi-VN"),
+      deposit_amount: "0",
       special_conditions: special_conditions || "",
     };
     for (const field of selectedTemplate.fields) {
@@ -691,7 +689,7 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
     title: `Hợp đồng thuê ${equipment.title} - ${rentalReq.renter_name}`,
     terms_content: standardTerms,
     rental_price: rentalReq.rental_fee,
-    deposit_amount: rentalReq.deposit_amount,
+    deposit_amount: 0,
     start_date: rentalReq.start_date,
     end_date: rentalReq.end_date,
     special_conditions: special_conditions || "",
