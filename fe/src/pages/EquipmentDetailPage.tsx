@@ -21,6 +21,7 @@ export default function EquipmentDetailPage() {
   const [endDate, setEndDate] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || "");
   const [renterNote, setRenterNote] = useState("");
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Modal ký hợp đồng sau khi tạo đơn thành công
 
@@ -172,18 +173,52 @@ export default function EquipmentDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Images, Specs & Description */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Main Image */}
-            <div className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg">
+            {/* Main Image with Prev / Next */}
+            <div className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg group">
               {equipment.images && equipment.images.length > 0 ? (
-                <img
-                  src={equipment.images[0]}
-                  alt={equipment.title}
-                  className="w-full h-full object-cover"
-                />
+                <>
+                  <img
+                    src={equipment.images[selectedImageIndex % equipment.images.length]}
+                    alt={equipment.title}
+                    className="w-full h-full object-cover transition-opacity duration-200"
+                  />
+
+                  {equipment.images.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        title="Ảnh trước"
+                        aria-label="Ảnh trước"
+                        onClick={() =>
+                          setSelectedImageIndex((prev) => (prev - 1 + equipment.images.length) % equipment.images.length)
+                        }
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-10"
+                      >
+                        ‹
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Ảnh tiếp theo"
+                        aria-label="Ảnh tiếp theo"
+                        onClick={() =>
+                          setSelectedImageIndex((prev) => (prev + 1) % equipment.images.length)
+                        }
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-10"
+                      >
+                        ›
+                      </button>
+
+                      <div className="absolute bottom-3 right-3 px-3 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs font-semibold text-white border border-white/20 z-10">
+                        📷 {(selectedImageIndex % equipment.images.length) + 1} / {equipment.images.length}
+                      </div>
+                    </>
+                  )}
+                </>
               ) : (
                 <div className="text-6xl text-slate-600">📷</div>
               )}
-              <div className="absolute top-4 left-4 flex gap-2">
+              <div className="absolute top-4 left-4 flex gap-2 z-10">
                 <span className="px-3 py-1 rounded-lg text-xs font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c]">
                   {equipment.category}
                 </span>
@@ -194,6 +229,26 @@ export default function EquipmentDetailPage() {
                 </span>
               </div>
             </div>
+
+            {/* Thumbnail Gallery Strip */}
+            {equipment.images && equipment.images.length > 1 && (
+              <div className="flex gap-2.5 overflow-x-auto pb-2">
+                {equipment.images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={`w-20 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${
+                      idx === (selectedImageIndex % equipment.images.length)
+                        ? "border-orange-500 scale-105 shadow-md shadow-orange-500/30"
+                        : "border-[#223049] opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <img src={img} alt={`Ảnh ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Title & Brand header */}
             <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-6 space-y-3">

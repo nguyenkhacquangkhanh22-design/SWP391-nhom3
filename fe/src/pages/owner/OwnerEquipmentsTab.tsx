@@ -63,6 +63,11 @@ export default function OwnerEquipmentsTab({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // State chuyển qua chuyển lại ảnh trên từng thẻ thiết bị
+  const [cardImageIndices, setCardImageIndices] = useState<Record<string, number>>({});
+  // State xem trước ảnh trong modal thêm / sửa thiết bị
+  const [modalPreviewIndex, setModalPreviewIndex] = useState(0);
+
   async function handleFileUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     setPhotoUploadError("");
@@ -100,6 +105,40 @@ export default function OwnerEquipmentsTab({
       const [item] = copy.splice(index, 1);
       return [item, ...copy];
     });
+    setModalPreviewIndex(0);
+  }
+
+  function handleMovePhoto(index: number, direction: "left" | "right") {
+    setImagesList((prev) => {
+      const targetIndex = direction === "left" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy;
+    });
+    setModalPreviewIndex((prev) => {
+      if (direction === "left" && prev === index) return index - 1;
+      if (direction === "right" && prev === index) return index + 1;
+      return prev;
+    });
+  }
+
+  function handlePrevCardImage(eqId: string, total: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setCardImageIndices((prev) => ({
+      ...prev,
+      [eqId]: ((prev[eqId] || 0) - 1 + total) % total,
+    }));
+  }
+
+  function handleNextCardImage(eqId: string, total: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setCardImageIndices((prev) => ({
+      ...prev,
+      [eqId]: ((prev[eqId] || 0) + 1) % total,
+    }));
   }
 
   async function handleProofFileUpload(file: File | null) {
@@ -321,33 +360,161 @@ export default function OwnerEquipmentsTab({
         <div className="owner-equipment-grid">
           {equipments.map((eq) => (
             <div key={eq._id} className="owner-equipment-card">
-              <div className="owner-card-img-wrap">
-                <img
-                  src={
-                    eq.images?.[0] ||
-                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
-                  }
-                  alt={eq.title}
-                />
-                {eq.images && eq.images.length > 1 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      bottom: "10px",
-                      left: "10px",
-                      background: "rgba(0, 0, 0, 0.75)",
-                      color: "#fff",
-                      padding: "2px 8px",
-                      borderRadius: "6px",
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                      backdropFilter: "blur(4px)",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                    }}
-                  >
-                    📷 {eq.images.length} ảnh
-                  </span>
-                )}
+              <div className="owner-card-img-wrap" style={{ position: "relative", overflow: "hidden" }}>
+                {(() => {
+                  const images =
+                    eq.images && eq.images.length > 0
+                      ? eq.images
+                      : [
+                          "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80",
+                        ];
+                  const currentIdx = (cardImageIndices[eq._id] || 0) % images.length;
+                  const currentImg = images[currentIdx];
+
+                  return (
+                    <>
+                      <img
+                        src={currentImg}
+                        alt={eq.title}
+                        key={`${eq._id}-${currentIdx}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", transition: "opacity 0.2s" }}
+                      />
+
+                      {/* Nút chuyển ảnh qua lại trên thẻ */}
+                      {images.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            title="Ảnh trước"
+                            aria-label="Ảnh trước"
+                            onClick={(e) => handlePrevCardImage(eq._id, images.length, e)}
+                            style={{
+                              position: "absolute",
+                              left: "8px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "30px",
+                              height: "30px",
+                              borderRadius: "50%",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "#fff",
+                              border: "1px solid rgba(255, 255, 255, 0.35)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              fontSize: "1.1rem",
+                              fontWeight: "bold",
+                              zIndex: 4,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                              userSelect: "none",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(234, 88, 12, 0.95)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0, 0, 0, 0.75)")}
+                          >
+                            ‹
+                          </button>
+
+                          <button
+                            type="button"
+                            title="Ảnh tiếp theo"
+                            aria-label="Ảnh tiếp theo"
+                            onClick={(e) => handleNextCardImage(eq._id, images.length, e)}
+                            style={{
+                              position: "absolute",
+                              right: "8px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "30px",
+                              height: "30px",
+                              borderRadius: "50%",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "#fff",
+                              border: "1px solid rgba(255, 255, 255, 0.35)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              fontSize: "1.1rem",
+                              fontWeight: "bold",
+                              zIndex: 4,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                              userSelect: "none",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(234, 88, 12, 0.95)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0, 0, 0, 0.75)")}
+                          >
+                            ›
+                          </button>
+
+                          {/* Dots chuyển nhanh ảnh */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "8px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              display: "flex",
+                              gap: "4px",
+                              zIndex: 3,
+                              background: "rgba(0,0,0,0.55)",
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              backdropFilter: "blur(4px)",
+                            }}
+                          >
+                            {images.map((_, dotIdx) => (
+                              <button
+                                key={dotIdx}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices((prev) => ({ ...prev, [eq._id]: dotIdx }));
+                                }}
+                                style={{
+                                  width: dotIdx === currentIdx ? "14px" : "6px",
+                                  height: "6px",
+                                  borderRadius: "3px",
+                                  background: dotIdx === currentIdx ? "#f97316" : "rgba(255,255,255,0.45)",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  transition: "all 0.2s",
+                                }}
+                                title={`Xem ảnh ${dotIdx + 1}`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Badge hiển thị số thứ tự ảnh */}
+                      {images.length > 1 && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            bottom: "10px",
+                            left: "10px",
+                            background: "rgba(0, 0, 0, 0.8)",
+                            color: "#fff",
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                            backdropFilter: "blur(4px)",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            zIndex: 3,
+                          }}
+                        >
+                          📷 {currentIdx + 1} / {images.length}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
+
                 <span className={`owner-vis-badge vis-${eq.visibility}`}>
                   {eq.visibility === "published"
                     ? "Đang hiển thị"
@@ -659,6 +826,100 @@ export default function OwnerEquipmentsTab({
                   {/* Image thumbnails list */}
                   {imagesList.length > 0 && (
                     <div style={{ marginTop: "14px" }}>
+                      {/* Live preview carousel box with prev/next */}
+                      {imagesList.length > 1 && (
+                        <div
+                          style={{
+                            position: "relative",
+                            width: "100%",
+                            height: "220px",
+                            borderRadius: "12px",
+                            overflow: "hidden",
+                            background: "#080c14",
+                            border: "1px solid var(--border)",
+                            marginBottom: "14px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <img
+                            src={imagesList[modalPreviewIndex % imagesList.length]}
+                            alt="Xem trước ảnh"
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          />
+                          <button
+                            type="button"
+                            title="Ảnh trước"
+                            onClick={() =>
+                              setModalPreviewIndex((prev) => (prev - 1 + imagesList.length) % imagesList.length)
+                            }
+                            style={{
+                              position: "absolute",
+                              left: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "50%",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              border: "1px solid rgba(255,255,255,0.3)",
+                              cursor: "pointer",
+                              fontSize: "1.3rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            ‹
+                          </button>
+                          <button
+                            type="button"
+                            title="Ảnh tiếp theo"
+                            onClick={() =>
+                              setModalPreviewIndex((prev) => (prev + 1) % imagesList.length)
+                            }
+                            style={{
+                              position: "absolute",
+                              right: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "50%",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              border: "1px solid rgba(255,255,255,0.3)",
+                              cursor: "pointer",
+                              fontSize: "1.3rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            ›
+                          </button>
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "8px",
+                              right: "12px",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            📷 {(modalPreviewIndex % imagesList.length) + 1} / {imagesList.length}
+                          </div>
+                        </div>
+                      )}
+
                       <div
                         style={{
                           display: "grid",
@@ -669,16 +930,23 @@ export default function OwnerEquipmentsTab({
                         {imagesList.map((imgUrl, idx) => (
                           <div
                             key={idx}
+                            onClick={() => setModalPreviewIndex(idx)}
                             style={{
                               position: "relative",
                               borderRadius: "10px",
                               overflow: "hidden",
-                              border: idx === 0 ? "2px solid var(--orange)" : "1px solid var(--border)",
+                              border:
+                                idx === 0
+                                  ? "2px solid var(--orange)"
+                                  : idx === (modalPreviewIndex % imagesList.length)
+                                    ? "2px solid #38bdf8"
+                                    : "1px solid var(--border)",
                               background: "#0b0f19",
-                              height: "110px",
+                              height: "115px",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
+                              cursor: "pointer",
                             }}
                           >
                             <img
@@ -705,26 +973,31 @@ export default function OwnerEquipmentsTab({
                                   padding: "2px 6px",
                                   borderRadius: "4px",
                                   boxShadow: "0 2px 4px rgba(0,0,0,0.4)",
+                                  zIndex: 2,
                                 }}
                               >
-                                ★ ẢNH BÌA
+                                ★ BÌA
                               </span>
                             ) : (
                               <button
                                 type="button"
                                 title="Đặt làm ảnh bìa"
-                                onClick={() => handleSetPrimaryPhoto(idx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetPrimaryPhoto(idx);
+                                }}
                                 style={{
                                   position: "absolute",
                                   top: "6px",
                                   left: "6px",
-                                  background: "rgba(0,0,0,0.75)",
+                                  background: "rgba(0,0,0,0.8)",
                                   color: "#fff",
-                                  border: "1px solid rgba(255,255,255,0.2)",
+                                  border: "1px solid rgba(255,255,255,0.25)",
                                   borderRadius: "4px",
                                   fontSize: "0.65rem",
                                   padding: "2px 6px",
                                   cursor: "pointer",
+                                  zIndex: 2,
                                 }}
                               >
                                 Đặt bìa
@@ -735,7 +1008,10 @@ export default function OwnerEquipmentsTab({
                             <button
                               type="button"
                               title="Xóa ảnh"
-                              onClick={() => handleRemovePhoto(idx)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemovePhoto(idx);
+                              }}
                               style={{
                                 position: "absolute",
                                 top: "6px",
@@ -752,10 +1028,70 @@ export default function OwnerEquipmentsTab({
                                 cursor: "pointer",
                                 fontSize: "0.75rem",
                                 fontWeight: "bold",
+                                zIndex: 2,
                               }}
                             >
                               ✕
                             </button>
+
+                            {/* Chuyển qua / chuyển lại thứ tự ảnh */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: "4px",
+                                left: "4px",
+                                right: "4px",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                zIndex: 2,
+                              }}
+                            >
+                              {idx > 0 ? (
+                                <button
+                                  type="button"
+                                  title="Chuyển ảnh sang trái"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMovePhoto(idx, "left");
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.8)",
+                                    color: "#fff",
+                                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                                    borderRadius: "4px",
+                                    padding: "2px 6px",
+                                    fontSize: "0.7rem",
+                                    cursor: "pointer",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  ◀
+                                </button>
+                              ) : <span />}
+
+                              {idx < imagesList.length - 1 ? (
+                                <button
+                                  type="button"
+                                  title="Chuyển ảnh sang phải"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMovePhoto(idx, "right");
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.8)",
+                                    color: "#fff",
+                                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                                    borderRadius: "4px",
+                                    padding: "2px 6px",
+                                    fontSize: "0.7rem",
+                                    cursor: "pointer",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  ▶
+                                </button>
+                              ) : <span />}
+                            </div>
                           </div>
                         ))}
                       </div>
