@@ -54,8 +54,8 @@ export default function EquipmentDetailPage() {
     }
   }
 
-  const dailyRate = equipment?.dailyRate || 0;
-  const depositAmount = equipment?.depositAmount || 0;
+  const dailyRate = equipment?.dailyRate || (equipment as any)?.pricing?.price_per_day || 0;
+  const depositAmount = equipment?.depositAmount || (equipment as any)?.pricing?.deposit_amount || 0;
 
   // Giảm giá thuê dài ngày (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;

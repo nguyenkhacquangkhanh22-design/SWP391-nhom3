@@ -310,7 +310,7 @@ export default function EquipmentListPage() {
                             Giá thuê
                           </span>
                           <span className="text-orange-400 font-extrabold text-base">
-                            {item.dailyRate.toLocaleString("vi-VN")} đ
+                            {(item.dailyRate || (item as any).pricing?.price_per_day || 0).toLocaleString("vi-VN")} đ
                           </span>
                           <span className="text-[11px] text-slate-500"> /ngày</span>
                         </div>
@@ -319,7 +319,7 @@ export default function EquipmentListPage() {
                             Tiền cọc
                           </span>
                           <span className="text-slate-300 font-semibold text-xs">
-                            {item.depositAmount.toLocaleString("vi-VN")} đ
+                            {(item.depositAmount || (item as any).pricing?.deposit_amount || 0).toLocaleString("vi-VN")} đ
                           </span>
                         </div>
                       </div>

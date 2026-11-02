@@ -104,7 +104,11 @@ async function seedData() {
   const eq1 = await Equipment.create({
     owner_id: owner._id,
     title: "Sony Alpha A7 IV (Body) Chuyên Nghiệp",
-    category: "Máy ảnh Mirrorless",
+    category: "Máy ảnh & Quay phim",
+    dailyRate: 550000,
+    depositAmount: 5000000,
+    owner: owner._id,
+    approval_status: "approved",
     brand: "Sony",
     model_name: "ILCE-7M4",
     serial_number: "SN-SONY-748291",
@@ -151,7 +155,11 @@ async function seedData() {
   const eq2 = await Equipment.create({
     owner_id: owner._id,
     title: "Ống kính Sony FE 24-70mm f/2.8 GM II",
-    category: "Ống kính Lens",
+    category: "Máy ảnh & Quay phim",
+    dailyRate: 350000,
+    depositAmount: 3500000,
+    owner: owner._id,
+    approval_status: "approved",
     brand: "Sony",
     model_name: "SEL2470GM2",
     serial_number: "SN-GM2-993821",
@@ -180,7 +188,11 @@ async function seedData() {
   const eq3 = await Equipment.create({
     owner_id: owner._id,
     title: "Gimbal DJI RS 3 Pro Combo Quay Phim",
-    category: "Gimbal & Chống rung",
+    category: "Máy ảnh & Quay phim",
+    dailyRate: 400000,
+    depositAmount: 4000000,
+    owner: owner._id,
+    approval_status: "approved",
     brand: "DJI",
     model_name: "RS3-PRO-COMBO",
     serial_number: "SN-DJI-882319",
@@ -201,7 +213,102 @@ async function seedData() {
     visibility: "published",
     status: "available",
   });
-  console.log("✓ Đã nạp 3 thiết bị mẫu kèm nhiều ảnh, bảng giá & lịch trống/bận (UC_O03-UC_O06)");
+    const eq4 = await Equipment.create({
+    owner_id: owner._id,
+    owner: owner._id,
+    title: "Flycam DJI Mini 4 Pro Combo Plus (3 Pin)",
+    category: "Flycam & Drone",
+    brand: "DJI",
+    model_name: "DJI-MINI4PRO",
+    modelNumber: "DJI-MINI4PRO",
+    serial_number: "SN-DJI-443912",
+    description: "Flycam dưới 249g cảm biến va chạm đa hướng, truyền video FHD 20km, quay video dọc 4K/60fps HDR. Pin Plus cho thời lượng bay tối đa 45 phút/pin.",
+    images: ["https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&w=800&q=80"],
+    condition: "Như mới (99%)",
+    dailyRate: 350000,
+    depositAmount: 8000000,
+    pricing: {
+      price_per_hour: 50000,
+      price_per_day: 350000,
+      deposit_amount: 8000000,
+    },
+    visibility: "published",
+    status: "available",
+    approval_status: "approved",
+  });
+
+  const eq5 = await Equipment.create({
+    owner_id: owner._id,
+    owner: owner._id,
+    title: "Laptop Apple MacBook Pro 14 M3 Pro (18GB / 512GB SSD)",
+    category: "Laptop & Công nghệ",
+    brand: "Apple",
+    model_name: "MRX33SA/A",
+    modelNumber: "MRX33SA/A",
+    serial_number: "SN-MBP-992182",
+    description: "MacBook Pro M3 Pro cấu hình mạnh mẽ cho dựng phim 4K, đồ họa 3D và lập trình. Màn hình Liquid Retina XDR 120Hz siêu đẹp.",
+    images: ["https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80"],
+    condition: "Như mới (99%)",
+    dailyRate: 500000,
+    depositAmount: 18000000,
+    pricing: {
+      price_per_hour: 80000,
+      price_per_day: 500000,
+      deposit_amount: 18000000,
+    },
+    visibility: "published",
+    status: "available",
+    approval_status: "approved",
+  });
+
+  const eq6 = await Equipment.create({
+    owner_id: owner._id,
+    owner: owner._id,
+    title: "Bộ Micro Thu Âm Không Dây DJI Mic 2 (2 TX + 1 RX)",
+    category: "Âm thanh & Ánh sáng",
+    brand: "DJI",
+    model_name: "DJI-MIC2-COMBO",
+    modelNumber: "DJI-MIC2-COMBO",
+    serial_number: "SN-MIC2-332145",
+    description: "Ghi âm nội bộ 32-bit Float chuyên nghiệp, chống ồn thông minh, truyền xa 250m. Phù hợp quay Vlog, phỏng vấn, sự kiện.",
+    images: ["https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80"],
+    condition: "Như mới (99%)",
+    dailyRate: 200000,
+    depositAmount: 3000000,
+    pricing: {
+      price_per_hour: 30000,
+      price_per_day: 200000,
+      deposit_amount: 3000000,
+    },
+    visibility: "published",
+    status: "available",
+    approval_status: "approved",
+  });
+
+  const eq7 = await Equipment.create({
+    owner_id: owner._id,
+    owner: owner._id,
+    title: "Máy Cân Mực Laser 12 Tia Xanh Bosch GLL 3-80 CG",
+    category: "Thiết bị đo lường & Cơ khí",
+    brand: "Bosch",
+    model_name: "GLL-3-80-CG",
+    modelNumber: "GLL-3-80-CG",
+    serial_number: "SN-BOSCH-662319",
+    description: "Máy cân bằng tia laser 3x360 độ tia xanh nhìn rõ ngoài trời gấp 4 lần tia đỏ. Kết nối Bluetooth điều khiển qua điện thoại.",
+    images: ["https://images.unsplash.com/photo-1572981779307-38b8cabb2407?auto=format&fit=crop&w=800&q=80"],
+    condition: "Rất tốt (95%)",
+    dailyRate: 180000,
+    depositAmount: 2500000,
+    pricing: {
+      price_per_hour: 25000,
+      price_per_day: 180000,
+      deposit_amount: 2500000,
+    },
+    visibility: "published",
+    status: "available",
+    approval_status: "approved",
+  });
+  console.log("✓ Đã nạp đầy đủ thiết bị mẫu cho tất cả danh mục (UC_O03-UC_O06)");
 
   // 5. Create Rental Requests demonstrating the 5-step flow:
   // Request 0: Renter vừa bấm thuê -> Đang chờ Quản lý web gửi cho Owner (pending_moderator)
