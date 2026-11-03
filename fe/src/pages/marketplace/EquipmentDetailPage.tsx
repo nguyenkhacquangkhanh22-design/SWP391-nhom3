@@ -23,14 +23,9 @@ export default function EquipmentDetailPage() {
 
   // Request Rental Modal
   const [showRentModal, setShowRentModal] = useState(false);
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date(Date.now() + 86400000);
-    return d.toISOString().slice(0, 10);
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const d = new Date(Date.now() + 86400000 * 3);
-    return d.toISOString().slice(0, 10);
-  });
+  // Mới vào phải hoàn toàn trống theo yêu cầu người dùng
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [rentalType, setRentalType] = useState<"daily" | "hourly">("daily");
   const [renterPhone, setRenterPhone] = useState("");
   const [renterNote, setRenterNote] = useState("");
@@ -107,8 +102,7 @@ export default function EquipmentDetailPage() {
       ? hours * equipment.pricing.price_per_hour
       : days * equipment.pricing.price_per_day;
 
-    const deposit = equipment.pricing.deposit_amount;
-    return { rentalFee, deposit, total: rentalFee + deposit };
+    return { rentalFee, deposit: 0, total: rentalFee };
   }
 
   async function handleSendRentalRequest(e: React.FormEvent) {
@@ -138,7 +132,7 @@ export default function EquipmentDetailPage() {
       });
 
       setSuccess(
-        "Đã gửi yêu cầu thuê tới Quản lý web! Quản lý web sẽ chuyển tiếp cho Chủ thiết bị (Owner) duyệt -> Owner lập Hợp đồng gửi Quản lý web duyệt -> Quản lý web gửi cho bạn ký tên tại trang Hồ sơ."
+        "Đã gửi yêu cầu thuê trực tiếp tới Chủ thiết bị (Owner)! Chủ máy sẽ kiểm tra thiết bị & soạn Hợp đồng gửi Quản lý web duyệt -> Bạn ký điện tử bằng tay & thanh toán chuyển khoản VietQR MB Bank."
       );
       setShowRentModal(false);
       setStartDate("");
@@ -629,9 +623,7 @@ export default function EquipmentDetailPage() {
                 }}
               >
                 <span style={{ color: "var(--muted)" }}>Tiền đặt cọc bảo đảm:</span>
-                <strong style={{ color: "#fff" }}>
-                  {equipment.pricing.deposit_amount.toLocaleString("vi-VN")} đ
-                </strong>
+                <strong style={{ color: "#10b981" }}>0 đ (Miễn cọc)</strong>
               </div>
 
               {/* Action Button */}
@@ -640,17 +632,20 @@ export default function EquipmentDetailPage() {
                   <Link to="/owner" className="button button-secondary" style={{ width: "100%", textAlign: "center" }}>
                     Quản lý thiết bị này trong Cổng Owner 💼
                   </Link>
+                ) : !user ? (
+                  <Link
+                    to="/login"
+                    state={{ from: `/equipments/${id}` }}
+                    className="button button-primary"
+                    style={{ width: "100%", padding: "14px", fontSize: "1rem", textAlign: "center", display: "block" }}
+                  >
+                    Đăng nhập để đặt thuê thiết bị 🔑
+                  </Link>
                 ) : (
                   <button
                     className="button button-primary"
                     style={{ width: "100%", padding: "14px", fontSize: "1rem" }}
-                    onClick={() => {
-                      if (!user) {
-                        navigate("/login");
-                      } else {
-                        setShowRentModal(true);
-                      }
-                    }}
+                    onClick={() => setShowRentModal(true)}
                   >
                     Gửi yêu cầu thuê ngay 🚀
                   </button>
@@ -899,8 +894,8 @@ export default function EquipmentDetailPage() {
                       const nextType = e.target.value as "daily" | "hourly";
                       setRentalType(nextType);
                       if (nextType === "daily") {
-                        setStartDate((prev) => (prev ? prev.slice(0, 10) : new Date(Date.now() + 86400000).toISOString().slice(0, 10)));
-                        setEndDate((prev) => (prev ? prev.slice(0, 10) : new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10)));
+                        setStartDate((prev) => (prev ? prev.slice(0, 10) : ""));
+                        setEndDate((prev) => (prev ? prev.slice(0, 10) : ""));
                       } else {
                         setStartDate((prev) => (prev.length === 10 ? `${prev}T08:00` : prev));
                         setEndDate((prev) => (prev.length === 10 ? `${prev}T18:00` : prev));

@@ -30,6 +30,10 @@ const rentalRequestSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    delivery_address: {
+      type: String,
+      default: "",
+    },
     renter_phone: {
       type: String,
       default: "",
@@ -91,7 +95,7 @@ const rentalRequestSchema = new mongoose.Schema(
         "completed",
         "cancelled",
       ],
-      default: "pending_moderator",
+      default: "pending", // Renter gửi thẳng tới Owner theo luồng mới
       index: true,
     },
     moderator_id: {

@@ -50,6 +50,40 @@ export interface ModeratorRentalRequest {
   moderator_id?: { _id: string; name: string; email: string };
 }
 
+export interface ModeratorPaymentRental {
+  _id: string;
+  rentalCode: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  totalAmount: number;
+  rentalFee: number;
+  status: string;
+  deliveryAddress?: string;
+  deliveryTime?: string;
+  returnTime?: string;
+  deliveryMethod?: string;
+  returnMethod?: string;
+  shippingFee?: number;
+  renter?: { _id: string; name: string; email: string; phone?: string };
+  owner?: { _id: string; name: string; email: string; phone?: string };
+  equipment?: { _id: string; title: string; brand?: string; modelNumber?: string; images?: string[] };
+  contract?: { contractNumber?: string; termsAccepted?: boolean; renterSignature?: string };
+  payment?: {
+    isPaid: boolean;
+    paymentMethod: string;
+    paymentStatus: string;
+    amountPaid: number;
+    transactionId?: string;
+    transferNotifiedAt?: string;
+    rejectionReason?: string;
+    paidAt?: string;
+    receiptImage?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ModeratorContract {
   _id: string;
   contract_code: string;
@@ -187,6 +221,20 @@ export const moderatorApi = {
   forwardRentalRequest: (token: string, id: string, action: "forward" | "reject", note?: string) =>
     request<{ message: string; rentalRequest: ModeratorRentalRequest }>(
       `/rental-requests/${id}/forward`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      }
+    ),
+  getPayments: (token: string, status?: string) =>
+    request<{ payments: ModeratorPaymentRental[] }>(
+      `/payments${status ? `?status=${status}` : ""}`,
+      token
+    ),
+  reviewPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
+    request<{ message: string; rental: ModeratorPaymentRental }>(
+      `/payments/${id}/review`,
       token,
       {
         method: "PATCH",

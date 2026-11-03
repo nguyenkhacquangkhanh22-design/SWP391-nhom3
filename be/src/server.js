@@ -59,6 +59,13 @@ async function startServer() {
     console.warn("Seed data notice:", seedErr.message);
   }
 
+  try {
+    const { seedEquipment } = require("./seedEquipment");
+    await seedEquipment();
+  } catch (seedErr) {
+    console.warn("Seed equipment notice:", seedErr.message);
+  }
+
   if (typeof app.setServerReady === "function") {
     app.setServerReady(true);
   }

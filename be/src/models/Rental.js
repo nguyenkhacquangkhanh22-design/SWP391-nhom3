@@ -69,7 +69,9 @@ const rentalSchema = new mongoose.Schema(
       enum: [
         "PENDING",
         "APPROVED",
+        "CONTRACT_PENDING",
         "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
         "PAID",
         "ACTIVE",
         "RETURNED",
@@ -90,10 +92,30 @@ const rentalSchema = new mongoose.Schema(
       default: "PENDING",
       index: true,
     },
-    deliveryAddress: {
+        deliveryAddress: {
       type: String,
       trim: true,
       default: "",
+    },
+    deliveryTime: {
+      type: String,
+      default: "09:00",
+    },
+    returnTime: {
+      type: String,
+      default: "17:00",
+    },
+    deliveryMethod: {
+      type: String,
+      default: "motorcycle",
+    },
+    returnMethod: {
+      type: String,
+      default: "motorcycle",
+    },
+    shippingFee: {
+      type: Number,
+      default: 0,
     },
     renterNote: {
       type: String,
@@ -122,9 +144,13 @@ const rentalSchema = new mongoose.Schema(
       amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
-        enum: ["unpaid", "paid", "refunded"],
+        enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded"],
         default: "unpaid",
       },
+      transferNotifiedAt: { type: Date },
+      confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      rejectionReason: { type: String, default: "" },
+      receiptImage: { type: String, default: "" },
     },
     returnInfo: {
       requestedAt: { type: Date },
@@ -172,12 +198,14 @@ rentalSchema.pre("save", function (next) {
     this.renterNote = this.notes;
   }
 
-  // Đồng bộ chữ ký
+  // Đồng bộ chữ ký (Không ghi đè ảnh base64 vào tên người ký)
   if (this.contract) {
     if (this.contract.renterSignature && !this.contract.digitalSignature) {
       this.contract.digitalSignature = this.contract.renterSignature;
     } else if (this.contract.digitalSignature && !this.contract.renterSignature) {
-      this.contract.renterSignature = this.contract.digitalSignature;
+      if (!this.contract.digitalSignature.startsWith("data:image")) {
+        this.contract.renterSignature = this.contract.digitalSignature;
+      }
     }
   }
 

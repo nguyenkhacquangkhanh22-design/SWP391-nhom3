@@ -64,11 +64,12 @@ export interface RentalContract {
 
 export interface RentalPayment {
   isPaid?: boolean;
-  paymentStatus: "unpaid" | "paid" | "refunded";
+  paymentStatus: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded";
   paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | string;
   transactionId?: string;
   paidAt?: string;
   amountPaid: number;
+  receiptImage?: string;
 }
 
 export interface RentalReturnRequest {
@@ -144,6 +145,11 @@ export interface Rental {
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   deliveryAddress?: string;
+  deliveryTime?: string;
+  returnTime?: string;
+  deliveryMethod?: string;
+  returnMethod?: string;
+  shippingFee?: number;
   renterNote?: string;
   notes?: string;
   createdAt: string;

@@ -366,12 +366,18 @@ export const ownerApi = {
       token
     ),
 
-  signMyContract: (token: string, contractId: string, signature_note?: string) =>
-    request<{ message: string; contract: RentalContract }>(
+  signMyContract: (
+    token: string,
+    contractId: string,
+    payload?: { signature_note?: string; signature_image?: string; payment_method?: string } | string
+  ) => {
+    const body = typeof payload === "string" ? { signature_note: payload } : payload || {};
+    return request<{ message: string; contract: RentalContract }>(
       `/api/equipments/my/contracts/${contractId}/sign`,
-      { method: "POST", body: JSON.stringify({ signature_note }) },
+      { method: "POST", body: JSON.stringify(body) },
       token
-    ),
+    );
+  },
 
   // 9. Owner Registration (UC_O02)
   submitOwnerRegistration: (token: string, data: Partial<OwnerApplication>) =>

@@ -97,6 +97,14 @@ export const smartEquipApi = {
       token,
     ),
 
+  // Xác thực nhanh KYC (Dành cho test / dev)
+  quickVerifyKyc: (token: string) =>
+    request<{ success: boolean; message: string; user: User }>(
+      "/api/user/kyc/quick-verify",
+      { method: "POST", body: JSON.stringify({}) },
+      token,
+    ),
+
   // UC_R03: Nộp hồ sơ KYC
   submitKyc: (
     token: string,
@@ -115,6 +123,10 @@ export const smartEquipApi = {
       equipmentId: string;
       startDate: string;
       endDate: string;
+      deliveryTime?: string;
+      returnTime?: string;
+      deliveryMethod?: string;
+      returnMethod?: string;
       deliveryAddress?: string;
       renterNote?: string;
       notes?: string;
@@ -126,11 +138,19 @@ export const smartEquipApi = {
       token,
     ),
 
+    // Phê duyệt đơn thuê (Chủ máy / Quản lý / Test)
+  approveRental: (token: string, rentalId: string, note?: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/approve`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token,
+    ),
+
   // UC_R08: Ký hợp đồng điện tử
   confirmContract: (
     token: string,
     rentalId: string,
-    data: { termsAccepted: boolean; digitalSignature?: string; renterSignature?: string },
+    data: { termsAccepted: boolean; digitalSignature?: string; renterSignature?: string; signatureImage?: string },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/confirm-contract`,
@@ -142,7 +162,12 @@ export const smartEquipApi = {
   payRental: (
     token: string,
     rentalId: string,
-    data: { paymentMethod?: string } = {},
+    data: {
+      paymentMethod?: string;
+      receiptImage?: string;
+      digitalSignature?: string;
+      renterSignature?: string;
+    } = {},
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/pay`,
@@ -179,6 +204,14 @@ export const smartEquipApi = {
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/review`,
       { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
+    // Xóa toàn bộ lịch sử thuê của tài khoản Renter (Reset test)
+  resetRentalHistory: (token: string) =>
+    request<{ success: boolean; message: string; data: any }>(
+      "/api/rentals/reset-history",
+      { method: "POST" },
       token,
     ),
 

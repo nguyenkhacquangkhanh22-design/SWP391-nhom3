@@ -38,6 +38,16 @@ class UserController {
       user: profile,
     });
   }
+
+  async quickVerifyKyc(req, res) {
+    const profile = await userService.quickVerifyKyc(req.user._id);
+    res.status(200).json({
+      success: true,
+      message: "Tài khoản của bạn đã được xác thực danh tính (KYC) thành công!",
+      data: profile,
+      user: profile,
+    });
+  }
 }
 
 module.exports = new UserController();

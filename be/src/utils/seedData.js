@@ -93,12 +93,15 @@ async function seedData() {
   );
   console.log("✓ Đã nạp hồ sơ định danh & tài khoản ngân hàng Owner (UC_O02)");
 
-  // Clear existing owner equipments & related records to prevent duplication
-  await Equipment.deleteMany({ owner_id: owner._id });
-  await RentalRequest.deleteMany({ owner_id: owner._id });
-  await RentalContract.deleteMany({ owner_id: owner._id });
-  await HandoverRecord.deleteMany({ owner_id: owner._id });
-  await Settlement.deleteMany({ owner_id: owner._id });
+  // Only remove mock seed requests & contracts, do NOT delete real user test data
+  await RentalRequest.deleteMany({
+    owner_id: owner._id,
+    request_code: { $in: ["YC-2026-APP02", "YC-2026-OWN01", "YC-2026-MOD01"] },
+  });
+  await RentalContract.deleteMany({
+    owner_id: owner._id,
+    contract_code: { $in: ["HD-2026-DRAFT01", "HD-2026-SIGNED02"] },
+  });
 
   // 4. Create sample Equipments (UC_O03, UC_O04, UC_O05, UC_O06)
   const eq1 = await Equipment.create({

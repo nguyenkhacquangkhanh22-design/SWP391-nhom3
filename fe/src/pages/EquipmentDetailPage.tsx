@@ -2,9 +2,16 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
-import ContractConfirmationModal from "../components/ContractConfirmationModal";
+import ContractPdfModal from "../components/ContractPdfModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Equipment, Rental } from "../types/smartequip";
+import {
+  DELIVERY_OPTIONS,
+  RETURN_OPTIONS,
+  getDeliveryOption,
+  getReturnOption,
+  formatEstimatedDeliveryDate,
+} from "../constants/deliveryMethods";
 
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,13 +25,37 @@ export default function EquipmentDetailPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Form booking state
+  // Mới vào phải hoàn toàn trống theo yêu cầu người dùng
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || "");
   const [renterNote, setRenterNote] = useState("");
 
+  // Delivery & Return state (Yêu cầu 3)
+  const [deliveryTime, setDeliveryTime] = useState("09:00");
+  const [returnTime, setReturnTime] = useState("17:00");
+  const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
+  const [returnMethod, setReturnMethod] = useState("motorcycle");
+  const [quickVerifying, setQuickVerifying] = useState(false);
+
+  const isKycVerified = user?.kycStatus === "verified";
+
+  const handleQuickVerify = async () => {
+    if (!token) return;
+    setQuickVerifying(true);
+    try {
+      await smartEquipApi.quickVerifyKyc(token);
+      window.location.reload();
+    } catch (err: any) {
+      setFormError(err.message || "Không thể xác thực nhanh KYC");
+    } finally {
+      setQuickVerifying(false);
+    }
+  };
+
   // Modal ký hợp đồng sau khi tạo đơn thành công
-  const [createdRental, setCreatedRental] = useState<Rental | null>(null);
+    const [showDraftPdf, setShowDraftPdf] = useState(false);
+  const [submittedRental, setSubmittedRental] = useState<Rental | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -55,7 +86,6 @@ export default function EquipmentDetailPage() {
   }
 
   const dailyRate = equipment?.dailyRate || 0;
-  const depositAmount = equipment?.depositAmount || 0;
 
   // Giảm giá thuê dài ngày (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -71,7 +101,14 @@ export default function EquipmentDetailPage() {
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
-  const totalAmount = rentalFee + depositAmount;
+
+  // Tính phí giao nhận theo phương thức đã chọn (Yêu cầu 3)
+  const receiveOption = getDeliveryOption(deliveryMethod);
+  const returnOption = getReturnOption(returnMethod);
+  const receiveFee = totalDays > 0 ? receiveOption.fee : 0;
+  const returnFee = totalDays > 0 ? returnOption.fee : 0;
+  const shippingFee = receiveFee + returnFee;
+  const totalAmount = rentalFee + shippingFee; // Miễn cọc: chỉ tính phí thuê + phí giao nhận
 
   const handleCreateRental = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +116,11 @@ export default function EquipmentDetailPage() {
 
     if (!user || !token) {
       navigate("/login");
+      return;
+    }
+
+    if (!isKycVerified) {
+      setFormError("Tài khoản của bạn chưa được xác thực (KYC). Vui lòng xác thực tài khoản trước khi gửi yêu cầu thuê.");
       return;
     }
 
@@ -103,11 +145,15 @@ export default function EquipmentDetailPage() {
         equipmentId: equipment!._id,
         startDate,
         endDate,
+        deliveryTime,
+        returnTime,
+        deliveryMethod,
+        returnMethod,
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });
-      // Mở modal ký hợp đồng điện tử ngay lập tức
-      setCreatedRental(res.data);
+      // Đã gửi đơn thành công -> Không mở modal ký ngay mà chờ Chủ máy & Quản lý duyệt
+      setSubmittedRental(res.data);
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Không thể tạo yêu cầu thuê thiết bị",
@@ -281,8 +327,8 @@ export default function EquipmentDetailPage() {
                     </span>
                     <span className="text-xs text-slate-400"> /ngày</span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-300">
-                    Cọc: {depositAmount.toLocaleString("vi-VN")} đ
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                    <span>✓</span> Miễn phí cọc
                   </span>
                 </div>
               </div>
@@ -290,6 +336,36 @@ export default function EquipmentDetailPage() {
               {formError && (
                 <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
                   ⚠️ {formError}
+                </div>
+              )}
+
+              {/* Thông báo bắt buộc KYC (Yêu cầu 0) */}
+              {user && !isKycVerified && (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span>⚠️</span>
+                    <span>Yêu cầu Xác thực Tài khoản (KYC):</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Để đảm bảo an toàn giao dịch thiết bị giá trị cao, SmartEquip yêu cầu khách thuê hoàn tất <strong>Xác thực danh tính (KYC)</strong> trước khi đặt thuê máy.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <Link
+                      to="/profile"
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition-all shadow-sm flex items-center gap-1"
+                    >
+                      <span>🆔</span>
+                      <span>Xác thực tại Profile</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleQuickVerify}
+                      disabled={quickVerifying}
+                      className="px-3 py-1.5 bg-[#1a2538] hover:bg-[#253550] border border-[#2e405e] text-amber-300 font-semibold rounded-lg text-xs transition-all"
+                    >
+                      {quickVerifying ? "Đang xác thực..." : "⚡ Xác thực nhanh (Thử nghiệm)"}
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -302,6 +378,7 @@ export default function EquipmentDetailPage() {
                     </label>
                     <input
                       type="date"
+                      min={new Date().toISOString().split("T")[0]}
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
@@ -314,12 +391,104 @@ export default function EquipmentDetailPage() {
                     </label>
                     <input
                       type="date"
+                      min={startDate || new Date().toISOString().split("T")[0]}
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
                       className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
                       required
                     />
                   </div>
+                </div>
+
+                {/* Giờ nhận và giờ trả (Yêu cầu 3) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      ⏰ Giờ nhận máy *
+                    </label>
+                    <input
+                      type="time"
+                      value={deliveryTime}
+                      onChange={(e) => setDeliveryTime(e.target.value)}
+                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      ⏰ Giờ trả máy *
+                    </label>
+                    <input
+                      type="time"
+                      value={returnTime}
+                      onChange={(e) => setReturnTime(e.target.value)}
+                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Phương thức nhận máy */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      📦 Phương thức nhận máy (Bắt đầu thuê) *
+                    </label>
+                    <span className="text-[11px] font-bold text-orange-400">
+                      {receiveOption.fee === 0 ? "Miễn phí" : `+${receiveOption.fee.toLocaleString("vi-VN")} đ`}
+                    </span>
+                  </div>
+                  <select
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                    className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                  >
+                    {DELIVERY_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key} className="bg-[#121927]">
+                        {opt.icon} {opt.label} ({opt.fee === 0 ? "Miễn phí" : `+${opt.fee.toLocaleString("vi-VN")} đ`})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1 italic">
+                    {receiveOption.description}
+                  </p>
+
+                  {/* Ngày giờ dự kiến giao tới nơi (xa hơn ngày đặt/ngày bắt đầu) */}
+                  <div className="mt-2 p-2.5 bg-blue-950/40 border border-blue-500/30 rounded-xl text-xs text-blue-200 flex items-center justify-between flex-wrap gap-1 shadow-inner">
+                    <span className="flex items-center gap-1.5 font-medium text-slate-300">
+                      <span>🚚</span>
+                      <span>Dự kiến giao tới nơi:</span>
+                    </span>
+                    <strong className="text-amber-300 font-bold text-xs">
+                      {formatEstimatedDeliveryDate(startDate || new Date(), deliveryMethod, deliveryTime)}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Phương thức trả máy */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      🔄 Phương thức trả máy (Kết thúc thuê) *
+                    </label>
+                    <span className="text-[11px] font-bold text-orange-400">
+                      {returnOption.fee === 0 ? "Miễn phí" : `+${returnOption.fee.toLocaleString("vi-VN")} đ`}
+                    </span>
+                  </div>
+                  <select
+                    value={returnMethod}
+                    onChange={(e) => setReturnMethod(e.target.value)}
+                    className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                  >
+                    {RETURN_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key} className="bg-[#121927]">
+                        {opt.icon} {opt.label} ({opt.fee === 0 ? "Miễn phí" : `+${opt.fee.toLocaleString("vi-VN")} đ`})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1 italic">
+                    {returnOption.description}
+                  </p>
                 </div>
 
                 {/* Delivery Address */}
@@ -387,47 +556,102 @@ export default function EquipmentDetailPage() {
                   ) : null}
 
                   <div className="flex justify-between text-xs text-slate-400">
-                    <span>Tiền cọc bảo đảm (Hoàn lại 100%):</span>
+                    <span>Phí nhận ({receiveOption.label.split("(")[0].trim()}):</span>
                     <span className="text-white font-medium">
-                      {depositAmount.toLocaleString("vi-VN")} đ
+                      {receiveFee === 0 ? "Miễn phí (0 đ)" : `+${receiveFee.toLocaleString("vi-VN")} đ`}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Phí trả ({returnOption.label.split("(")[0].trim()}):</span>
+                    <span className="text-white font-medium">
+                      {returnFee === 0 ? "Miễn phí (0 đ)" : `+${returnFee.toLocaleString("vi-VN")} đ`}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Tiền cọc bảo đảm:</span>
+                    <span className="text-emerald-400 font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                      0 đ (Miễn cọc)
                     </span>
                   </div>
 
                   <div className="pt-3 border-t border-[#202c42] flex justify-between items-baseline">
                     <div>
                       <span className="text-xs font-bold text-white block">
-                        Tổng cộng tạm tính:
+                        Tổng thanh toán dự kiến:
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        (Tiền thuê sau giảm + Tiền cọc)
+                        (Miễn phí cọc • Chỉ tính phí thuê)
                       </span>
                     </div>
                     <span className="text-2xl font-extrabold text-orange-400">
                       {totalAmount.toLocaleString("vi-VN")} đ
                     </span>
                   </div>
+
+                  {/* Nút xem trước Hợp đồng mẫu dự thảo */}
+                  <div className="pt-2 flex justify-between items-center text-xs">
+                    <span className="text-slate-400">Điều khoản hợp đồng:</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDraftPdf(true)}
+                      className="text-orange-400 hover:text-orange-300 font-semibold underline flex items-center gap-1 transition-all"
+                    >
+                      <span>📄</span>
+                      <span>Xem Hợp đồng mẫu (Dự thảo)</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Submit button */}
-                <button
-                  type="submit"
-                  disabled={submitting || totalDays <= 0}
-                  className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    "Đang tạo yêu cầu thuê..."
-                  ) : (
-                    <>
-                      <span>📋</span>
-                      <span>Tạo yêu cầu thuê & Ký hợp đồng</span>
-                    </>
-                  )}
-                </button>
-
-                {!user && (
-                  <p className="text-center text-[11px] text-slate-400">
-                    * Bạn sẽ được chuyển tới trang Đăng nhập trước khi gửi yêu cầu.
-                  </p>
+                {/* Action button: Nút đăng nhập nếu chưa đăng nhập, hoặc gửi yêu cầu nếu đã đăng nhập */}
+                {!user ? (
+                  <div className="space-y-2.5 pt-1">
+                    <Link
+                      to="/login"
+                      state={{ from: `/equipment/${id}` }}
+                      className="w-full py-3.5 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 block text-center"
+                    >
+                      <span>🔑</span>
+                      <span>Đăng nhập để đặt thuê thiết bị</span>
+                    </Link>
+                    <p className="text-center text-[11px] text-slate-400 leading-relaxed">
+                      Bạn chưa đăng nhập. Nhấp vào nút trên để <strong>Đăng nhập</strong> hoặc Đăng ký tài khoản Khách thuê (Renter) để đặt máy.
+                    </p>
+                  </div>
+                ) : !isKycVerified ? (
+                  <div className="space-y-2.5 pt-1">
+                    <Link
+                      to="/profile"
+                      className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2 block text-center"
+                    >
+                      <span>🆔</span>
+                      <span>Xác thực tài khoản (KYC) để đặt thuê ➔</span>
+                    </Link>
+                    <p className="text-center text-[11px] text-amber-400/90 leading-relaxed">
+                      * Tài khoản của bạn chưa hoàn tất xác thực KYC. Vui lòng bấm vào nút trên để xác thực trước khi đặt máy.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="submit"
+                      disabled={submitting || totalDays <= 0}
+                      className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
+                    >
+                      {submitting ? (
+                        "Đang gửi yêu cầu thuê..."
+                      ) : (
+                        <>
+                          <span>📋</span>
+                          <span>Gửi yêu cầu thuê tới Chủ máy ➔</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-center text-[11px] text-slate-400">
+                      * Yêu cầu sẽ được chuyển tới Chủ máy duyệt & lập hợp đồng thuê.
+                    </p>
+                  </div>
                 )}
               </form>
             </div>
@@ -436,21 +660,101 @@ export default function EquipmentDetailPage() {
       </main>
 
       {/* Modal Ký hợp đồng điện tử sau khi đơn được tạo */}
-      {createdRental && token && (
-        <ContractConfirmationModal
-          rental={createdRental}
-          token={token}
-          isOpen={Boolean(createdRental)}
-          onClose={() => {
-            setCreatedRental(null);
-            navigate("/rentals/history");
+      {/* Modal thông báo gửi đơn thành công, chờ Chủ máy & Quản lý duyệt */}
+      {submittedRental && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#121927] border border-[#23324d] rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto border border-emerald-500/40">
+              ✓
+            </div>
+            <h3 className="text-xl font-bold text-white">Yêu cầu thuê đã được gửi thành công!</h3>
+            <p className="text-xs text-slate-300">
+              Mã đơn: <span className="font-mono font-bold text-orange-400">#{submittedRental.rentalCode}</span>
+            </p>
+            <div className="bg-[#0b1019] p-3.5 rounded-xl border border-[#1e2a40] text-left text-xs text-slate-300 space-y-2.5">
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
+                <span>Đơn thuê đang được chuyển tới <b>Chủ máy</b> và <b>Quản lý</b> xét duyệt.</span>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-300 font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
+                <span>Sau khi đơn được phê duyệt, hệ thống sẽ mở nút <b>"Ký hợp đồng & Thanh toán"</b> trong trang Lịch sử thuê.</span>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
+                <span>Chính sách SmartEquip: <b>Miễn 100% tiền cọc (0 đ)</b>!</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate("/rentals/history")}
+                className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-1.5"
+              >
+                <span>Đi đến Lịch sử thuê để theo dõi đơn ➔</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmittedRental(null);
+                  navigate("/equipment");
+                }}
+                className="w-full py-2.5 bg-[#1b2537] hover:bg-[#253550] text-slate-300 hover:text-white font-semibold rounded-xl text-xs transition-all border border-[#2b3c54]"
+              >
+                Tiếp tục xem các thiết bị khác
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xem trước Hợp đồng mẫu (Dự thảo) */}
+      {showDraftPdf && equipment && (
+        <ContractPdfModal
+          rental={{
+            _id: "draft-sample",
+            rentalCode: "DRAFT-SAMPLE",
+            equipment: equipment,
+            renter: user ? user.name : "Người thuê SmartEquip",
+            owner: equipment.owner || {
+              _id: "owner-id",
+              name: "Chủ sở hữu thiết bị",
+              email: "owner@smartequip.vn",
+            },
+            startDate: startDate || new Date().toISOString(),
+            endDate: endDate || new Date(Date.now() + 86400000).toISOString(),
+            totalDays: totalDays > 0 ? totalDays : 1,
+            dailyRate: dailyRate > 0 ? dailyRate : (equipment.dailyRate || 100000),
+            rentalFee: rentalFee > 0 ? rentalFee : (equipment.dailyRate || 100000),
+            depositAmount: 0,
+            discountAmount: discountAmount,
+            shippingFee: shippingFee,
+            totalAmount: totalAmount > 0 ? totalAmount : (equipment.dailyRate || 100000) + shippingFee,
+            status: "pending",
+            deliveryAddress: deliveryAddress || "Địa chỉ nhận thiết bị của bạn",
+            deliveryTime: deliveryTime,
+            returnTime: returnTime,
+            deliveryMethod: deliveryMethod,
+            returnMethod: returnMethod,
+            payment: {
+              isPaid: false,
+              paymentStatus: "unpaid",
+              amountPaid: 0,
+            },
+            contract: {
+              contractNumber: "HD-MAU-DU-THAO",
+              contractTerms: "Hợp đồng mẫu dự thảo tham khảo",
+              termsAccepted: false,
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           }}
-          onSuccess={() => {
-            setCreatedRental(null);
-            navigate("/rentals/history");
-          }}
+          isOpen={showDraftPdf}
+          onClose={() => setShowDraftPdf(false)}
         />
       )}
+
+
     </div>
   );
 }

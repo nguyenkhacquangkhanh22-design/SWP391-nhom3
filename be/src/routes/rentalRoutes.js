@@ -19,6 +19,12 @@ router.use(verifyToken);
 // UC_R07: POST /api/rentals/request (Tạo yêu cầu thuê thiết bị kèm Check Availability)
 router.post("/request", requireObjectBody, asyncHandler(rentalController.createRentalRequest));
 
+
+// GET /api/rentals/:id/contract-html (Xem & In hợp đồng PDF trực tiếp)
+router.get("/:id/contract-html", asyncHandler(rentalController.getContractHtml));
+
+// POST /api/rentals/:id/approve (Phê duyệt đơn thuê)
+router.post("/:id/approve", asyncHandler(rentalController.approveRental));
 // UC_R08: POST /api/rentals/:id/confirm-contract (Ký hợp đồng điện tử)
 router.post("/:id/confirm-contract", requireObjectBody, asyncHandler(rentalController.confirmContract));
 
@@ -30,6 +36,9 @@ router.post("/:id/return", requireObjectBody, asyncHandler(rentalController.requ
 
 // UC_R11: POST /api/rentals/:id/review (Đánh giá thiết bị & chủ sở hữu)
 router.post("/:id/review", requireObjectBody, asyncHandler(rentalController.reviewRental));
+
+// POST /api/rentals/reset-history (Xóa toàn bộ lịch sử thuê để test lại)
+router.post("/reset-history", asyncHandler(rentalController.resetRentalHistory));
 
 // UC_R12: GET /api/rentals/history (Xem lịch sử yêu cầu thuê & hợp đồng)
 router.get("/history", asyncHandler(rentalController.getRentalHistory));

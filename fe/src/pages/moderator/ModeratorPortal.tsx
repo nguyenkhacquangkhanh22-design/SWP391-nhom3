@@ -4,16 +4,18 @@ import { useAuth } from "../../app/AuthProvider";
 import Brand from "../../components/Brand";
 import Feedback from "../../components/Feedback";
 import { moderatorApi } from "../../services/moderatorApi";
+import { openContractPdfPreview } from "../../utils/contractPdfGenerator";
 import type {
   ContractTemplate,
   ModeratorContract,
+  ModeratorPaymentRental,
   ModeratorEquipment,
   ModeratorHandoverRecord,
   ModeratorRentalRequest,
   ModeratorStatusRequest,
 } from "../../services/moderatorApi";
 
-type Tab = "requests" | "contracts" | "equipment" | "handover" | "status" | "templates" | "support";
+type Tab = "requests" | "contracts" | "payments" | "equipment" | "handover" | "status" | "templates" | "support";
 
 function dateTime(value?: string) {
   return value ? new Date(value).toLocaleString("vi-VN") : "—";
@@ -57,6 +59,7 @@ export default function ModeratorPortal() {
   const [activeTab, setActiveTab] = useState<Tab>("requests");
   const [rentalRequests, setRentalRequests] = useState<ModeratorRentalRequest[]>([]);
   const [contracts, setContracts] = useState<ModeratorContract[]>([]);
+  const [payments, setPayments] = useState<ModeratorPaymentRental[]>([]);
   const [equipments, setEquipments] = useState<ModeratorEquipment[]>([]);
   const [records, setRecords] = useState<ModeratorHandoverRecord[]>([]);
   const [statusRequests, setStatusRequests] = useState<ModeratorStatusRequest[]>([]);
@@ -67,6 +70,8 @@ export default function ModeratorPortal() {
   const [success, setSuccess] = useState("");
   const [forwardNotes, setForwardNotes] = useState<Record<string, string>>({});
   const [contractReasons, setContractReasons] = useState<Record<string, string>>({});
+  const [paymentReasons, setPaymentReasons] = useState<Record<string, string>>({});
+  const [enlargedReceipt, setEnlargedReceipt] = useState<string | null>(null);
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
   const [requestNotes, setRequestNotes] = useState<Record<string, string>>({});
   const [equipmentSearch, setEquipmentSearch] = useState("");
@@ -84,9 +89,10 @@ export default function ModeratorPortal() {
     setLoading(true);
     setError("");
     try {
-      const [reqData, contractData, equipmentData, recordData, statusData, templateData] = await Promise.all([
+      const [reqData, contractData, paymentData, equipmentData, recordData, statusData, templateData] = await Promise.all([
         moderatorApi.getRentalRequests(token),
         moderatorApi.getContracts(token),
+        moderatorApi.getPayments(token).catch(() => ({ payments: [] })),
         moderatorApi.getEquipments(token),
         moderatorApi.getHandoverRecords(token),
         moderatorApi.getStatusRequests(token),
@@ -94,6 +100,7 @@ export default function ModeratorPortal() {
       ]);
       setRentalRequests(reqData.rentalRequests || []);
       setContracts(contractData.contracts);
+      setPayments(paymentData.payments || []);
       setEquipments(equipmentData.equipments);
       setRecords(recordData.records);
       setStatusRequests(statusData.requests);
@@ -182,6 +189,11 @@ export default function ModeratorPortal() {
     [rentalRequests]
   );
 
+  const pendingPayments = useMemo(
+    () => payments.filter((p) => p.payment?.paymentStatus === "pending_confirmation"),
+    [payments]
+  );
+
   const pendingContracts = useMemo(
     () => contracts.filter((contract) => contract.status === "pending_approval"),
     [contracts]
@@ -200,6 +212,7 @@ export default function ModeratorPortal() {
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: "requests", label: "📬 1. Yêu cầu thuê từ Renter (Gửi Owner)", badge: pendingForwardRequests.length },
     { id: "contracts", label: "📜 2. Duyệt Hợp đồng & Gửi Renter ký", badge: pendingContracts.length },
+    { id: "payments", label: "💳 3. Xác nhận Chuyển khoản VietQR", badge: pendingPayments.length },
     { id: "equipment", label: "📷 Thiết bị" },
     { id: "handover", label: "🤝 Bàn giao / hoàn trả" },
     { id: "status", label: "🔄 Yêu cầu trạng thái" },
@@ -254,6 +267,12 @@ export default function ModeratorPortal() {
               {pendingContracts.length}
             </strong>
             <span>Hợp đồng chờ duyệt & gửi Renter ký</span>
+          </div>
+          <div>
+            <strong style={{ color: pendingPayments.length > 0 ? "#10b981" : undefined }}>
+              {pendingPayments.length}
+            </strong>
+            <span>Giao dịch chuyển khoản chờ duyệt</span>
           </div>
           <div>
             <strong>{records.filter((record) => !record.moderator_review || record.moderator_review.status === "pending").length}</strong>
@@ -528,6 +547,171 @@ export default function ModeratorPortal() {
                         }
                       >
                         ✕ Từ chối (Yêu cầu Owner sửa)
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        )}
+
+
+        {/* TAB 3: XÁC NHẬN GIAO DỊCH CHUYỂN KHOẢN VIETQR MB BANK */}
+        {!loading && activeTab === "payments" && (
+          <section className="moderator-list">
+            <div className="owner-section-card" style={{ background: "#0c1527", borderColor: "#1d2e4d" }}>
+              <h3 style={{ margin: "0 0 6px", color: "#38bdf8", fontSize: "1.05rem" }}>
+                💳 Quản lý & Xác nhận Giao dịch Chuyển khoản VietQR (MB Bank)
+              </h3>
+              <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                Tài khoản nhận tiền: <strong>MB Bank • 111105056666 • NGUYEN KHAC QUANG KHANH</strong>.
+                Quản lý web kiểm tra tài khoản ngân hàng thực tế, nếu nhận đủ tiền thì nhấn <strong>"Xác nhận đã nhận tiền"</strong> để ghi nhận đơn thuê thành công cho khách nhận máy.
+              </p>
+            </div>
+
+            {payments.length === 0 && (
+              <div className="owner-section-card">Chưa có giao dịch chuyển khoản nào cần xử lý.</div>
+            )}
+
+            {payments.map((p) => {
+              const isPending = p.payment?.paymentStatus === "pending_confirmation";
+              const isPaid = p.payment?.paymentStatus === "paid" || p.status === "PAID";
+
+              return (
+                <article className="owner-section-card moderator-card" key={p._id}>
+                  <div className="moderator-card-heading">
+                    <div>
+                      <span className="contract-code-tag">{p.rentalCode}</span>
+                      <strong style={{ fontSize: "1.05rem", marginLeft: 8 }}>
+                        {p.equipment?.title || "Thiết bị thuê"}
+                      </strong>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        background: isPaid ? "#064e3b" : isPending ? "#78350f" : "#4c0519",
+                        color: isPaid ? "#34d399" : isPending ? "#fbbf24" : "#f43f5e",
+                        border: `1px solid ${isPaid ? "#059669" : isPending ? "#d97706" : "#e11d48"}`,
+                      }}
+                    >
+                      {isPaid
+                        ? "✓ Đã xác nhận thành công"
+                        : isPending
+                        ? "⏳ Chờ Quản lý xác nhận chuyển khoản"
+                        : "✕ Đã từ chối"}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => openContractPdfPreview(p as any)}
+                      className="button button-secondary"
+                      style={{ background: "#1e293b", color: "#fb923c", borderColor: "#334155", fontSize: "0.82rem", padding: "4px 12px" }}
+                    >
+                      📄 Xem & Tải Hợp Đồng PDF
+                    </button>
+                  </div>
+
+                  <div className="moderator-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+                    <div>
+                      <small>KHÁCH THUÊ (NGƯỜI CHUYỂN)</small>
+                      <p><b>{p.renter?.name || "Khách thuê"}</b></p>
+                      <p style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{p.renter?.email} • {p.renter?.phone || "Chưa có SĐT"}</p>
+                    </div>
+                    <div>
+                      <small>CHỦ SỞ HỮU (OWNER)</small>
+                      <p><b>{p.owner?.name || "Chủ máy"}</b></p>
+                      <p style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{p.owner?.email}</p>
+                    </div>
+                    <div>
+                      <small>SỐ TIỀN THANH TOÁN (VIETQR)</small>
+                      <p style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fb923c" }}>
+                        {(p.payment?.amountPaid || p.totalAmount).toLocaleString("vi-VN")} đ
+                      </p>
+                      <p style={{ fontSize: "0.8rem", color: "#34d399" }}>Miễn phí cọc • Chỉ tính phí thuê</p>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 8, background: "#111827", border: "1px solid var(--border)", fontSize: "0.88rem" }}>
+                    <p style={{ margin: "0 0 4px" }}>
+                      <b>Cú pháp chuyển khoản yêu cầu:</b>{" "}
+                      <code style={{ background: "#1e293b", padding: "2px 6px", borderRadius: 4, color: "#38bdf8" }}>
+                        THUE {p.contract?.contractNumber || p.rentalCode}
+                      </code>
+                    </p>
+                    <p style={{ margin: "0 0 4px" }}>
+                      <b>Thời gian thông báo chuyển:</b> {dateTime(p.payment?.transferNotifiedAt || p.updatedAt)}
+                    </p>
+                    {p.deliveryAddress && (
+                      <p style={{ margin: "0 0 4px" }}><b>Địa chỉ giao nhận máy:</b> {p.deliveryAddress}</p>
+                    )}
+                    {(p.deliveryTime || p.deliveryMethod) && (
+                      <p style={{ margin: "0 0 4px", color: "#38bdf8" }}>
+                        <b>Giao nhận:</b> {p.deliveryTime || "09:00"} (PT: {p.deliveryMethod || "motorcycle"}) ➔ Trả máy: {p.returnTime || "17:00"} (PT: {p.returnMethod || "motorcycle"}) {p.shippingFee ? `• Phí ship: ${p.shippingFee.toLocaleString("vi-VN")} đ` : ""}
+                      </p>
+                    )}
+                    {p.payment?.receiptImage && (
+                      <div style={{ marginTop: 8, padding: 8, background: "#0b1320", borderRadius: 8, border: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 12 }}>
+                        <img
+                          src={p.payment.receiptImage}
+                          alt="Biên lai chuyển khoản"
+                          style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "2px solid #059669", cursor: "pointer" }}
+                          onClick={() => setEnlargedReceipt(p.payment!.receiptImage!)}
+                          title="Nhấp để phóng to ảnh biên lai"
+                        />
+                        <div>
+                          <b style={{ color: "#34d399", fontSize: "0.82rem" }}>✓ Khách đã đính kèm ảnh chụp biên lai ngân hàng</b>
+                          <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>Nhấp vào ảnh nhỏ bên cạnh để phóng to đối soát</p>
+                        </div>
+                      </div>
+                    )}
+                    {p.payment?.rejectionReason && (
+                      <p style={{ margin: "6px 0 0", color: "#f43f5e" }}>
+                        <b>Lý do từ chối trước đó:</b> {p.payment.rejectionReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {isPending && (
+                    <div className="moderator-actions" style={{ marginTop: 14 }}>
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        placeholder="Nhập ghi chú nếu từ chối (VD: Chưa thấy biến động số dư tài khoản MB, chuyển thiếu tiền...)"
+                        value={paymentReasons[p._id] || ""}
+                        onChange={(e) => setPaymentReasons((curr) => ({ ...curr, [p._id]: e.target.value }))}
+                      />
+                      <button
+                        className="button button-primary"
+                        style={{ background: "#059669" }}
+                        disabled={busyId === p._id}
+                        onClick={() =>
+                          void performAction(
+                            p._id,
+                            () => moderatorApi.reviewPayment(token!, p._id, "approve"),
+                            `Đã xác nhận thanh toán chuyển khoản thành công cho đơn ${p.rentalCode}!`
+                          )
+                        }
+                      >
+                        ✅ Xác nhận ĐÃ NHẬN ĐỦ TIỀN (Ghi nhận thành công)
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        disabled={busyId === p._id}
+                        onClick={() =>
+                          void performAction(
+                            p._id,
+                            () => moderatorApi.reviewPayment(token!, p._id, "reject", paymentReasons[p._id]),
+                            `Đã từ chối xác nhận thanh toán cho đơn ${p.rentalCode}.`
+                          )
+                        }
+                      >
+                        ✕ Từ chối xác nhận (Báo sai tiền / Chưa nhận)
                       </button>
                     </div>
                   )}
@@ -874,6 +1058,67 @@ export default function ModeratorPortal() {
               {busyId === "ticket" ? "Đang gửi..." : "Gửi yêu cầu"}
             </button>
           </form>
+        )}
+
+        {enlargedReceipt && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.85)",
+              zIndex: 9999,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+            }}
+            onClick={() => setEnlargedReceipt(null)}
+          >
+            <div
+              style={{
+                position: "relative",
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                background: "#111827",
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #374151",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: 8, alignItems: "center" }}>
+                <span style={{ color: "#f3f4f6", fontWeight: 600 }}>Ảnh biên lai chuyển khoản (Đối soát)</span>
+                <button
+                  type="button"
+                  onClick={() => setEnlargedReceipt(null)}
+                  style={{
+                    background: "#374151",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕ Đóng
+                </button>
+              </div>
+              <img
+                src={enlargedReceipt}
+                alt="Biên lai phóng to"
+                style={{
+                  maxWidth: "85vw",
+                  maxHeight: "75vh",
+                  objectFit: "contain",
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          </div>
         )}
       </main>
     </div>

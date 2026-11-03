@@ -39,7 +39,6 @@ export default function RentalRequestModal({
   }
 
   const dailyRate = equipment.dailyRate || 0;
-  const depositAmount = equipment.depositAmount || 0;
 
   // Giảm giá thuê dài hạn (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -55,7 +54,7 @@ export default function RentalRequestModal({
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
-  const totalAmount = rentalFee + depositAmount;
+  const totalAmount = rentalFee; // Tổng tiền chỉ gồm tiền thuê, không cộng tiền cọc
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,13 +97,15 @@ export default function RentalRequestModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#141d2d] border border-[#263550] w-full max-w-lg rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#212c42]">
+      <div className="bg-[#141d2d] border border-[#263550] w-full max-w-lg rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3.5 border-b border-[#212c42]">
           <div>
-            <h2 className="text-lg font-bold text-white">Tạo Đơn Thuê Thiết Bị</h2>
-            <p className="text-xs text-orange-400 font-medium mt-0.5 truncate max-w-sm">
-              {equipment.title}
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <span>📋</span> Đăng Ký Yêu Cầu Thuê Thiết Bị
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Thiết bị: <span className="text-orange-400 font-medium">{equipment.title}</span>
             </p>
           </div>
           <button
@@ -121,16 +122,27 @@ export default function RentalRequestModal({
           </div>
         )}
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 text-sm overflow-y-auto pr-1">
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+        {/* Workflow Guide Notice */}
+        <div className="mt-3 p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-200 text-xs space-y-1">
+          <p className="font-bold flex items-center gap-1.5">
+            <span>ℹ️</span> Quy trình thuê thiết bị:
+          </p>
+          <p className="text-[11px] text-blue-300/90 leading-relaxed">
+            1. Bạn gửi yêu cầu tới <strong>Chủ máy (Owner)</strong> → 2. Chủ máy kiểm tra thiết bị & soạn Hợp đồng gửi <strong>Quản lý web (Moderator)</strong> duyệt → 3. Bạn ký hợp đồng bằng <strong>chữ ký tay điện tử</strong> & thanh toán chuyển khoản <strong>VietQR MB Bank</strong> (Miễn phí cọc) → 4. Nhận máy tại địa chỉ giao hàng.
+          </p>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pt-3 text-xs">
+          {/* Start and End date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1">
-                Ngày bắt đầu *
+                Ngày bắt đầu thuê *
               </label>
               <input
                 type="date"
+                min={new Date().toISOString().split("T")[0]}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500 text-xs"
@@ -139,10 +151,11 @@ export default function RentalRequestModal({
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1">
-                Ngày trả máy *
+                Ngày kết thúc thuê *
               </label>
               <input
                 type="date"
+                min={startDate || new Date().toISOString().split("T")[0]}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500 text-xs"
@@ -158,7 +171,7 @@ export default function RentalRequestModal({
             </label>
             <input
               type="text"
-              placeholder="VD: 123 Nguyễn Huệ, Quận 1, TP.HCM"
+              placeholder="VD: 123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM"
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}
               className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 text-xs"
@@ -169,11 +182,11 @@ export default function RentalRequestModal({
           {/* Renter Note */}
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1">
-              Ghi chú thêm (Tùy chọn)
+              Ghi chú thêm cho Chủ máy (Tùy chọn)
             </label>
             <textarea
               rows={2}
-              placeholder="Thời gian nhận máy, yêu cầu thêm linh kiện phụ kiện..."
+              placeholder="Thời gian nhận máy mong muốn, yêu cầu phụ kiện đi kèm..."
               value={renterNote}
               onChange={(e) => setRenterNote(e.target.value)}
               className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 text-xs"
@@ -181,7 +194,7 @@ export default function RentalRequestModal({
           </div>
 
           {/* Price Calculation breakdown */}
-          <div className="bg-[#101725] p-4 rounded-xl border border-[#1e2a40] space-y-2">
+          <div className="bg-[#101725] p-3.5 rounded-xl border border-[#1e2a40] space-y-2">
             <div className="flex justify-between text-xs text-slate-400">
               <span>Đơn giá niêm yết:</span>
               <span className="text-white font-medium">
@@ -207,15 +220,15 @@ export default function RentalRequestModal({
             )}
 
             <div className="flex justify-between text-xs text-slate-400">
-              <span>Tiền cọc bảo đảm (Hoàn lại):</span>
-              <span className="text-white font-medium">
-                {depositAmount.toLocaleString("vi-VN")} đ
+              <span>Tiền cọc bảo đảm:</span>
+              <span className="text-emerald-400 font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                0 đ (Miễn cọc)
               </span>
             </div>
 
             <div className="pt-2 border-t border-[#202c42] flex justify-between items-baseline font-bold text-sm">
-              <span className="text-slate-200">Tổng tạm tính:</span>
-              <span className="text-orange-400 text-lg">
+              <span className="text-slate-200">Tổng thanh toán dự kiến:</span>
+              <span className="text-orange-400 text-base">
                 {totalAmount.toLocaleString("vi-VN")} đ
               </span>
             </div>
@@ -234,9 +247,9 @@ export default function RentalRequestModal({
             <button
               type="submit"
               disabled={loading || totalDays <= 0}
-              className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-orange-600/30"
+              className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5"
             >
-              {loading ? "Đang tạo đơn..." : "Tạo đơn thuê & Ký HĐ →"}
+              {loading ? "Đang gửi yêu cầu..." : "Gửi yêu cầu thuê tới Chủ máy ➔"}
             </button>
           </div>
         </form>

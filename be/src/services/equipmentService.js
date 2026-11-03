@@ -25,7 +25,7 @@ class EquipmentService {
     if (status && typeof status === "string" && status.trim() && status !== "all") {
       filter.status = status.trim().toUpperCase();
     } else {
-      filter.status = { $in: ["APPROVED", "AVAILABLE"] };
+      filter.status = { $in: ["APPROVED", "AVAILABLE", "approved", "available"] };
     }
 
     // Tìm kiếm theo từ khóa
@@ -40,16 +40,21 @@ class EquipmentService {
 
     // Lọc theo danh mục
     if (category && typeof category === "string" && category.trim() && category !== "all") {
-      filter.category = { $regex: `^${category.trim()}$`, $options: "i" };
+      const cleanCat = category.trim();
+      const parts = cleanCat.split(/\s*&\s*|\s*,\s*/).map(p => p.trim()).filter(Boolean);
+      const regexPattern = parts.length > 0 ? parts.join("|") : cleanCat;
+      filter.category = { $regex: regexPattern, $options: "i" };
     }
 
     // Lọc theo khoảng giá
-    if (minPrice !== undefined || maxPrice !== undefined) {
+    const hasMin = minPrice !== undefined && minPrice !== "" && !Number.isNaN(Number(minPrice));
+    const hasMax = maxPrice !== undefined && maxPrice !== "" && !Number.isNaN(Number(maxPrice));
+    if (hasMin || hasMax) {
       filter.dailyRate = {};
-      if (minPrice !== undefined && !Number.isNaN(Number(minPrice))) {
+      if (hasMin) {
         filter.dailyRate.$gte = Number(minPrice);
       }
-      if (maxPrice !== undefined && !Number.isNaN(Number(maxPrice))) {
+      if (hasMax) {
         filter.dailyRate.$lte = Number(maxPrice);
       }
     }

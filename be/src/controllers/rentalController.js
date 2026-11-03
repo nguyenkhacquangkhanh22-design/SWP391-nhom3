@@ -64,6 +64,19 @@ class RentalController {
   /**
    * UC_R12: GET /api/rentals/history (Lịch sử yêu cầu thuê & hợp đồng)
    */
+
+  /**
+   * POST /api/rentals/reset-history (Xóa toàn bộ lịch sử thuê của Renter)
+   */
+  async resetRentalHistory(req, res) {
+    const result = await rentalService.resetRentalHistory(req.user);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  }
+
   async getRentalHistory(req, res) {
     const result = await rentalService.getRentalHistory(req.user._id, req.query);
     res.status(200).json({
@@ -108,6 +121,29 @@ class RentalController {
       message: result.message,
       data: result.ticket,
     });
+  }
+
+  /**
+   * GET /api/rentals/:id/contract-html
+   */
+  
+  /**
+   * Phê duyệt đơn thuê (Owner / Moderator / Dev Test)
+   * POST /api/rentals/:id/approve
+   */
+  async approveRental(req, res) {
+    const rental = await rentalService.approveRental(req.params.id, req.user, req.body);
+    res.status(200).json({
+      success: true,
+      message: "Đơn thuê đã được phê duyệt thành công. Người thuê có thể ký hợp đồng và thanh toán.",
+      data: rental,
+    });
+  }
+
+  async getContractHtml(req, res) {
+    const html = await rentalService.getContractHtml(req.params.id);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
   }
 }
 

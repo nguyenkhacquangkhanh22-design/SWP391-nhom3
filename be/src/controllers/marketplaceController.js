@@ -115,8 +115,9 @@ async function requestRental(req, res) {
     ? diffHours * equipment.pricing.price_per_hour
     : diffDays * equipment.pricing.price_per_day;
 
-  const depositAmount = equipment.pricing.deposit_amount;
-  const totalEstimatedAmount = rentalFee + depositAmount;
+  const depositAmount = 0; // Không cần tiền cọc theo chính sách mới
+  const totalEstimatedAmount = rentalFee;
+  const deliveryAddress = req.body.delivery_address || req.body.deliveryAddress || "";
 
   const rentalReq = await RentalRequest.create({
     request_code: generateCode("YC"),
@@ -126,37 +127,29 @@ async function requestRental(req, res) {
     renter_name: renter.name,
     renter_email: renter.email,
     renter_phone: req.body.renter_phone || "",
+    delivery_address: deliveryAddress,
     rental_type: isHourly ? "hourly" : "daily",
     start_date: startDate,
     end_date: endDate,
     duration_days: diffDays,
     duration_hours: diffHours,
     rental_fee: rentalFee,
-    deposit_amount: depositAmount,
+    deposit_amount: 0,
     total_estimated_amount: totalEstimatedAmount,
     renter_note: renter_note || "",
-    status: "pending_moderator", // Gửi tới Quản lý web đầu tiên
+    status: "pending", // Gửi trực tiếp tới Owner theo sơ đồ luồng
   });
 
-  // Notify Web Managers (Moderators & Admins)
+  // Gửi thông báo trực tiếp đến Chủ máy (Owner)
   try {
-    const managers = await User.find({
-      role: { $regex: /^(rental[_ -]?moderator|systemadmin|admin)$/i },
-    })
-      .select("_id")
-      .lean();
-    if (managers.length > 0) {
-      await UserNotification.insertMany(
-        managers.map((m) => ({
-          user_id: m._id,
-          title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} cần gửi cho Owner`,
-          message: `Người thuê ${renter.name} vừa gửi yêu cầu thuê "${equipment.title}". Vui lòng kiểm tra và chuyển tiếp cho Owner duyệt.`,
-          related_record_id: rentalReq._id,
-        }))
-      );
-    }
+    await UserNotification.create({
+      user_id: equipment.owner_id,
+      title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} từ ${renter.name}`,
+      message: `Khách thuê ${renter.name} vừa gửi yêu cầu thuê thiết bị "${equipment.title}". Vui lòng kiểm tra thiết bị và soạn hợp đồng thuê.`,
+      related_record_id: rentalReq._id,
+    });
   } catch (err) {
-    console.error("Failed to notify managers of rental request:", err);
+    console.error("Failed to notify owner of rental request:", err);
   }
 
   res.status(201).json({
@@ -191,7 +184,7 @@ async function getMyRentals(req, res) {
 // Step 5: Renter signs the contract after Web Manager approved & sent it to Renter
 async function signMyContract(req, res) {
   const { id } = req.params;
-  const { signature_note } = req.body;
+  const { signature_note, signature_image, signature_data, payment_method } = req.body;
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -213,17 +206,20 @@ async function signMyContract(req, res) {
     throw new AppError(400, "Bạn đã ký tên vào hợp đồng này rồi.");
   }
 
+  const sigData = signature_image || signature_data || signature_note || `RENTER_HANDWRITTEN_SIG_${req.user._id}_${Date.now()}`;
+
   contract.renter_signature = {
     signed: true,
     signed_at: new Date(),
-    signature_data: signature_note
-      ? `${signature_note.trim()} (RENTER_SIG_${req.user._id}_${Date.now()})`
-      : `RENTER_SIG_${req.user._id}_${Date.now()}`,
+    signature_data: sigData,
     signer_name: req.user.name,
   };
 
-  // Ensure contract status transitions to 'signed' once Renter signs
   contract.status = "signed";
+  contract.payment_method = payment_method || "vietqr";
+  contract.payment_status = "paid";
+  contract.payment_amount = contract.rental_price;
+  contract.paid_at = new Date();
   await contract.save();
 
   // Also update related RentalRequest status if needed

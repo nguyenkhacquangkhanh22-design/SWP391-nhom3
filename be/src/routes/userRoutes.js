@@ -24,5 +24,6 @@ router.put("/profile", requireObjectBody, asyncHandler(userController.updateProf
 
 // UC_R03: POST /api/user/kyc (Tải lên giấy tờ xác thực KYC)
 router.post("/kyc", requireObjectBody, asyncHandler(userController.submitKyc));
+router.post("/kyc/quick-verify", asyncHandler(userController.quickVerifyKyc));
 
 module.exports = router;

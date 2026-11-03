@@ -126,21 +126,28 @@ const sampleEquipments = [
 ];
 
 async function seed() {
-  if (!process.env.MONGODB_URI) {
-    throw new Error("MONGODB_URI is not defined");
+  if (mongoose.connection.readyState !== 1) {
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not defined");
+    }
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("MongoDB connected for seeding...");
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
-  console.log("MongoDB connected for seeding...");
-
-  // Tìm hoặc tạo một user Owner đại diện
-  let owner = await User.findOne({ email: "owner@smartequip.vn" });
+  // Tìm tài khoản Owner chính (owner@example.com hoặc role owner)
+  let owner = await User.findOne({ email: "owner@example.com" });
+  if (!owner) {
+    owner = await User.findOne({ role: "owner" });
+  }
+  if (!owner) {
+    owner = await User.findOne({ email: "owner@smartequip.vn" });
+  }
   if (!owner) {
     owner = await User.create({
       User_Id: "OWNER-001",
-      name: "SmartEquip Official Hub",
-      email: "owner@smartequip.vn",
-      role: "user",
+      name: "Nguyễn Văn Owner",
+      email: "owner@example.com",
+      role: "owner",
       status: "active",
       trust_score: 99,
       phone: "0909123456",
@@ -148,24 +155,44 @@ async function seed() {
       kycStatus: "verified",
     });
     console.log("Created official owner user:", owner.email);
+  } else if (owner.role !== "owner") {
+    owner.role = "owner";
+    await owner.save();
   }
 
-  // Xóa các thiết bị seed cũ nếu có và nạp mới
-  await Equipment.deleteMany({ owner: owner._id });
+  // Không xóa thiết bị liên tục làm thay đổi _id của các đơn đang thuê
+  const existingCount = await Equipment.countDocuments();
+  if (existingCount >= sampleEquipments.length) {
+    await Equipment.updateMany({}, { $set: { owner: owner._id, owner_id: owner._id } });
+    console.log(`✓ Đã có ${existingCount} thiết bị trong DB, giữ nguyên ID và cập nhật chủ máy: ${owner.email}`);
+    return;
+  }
 
   const equipmentsToInsert = sampleEquipments.map((item) => ({
     ...item,
     owner: owner._id,
+    owner_id: owner._id,
+    pricing: {
+      price_per_day: item.dailyRate,
+      deposit_amount: item.depositAmount,
+    },
   }));
 
   const inserted = await Equipment.insertMany(equipmentsToInsert);
-  console.log(`Successfully seeded ${inserted.length} equipments with status APPROVED!`);
+  console.log(`✓ Đã nạp ${inserted.length} thiết bị mẫu cho Guest/Renter (status: APPROVED)!`);
+}
 
+async function runDirectly() {
+  await seed();
   await mongoose.disconnect();
   console.log("Disconnected from MongoDB.");
 }
 
-seed().catch((err) => {
-  console.error("Seeding failed:", err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  runDirectly().catch((err) => {
+    console.error("Seeding failed:", err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { seedEquipment: seed, sampleEquipments };

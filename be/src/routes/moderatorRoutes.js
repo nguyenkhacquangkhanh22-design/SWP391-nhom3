@@ -18,6 +18,8 @@ router.patch("/rental-requests/:id/forward", asyncHandler(moderatorController.fo
 
 // Bước 4: Quản lý web duyệt Hợp đồng của Owner và gửi cho Người thuê ký tên
 router.get("/contracts", asyncHandler(moderatorController.listContracts));
+router.get("/payments", asyncHandler(moderatorController.listPayments));
+router.patch("/payments/:id/review", asyncHandler(moderatorController.reviewPayment));
 router.patch("/contracts/:id/review", asyncHandler(moderatorController.reviewContract));
 
 router.get("/equipments", asyncHandler(moderatorController.listEquipments));

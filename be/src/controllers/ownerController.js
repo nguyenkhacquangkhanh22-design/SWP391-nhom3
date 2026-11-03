@@ -371,7 +371,49 @@ async function submitEquipmentStatusUpdateRequest(req, res) {
 // -----------------------------------------------------------------------------
 async function getRentalRequests(req, res) {
   const ownerId = req.user._id;
-  const requests = await RentalRequest.find({ owner_id: ownerId })
+  const ownerIds = [ownerId];
+  try {
+    const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
+    if (hubUser) ownerIds.push(hubUser._id);
+  } catch (e) {}
+
+  // Tự động đồng bộ các đơn Rental (trạng thái chờ hoặc đã duyệt) của Owner vào RentalRequest nếu chưa có
+  try {
+    const Rental = require("../models/Rental");
+    const pendingRentals = await Rental.find({
+      owner: { $in: ownerIds },
+      status: { $in: ["PENDING", "pending", "APPROVED", "approved", "CONTRACT_PENDING", "contract_pending"] },
+    }).populate("renter equipment").lean();
+
+    for (const r of pendingRentals) {
+      const exists = await RentalRequest.findOne({ request_code: r.rentalCode });
+      if (!exists && r.equipment?._id) {
+        await RentalRequest.create({
+          request_code: r.rentalCode,
+          equipment_id: r.equipment._id,
+          owner_id: r.owner || ownerId,
+          renter_id: r.renter?._id,
+          renter_name: r.renter?.name || "Khách thuê SmartEquip",
+          renter_email: r.renter?.email || "",
+          renter_phone: r.renter?.phone || "",
+          delivery_address: r.deliveryAddress || "",
+          rental_type: "daily",
+          start_date: r.startDate,
+          end_date: r.endDate,
+          duration_days: r.totalDays || 1,
+          rental_fee: r.rentalFee,
+          deposit_amount: 0,
+          total_estimated_amount: r.totalAmount || r.rentalFee,
+          renter_note: r.renterNote || r.notes || "",
+          status: String(r.status).toLowerCase() === "pending" ? "pending" : "approved",
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Error auto-syncing rentals to rental_requests:", err);
+  }
+
+  const requests = await RentalRequest.find({ owner_id: { $in: ownerIds } })
     .populate("equipment_id")
     .populate("renter_id", "name email phone")
     .populate("moderator_id", "name email")
@@ -393,23 +435,21 @@ async function respondRentalRequest(req, res) {
     throw new AppError(400, "Vui lòng ghi rõ lý do từ chối yêu cầu thuê");
   }
 
+  const ownerIds = [req.user._id];
+  try {
+    const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
+    if (hubUser) ownerIds.push(hubUser._id);
+  } catch (e) {}
   const rentalReq = await RentalRequest.findOne({
     _id: id,
-    owner_id: req.user._id,
+    owner_id: { $in: ownerIds },
   });
 
   if (!rentalReq) {
     throw new AppError(404, "Không tìm thấy yêu cầu thuê");
   }
 
-  if (rentalReq.status === "pending_moderator") {
-    throw new AppError(
-      400,
-      "Yêu cầu thuê này đang chờ Quản lý web kiểm tra và chuyển tiếp cho bạn. Chỉ khi Quản lý web gửi sang, Owner mới có thể duyệt."
-    );
-  }
-
-  if (rentalReq.status !== "pending") {
+  if (!["pending", "pending_moderator"].includes(rentalReq.status)) {
     throw new AppError(400, `Yêu cầu này đã ở trạng thái: ${rentalReq.status}`);
   }
 
@@ -523,17 +563,22 @@ async function createRentalContract(req, res) {
     throw new AppError(400, "Vui lòng cung cấp mã yêu cầu thuê đã chấp thuận");
   }
 
+  const ownerIds = [ownerId];
+  try {
+    const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
+    if (hubUser) ownerIds.push(hubUser._id);
+  } catch (e) {}
   const rentalReq = await RentalRequest.findOne({
     _id: request_id,
-    owner_id: ownerId,
+    owner_id: { $in: ownerIds },
   }).populate("equipment_id");
 
   if (!rentalReq) {
     throw new AppError(404, "Không tìm thấy yêu cầu thuê");
   }
 
-  if (rentalReq.status !== "approved") {
-    throw new AppError(400, "Chỉ có thể lập hợp đồng từ yêu cầu đã được Quản lý web gửi và Owner chấp nhận");
+  if (!["approved", "pending"].includes(rentalReq.status)) {
+    throw new AppError(400, "Chỉ có thể lập hợp đồng từ yêu cầu thuê hợp lệ");
   }
 
   const equipment = rentalReq.equipment_id;
@@ -663,7 +708,8 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
     title: `Hợp đồng thuê ${equipment.title} - ${rentalReq.renter_name}`,
     terms_content: standardTerms,
     rental_price: rentalReq.rental_fee,
-    deposit_amount: rentalReq.deposit_amount,
+    deposit_amount: 0, // Không cần tiền cọc
+    delivery_address: rentalReq.delivery_address || "",
     start_date: rentalReq.start_date,
     end_date: rentalReq.end_date,
     special_conditions: special_conditions || "",

@@ -58,6 +58,53 @@ const rentalContractSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    delivery_address: {
+      type: String,
+      default: "",
+    },
+    delivery_time: {
+      type: String,
+      default: "09:00",
+    },
+    return_time: {
+      type: String,
+      default: "17:00",
+    },
+    delivery_method: {
+      type: String,
+      default: "motorcycle",
+    },
+    return_method: {
+      type: String,
+      default: "motorcycle",
+    },
+    shipping_fee: {
+      type: Number,
+      default: 0,
+    },
+    receipt_image: {
+      type: String,
+      default: "",
+    },
+    payment_method: {
+      type: String,
+      enum: ["vietqr", "bank_transfer", "vnpay", "cash", "wallet"],
+      default: "vietqr",
+    },
+    payment_confirmed_by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    payment_rejection_reason: { type: String, default: "" },
+    payment_status: {
+      type: String,
+      enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded"],
+      default: "unpaid",
+    },
+    payment_amount: {
+      type: Number,
+      default: 0,
+    },
+    paid_at: {
+      type: Date,
+    },
     special_conditions: {
       type: String,
       default: "",
