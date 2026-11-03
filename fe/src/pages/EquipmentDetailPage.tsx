@@ -23,11 +23,7 @@ export default function EquipmentDetailPage() {
   const [renterNote, setRenterNote] = useState("");
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
-  // Zoom & Lightbox states for interactive mouse exploration
-  const [isHoverZooming, setIsHoverZooming] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
-  const [hoverZoomScale, setHoverZoomScale] = useState(2.2);
-
+  // Zoom & Lightbox states (khi nào người dùng bấm vào ảnh mới kích hoạt phóng to)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxScale, setLightboxScale] = useState(1);
   const [lightboxPos, setLightboxPos] = useState({ x: 0, y: 0 });
@@ -37,21 +33,10 @@ export default function EquipmentDetailPage() {
   const imagesList = equipment?.images && equipment.images.length > 0 ? equipment.images : [];
   const currentImgUrl = imagesList.length > 0 ? imagesList[selectedImageIndex % imagesList.length] : "";
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-    setMousePos({ x, y });
-  };
-
-  const handleWheelZoom = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (isHoverZooming) {
-      e.preventDefault();
-      setHoverZoomScale((prev) => {
-        const next = prev + (e.deltaY < 0 ? 0.3 : -0.3);
-        return Math.max(1.3, Math.min(3.8, Number(next.toFixed(1))));
-      });
-    }
+  const handleOpenZoom = () => {
+    setIsLightboxOpen(true);
+    setLightboxScale(1.6);
+    setLightboxPos({ x: 0, y: 0 });
   };
 
   const handlePrevLightboxImage = (e?: React.MouseEvent) => {
@@ -276,18 +261,11 @@ export default function EquipmentDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Images, Specs & Description */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Main Image with Mouse Hover Zoom & Lightbox Trigger */}
+            {/* Main Image (Bấm vào để kích hoạt phóng to) */}
             <div
-              className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg select-none group"
-              onMouseMove={handleMouseMove}
-              onMouseEnter={() => setIsHoverZooming(true)}
-              onMouseLeave={() => setIsHoverZooming(false)}
-              onWheel={handleWheelZoom}
-              onClick={() => setIsLightboxOpen(true)}
-              style={{
-                cursor: isHoverZooming ? "crosshair" : "zoom-in",
-              }}
-              title="Bấm để mở chế độ phóng to toàn màn hình"
+              className="aspect-video w-full bg-[#141d2d] border border-[#223049] hover:border-orange-500/50 rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg select-none cursor-pointer transition-colors group"
+              onClick={handleOpenZoom}
+              title="Bấm vào để phóng to xem chi tiết ảnh sản phẩm"
             >
               {currentImgUrl ? (
                 <>
@@ -295,12 +273,7 @@ export default function EquipmentDetailPage() {
                     src={currentImgUrl}
                     alt={equipment.title}
                     draggable={false}
-                    className="w-full h-full object-cover pointer-events-none select-none"
-                    style={{
-                      transformOrigin: `${mousePos.x}% ${mousePos.y}%`,
-                      transform: isHoverZooming ? `scale(${hoverZoomScale})` : "scale(1)",
-                      transition: isHoverZooming ? "transform 0.06s ease-out" : "transform 0.25s ease-out",
-                    }}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                   />
 
                   {imagesList.length > 1 && (
@@ -313,7 +286,7 @@ export default function EquipmentDetailPage() {
                           e.stopPropagation();
                           setSelectedImageIndex((prev) => (prev - 1 + imagesList.length) % imagesList.length);
                         }}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20 cursor-pointer"
                       >
                         ‹
                       </button>
@@ -326,7 +299,7 @@ export default function EquipmentDetailPage() {
                           e.stopPropagation();
                           setSelectedImageIndex((prev) => (prev + 1) % imagesList.length);
                         }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20 cursor-pointer"
                       >
                         ›
                       </button>
@@ -337,16 +310,10 @@ export default function EquipmentDetailPage() {
                     </>
                   )}
 
-                  {/* Mouse Zoom Hint Pill */}
-                  <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-medium text-slate-200 border border-white/15 flex items-center gap-1.5 pointer-events-none transition-all duration-200 z-20 shadow-md">
+                  {/* Click to Zoom Hint Pill */}
+                  <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-medium text-slate-200 border border-white/15 flex items-center gap-1.5 transition-all duration-200 z-20 shadow-md group-hover:bg-orange-600 group-hover:text-white">
                     <span>🔍</span>
-                    {isHoverZooming ? (
-                      <span className="text-orange-300 font-semibold">
-                        Zoom {Math.round(hoverZoomScale * 100)}% (Lăn chuột để đổi mức zoom)
-                      </span>
-                    ) : (
-                      <span>Rê chuột để phóng to • Bấm để xem toàn màn hình</span>
-                    )}
+                    <span>Bấm vào ảnh để phóng to & soi chi tiết</span>
                   </div>
 
                   {/* Expand button top right */}
@@ -354,10 +321,10 @@ export default function EquipmentDetailPage() {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsLightboxOpen(true);
+                      handleOpenZoom();
                     }}
-                    className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-black/75 hover:bg-orange-600 text-white flex items-center justify-center text-sm font-bold border border-white/20 transition-all z-20 shadow-lg"
-                    title="Phóng to toàn màn hình"
+                    className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-black/75 hover:bg-orange-600 text-white flex items-center justify-center text-sm font-bold border border-white/20 transition-all z-20 shadow-lg cursor-pointer"
+                    title="Phóng to ảnh toàn màn hình"
                   >
                     ⛶
                   </button>
