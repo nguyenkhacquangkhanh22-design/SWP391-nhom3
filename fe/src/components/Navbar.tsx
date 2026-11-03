@@ -47,6 +47,13 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <Link
                 to="/profile"
+                className="relative p-2 text-slate-300 hover:text-orange-400 hover:bg-[#1a2336] rounded-lg transition-colors flex items-center justify-center border border-transparent hover:border-[#2b3752]"
+                title="Hòm thư thông báo của tài khoản"
+              >
+                <span className="text-base">🔔</span>
+              </Link>
+              <Link
+                to="/profile"
                 className="flex items-center gap-2 text-sm text-slate-200 hover:text-white bg-[#1a2336] px-3 py-1.5 rounded-lg border border-[#2b3752] hover:border-orange-500/50 transition-all"
               >
                 <div className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 font-bold flex items-center justify-center text-xs">

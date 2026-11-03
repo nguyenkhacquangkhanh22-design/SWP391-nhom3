@@ -699,43 +699,9 @@ class RentalService {
       Rental.countDocuments(filter),
     ]);
 
-    // Tự động kiểm tra và tạo thông báo nhắc nhở trước 1 ngày đến hạn hoàn trả (UC_R10 reminder)
+    // Tự động kiểm tra và tạo thông báo nhắc nhở vào hòm thư khi đơn bước vào 3 ngày cuối
     try {
-      if (UserNotification && rentals && rentals.length > 0) {
-        const nowMs = Date.now();
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        for (const r of rentals) {
-          const s = String(r.status).toUpperCase();
-          const isOngoing = ["PAID", "ACTIVE", "CONFIRMED", "IN_PROGRESS"].includes(s);
-          if (isOngoing && r.endDate) {
-            const timeStr = r.returnTime || "17:00";
-            const [hh, mm] = timeStr.split(":").map(Number);
-            const deadline = new Date(r.endDate);
-            deadline.setHours(isNaN(hh) ? 17 : hh, isNaN(mm) ? 0 : mm, 0, 0);
-
-            const diffMs = deadline.getTime() - nowMs;
-            if (diffMs <= oneDayMs && diffMs > 0) {
-              const existingReminder = await UserNotification.findOne({
-                user_id: renterId,
-                related_record_id: r._id,
-                title: { $regex: /Nhắc nhở.*hạn trả/i },
-              }).lean();
-
-              if (!existingReminder) {
-                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                const minsLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                const dateStr = deadline.toLocaleDateString("vi-VN");
-                await UserNotification.create({
-                  user_id: renterId,
-                  title: `⏰ Nhắc nhở: Còn ${hoursLeft}h ${minsLeft}p đến hạn trả máy #${r.rentalCode}`,
-                  message: `Đơn thuê thiết bị #${r.rentalCode} sẽ đến hạn trả vào lúc ${timeStr} ngày ${dateStr}. Quý khách vui lòng kiểm tra máy & phụ kiện và thực hiện Báo trả đồ đúng giờ!`,
-                  related_record_id: r._id,
-                });
-              }
-            }
-          }
-        }
-      }
+      await this.checkDeadlineRemindersForUser(renterId);
     } catch (notifyErr) {
       // Non-blocking
     }
@@ -749,6 +715,94 @@ class RentalService {
         totalPages: Math.ceil(total / limitNum) || 1,
       },
     };
+  }
+
+  /**
+   * Tự động kiểm tra và gửi thông báo vào hòm thư tài khoản khi đơn thuê bước vào 3 ngày cuối
+   */
+  async checkDeadlineRemindersForUser(renterId) {
+    if (!UserNotification) return;
+    try {
+      const nowMs = Date.now();
+      const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+      const oneDayMs = 24 * 60 * 60 * 1000;
+
+      const activeRentals = await Rental.find({
+        renter: renterId,
+        status: { $in: ["PAID", "ACTIVE", "CONFIRMED", "IN_PROGRESS", "paid", "active", "confirmed", "in_progress"] },
+      }).populate("equipment", "title").lean();
+
+      for (const r of activeRentals) {
+        if (!r.endDate) continue;
+        const timeStr = r.returnTime || "17:00";
+        const [hh, mm] = timeStr.split(":").map(Number);
+        const deadline = new Date(r.endDate);
+        deadline.setHours(isNaN(hh) ? 17 : hh, isNaN(mm) ? 0 : mm, 0, 0);
+
+        const diffMs = deadline.getTime() - nowMs;
+        const equipTitle = r.equipment?.title || "Thiết bị thuê";
+        const dateStr = deadline.toLocaleDateString("vi-VN");
+
+        // 1. Mốc bước vào 3 ngày cuối
+        if (diffMs <= threeDaysMs && diffMs > 0) {
+          const existing3Day = await UserNotification.findOne({
+            user_id: renterId,
+            related_record_id: r._id,
+            title: { $regex: /3 ngày cuối/i },
+          }).lean();
+
+          if (!existing3Day) {
+            const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            await UserNotification.create({
+              user_id: renterId,
+              title: `⏰ Thông báo: Đơn thuê #${r.rentalCode} đã bước vào 3 ngày cuối`,
+              message: `Đơn thuê thiết bị "${equipTitle}" của Quý khách đã bước vào 3 ngày cuối (Hạn chót hoàn trả: ${timeStr} ngày ${dateStr} - còn khoảng ${daysLeft} ngày). Quý khách vui lòng kiểm tra thiết bị & phụ kiện để sẵn sàng hoàn trả đúng hạn.`,
+              related_record_id: r._id,
+            });
+          }
+        }
+
+        // 2. Mốc 24 giờ cuối
+        if (diffMs <= oneDayMs && diffMs > 0) {
+          const existing24h = await UserNotification.findOne({
+            user_id: renterId,
+            related_record_id: r._id,
+            title: { $regex: /24 giờ|chưa đầy 24h/i },
+          }).lean();
+
+          if (!existing24h) {
+            const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+            const minsLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            await UserNotification.create({
+              user_id: renterId,
+              title: `🔔 Cảnh báo: Còn chưa đầy 24 giờ đến hạn trả máy #${r.rentalCode}`,
+              message: `Đơn thuê thiết bị "${equipTitle}" chỉ còn ${hoursLeft} giờ ${minsLeft} phút nữa là đến hạn trả (${timeStr} ngày ${dateStr}). Vui lòng kiểm tra đầy đủ linh phụ kiện và bấm Báo trả đồ để Shipper đến lấy!`,
+              related_record_id: r._id,
+            });
+          }
+        }
+
+        // 3. Quá hạn trả
+        if (diffMs <= 0) {
+          const existingOverdue = await UserNotification.findOne({
+            user_id: renterId,
+            related_record_id: r._id,
+            title: { $regex: /quá hạn/i },
+          }).lean();
+
+          if (!existingOverdue) {
+            await UserNotification.create({
+              user_id: renterId,
+              title: `🚨 CẢNH BÁO: Đơn thuê #${r.rentalCode} đã quá hạn hoàn trả!`,
+              message: `Thiết bị "${equipTitle}" đã quá hạn trả từ lúc ${timeStr} ngày ${dateStr}. Quý khách vui lòng bấm nút "Báo trả đồ" ngay hoặc liên hệ Chủ máy để bàn giao tránh phát sinh phụ phí trễ hạn!`,
+              related_record_id: r._id,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Lỗi kiểm tra thông báo hạn trả:", e?.message);
+    }
   }
 
   /**

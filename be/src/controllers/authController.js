@@ -53,6 +53,13 @@ async function updateProfile(req, res) {
 }
 
 async function listNotifications(req, res) {
+  try {
+    const rentalService = require("../services/rentalService");
+    await rentalService.checkDeadlineRemindersForUser(req.user._id);
+  } catch (e) {
+    // Non-blocking
+  }
+
   const notifications = await UserNotification.find({ user_id: req.user._id })
     .sort({ createdAt: -1 })
     .limit(100)

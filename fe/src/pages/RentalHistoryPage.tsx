@@ -490,13 +490,13 @@ export default function RentalHistoryPage() {
               // Tính toán thời gian hạn chót trả máy và đếm ngược thời gian thực trên thiết bị (Yêu cầu 2)
               const returnDeadline = getReturnDeadlineDate(r.endDate, r.returnTime || "17:00");
               const diffMs = returnDeadline ? returnDeadline.getTime() - currentTime : null;
-              // Thông báo hiển thị khi đơn đang trong quá trình thuê (đã thanh toán / đang thuê, chưa trả máy) và còn <= 24h hoặc đã quá hạn
+              // Thông báo hiển thị khi đơn đang trong quá trình thuê (đã thanh toán / đang thuê, chưa trả máy) và bước vào 3 ngày cuối hoặc đã quá hạn
               const isNearReturnDeadline =
                 (canReturn || isPaidConfirmed) &&
                 !isReturned &&
                 !isCompleted &&
                 diffMs !== null &&
-                diffMs <= 24 * 60 * 60 * 1000;
+                diffMs <= 3 * 24 * 60 * 60 * 1000;
               const canReview =
                 (upperStatus === "RETURNED" ||
                   upperStatus === "RETURN_REQUESTED" ||
@@ -628,7 +628,7 @@ export default function RentalHistoryPage() {
                                   <div className="flex items-center justify-between flex-wrap gap-2">
                                     <strong className="text-amber-300 font-extrabold uppercase tracking-wider text-xs flex items-center gap-1.5">
                                       <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
-                                      THÔNG BÁO SẮP ĐẾN HẠN TRẢ THIẾT BỊ:
+                                      {diffMs > 24 * 60 * 60 * 1000 ? "THÔNG BÁO: ĐƠN THUÊ BƯỚC VÀO 3 NGÀY CUỐI" : "THÔNG BÁO: CÒN CHƯA ĐẦY 24 GIỜ ĐẾN HẠN TRẢ"}
                                     </strong>
                                     <div className="bg-[#0c1322] border border-amber-500/60 px-3 py-1 rounded-lg shadow-inner">
                                       <span className="text-[11px] text-slate-400 mr-1.5">Đếm ngược:</span>
@@ -638,7 +638,7 @@ export default function RentalHistoryPage() {
                                     </div>
                                   </div>
                                   <p className="text-slate-200 text-xs leading-relaxed">
-                                    Quý khách còn <strong className="text-amber-300 font-mono font-bold">{formatCountdownRemaining(diffMs)}</strong> để hoàn trả thiết bị.
+                                    Đơn thuê của Quý khách đã bước vào giai đoạn hoàn tất, còn <strong className="text-amber-300 font-mono font-bold">{formatCountdownRemaining(diffMs)}</strong> để hoàn trả thiết bị.
                                     Hạn chót: <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded font-mono">{r.returnTime || "17:00"} ngày {new Date(r.endDate).toLocaleDateString("vi-VN")}</strong>.
                                   </p>
                                   <p className="text-[11px] text-amber-300/90 italic">
