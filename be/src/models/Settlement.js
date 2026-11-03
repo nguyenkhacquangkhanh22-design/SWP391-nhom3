@@ -76,20 +76,41 @@ const settlementSchema = new mongoose.Schema(
       type: String,
       enum: [
         "pending_owner_confirmation", // Chờ Owner xác nhận số liệu
+        "pending_moderator_approval", // Chờ Quản lý web duyệt giải ngân
         "confirmed",                  // Owner đã xác nhận
         "processing",                 // Đang xử lý chuyển khoản
         "paid",                       // Đã giải ngân thành công
+        "rejected",                   // Bị từ chối / cần sửa thông tin
       ],
       default: "pending_owner_confirmation",
       index: true,
+    },
+    requested_at: {
+      type: Date,
+    },
+    request_note: {
+      type: String,
+      default: "",
+    },
+    qr_code_url: {
+      type: String,
+      default: "",
     },
     paid_at: {
       type: Date,
     },
     bank_info: {
       bank_name: { type: String, default: "" },
+      bank_code: { type: String, default: "" },
       account_number: { type: String, default: "" },
       account_holder: { type: String, default: "" },
+    },
+    moderator_review: {
+      moderator_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reviewed_at: { type: Date },
+      note: { type: String, default: "" },
+      transaction_code: { type: String, default: "" },
+      receipt_image: { type: String, default: "" },
     },
   },
   {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../app/AuthProvider";
+import type { Settlement } from "../../types/owner";
+import { generateVietQrUrl } from "../../constants/vietnamBanks";
+import type { AdminKycSubmission, AdminKycStats } from "../../types/admin";
 import Brand from "../../components/Brand";
 import Feedback from "../../components/Feedback";
 import { moderatorApi } from "../../services/moderatorApi";
@@ -15,6 +18,8 @@ import type {
 } from "../../services/moderatorApi";
 
 type Tab =
+  | "kyc"
+  | "payouts"
   | "payments"
   | "requests"
   | "contracts"
@@ -90,12 +95,34 @@ export default function ModeratorPortal() {
   const [ticketMessage, setTicketMessage] = useState("");
   const [ticketRelatedId, setTicketRelatedId] = useState("");
 
+  // Owner Payout states (UC_O10)
+  const [payouts, setPayouts] = useState<Settlement[]>([]);
+  const [payoutFilter, setPayoutFilter] = useState<string>("all");
+  const [payoutNotes, setPayoutNotes] = useState<Record<string, string>>({});
+  const [transactionCodes, setTransactionCodes] = useState<Record<string, string>>({});
+  const [payoutQrPreview, setPayoutQrPreview] = useState<string | null>(null);
+
+  // KYC Verification states
+  const [kycSubmissions, setKycSubmissions] = useState<AdminKycSubmission[]>([]);
+  const [kycStats, setKycStats] = useState<AdminKycStats>({
+    pending: 0,
+    verified: 0,
+    rejected: 0,
+    unverified: 0,
+    total_active: 0,
+  });
+  const [kycFilter, setKycFilter] = useState<string>("all");
+  const [kycSearch, setKycSearch] = useState<string>("");
+  const [kycReasons, setKycReasons] = useState<Record<string, string>>({});
+  const [kycBonus, setKycBonus] = useState<Record<string, number>>({});
+  const [kycLightboxImg, setKycLightboxImg] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData] =
+      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData] =
         await Promise.all([
           moderatorApi.getPayments(token),
           moderatorApi.getRentalRequests(token),
@@ -104,6 +131,8 @@ export default function ModeratorPortal() {
           moderatorApi.getHandoverRecords(token),
           moderatorApi.getStatusRequests(token),
           moderatorApi.getTemplates(token),
+          moderatorApi.getKycSubmissions(token).catch(() => null),
+          moderatorApi.getPayoutRequests(token).catch(() => ({ payouts: [] })),
         ]);
       setPayments(paymentData.payments || []);
       setRentalRequests(reqData.rentalRequests || []);
@@ -112,6 +141,13 @@ export default function ModeratorPortal() {
       setRecords(recordData.records);
       setStatusRequests(statusData.requests);
       setTemplates(templateData.templates);
+      if (kycData) {
+        setKycSubmissions(kycData.submissions || []);
+        setKycStats(kycData.stats || { pending: 0, verified: 0, rejected: 0, unverified: 0, total_active: 0 });
+      }
+      if (payoutData?.payouts) {
+        setPayouts(payoutData.payouts);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu kiểm duyệt.");
     } finally {
@@ -122,6 +158,28 @@ export default function ModeratorPortal() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  async function handleReviewPayout(id: string, action: "approve" | "reject") {
+    if (!token) return;
+    const note = payoutNotes[id] || "";
+    const transactionCode = transactionCodes[id] || "";
+    if (action === "reject" && !note.trim()) {
+      setError("Vui lòng nhập lý do từ chối để phản hồi cho Owner.");
+      return;
+    }
+    await performAction(
+      id,
+      () =>
+        moderatorApi.reviewPayoutRequest(token, id, {
+          action,
+          note,
+          transaction_code: transactionCode,
+        }),
+      action === "approve"
+        ? "Đã phê duyệt và xác nhận giải ngân tiền thuê thành công cho Owner!"
+        : "Đã từ chối yêu cầu giải ngân của Owner."
+    );
+  }
 
   async function performAction(id: string, action: () => Promise<unknown>, message: string) {
     setBusyId(id);
@@ -140,6 +198,27 @@ export default function ModeratorPortal() {
     } finally {
       setBusyId("");
     }
+  }
+
+  async function handleReviewKyc(userId: string, targetStatus: "verified" | "rejected") {
+    if (!token) return;
+    const reason = kycReasons[userId] || "";
+    if (targetStatus === "rejected" && !reason.trim()) {
+      setError("Vui lòng nhập lý do từ chối hồ sơ xác thực danh tính để người dùng chỉnh sửa.");
+      return;
+    }
+    await performAction(
+      userId,
+      () =>
+        moderatorApi.reviewKycSubmission(token, userId, {
+          status: targetStatus,
+          rejectionReason: targetStatus === "rejected" ? reason : undefined,
+          trustScoreBonus: kycBonus[userId] || 20,
+        }),
+      targetStatus === "verified"
+        ? "Đã xác nhận danh tính thành công! Người dùng này đã đủ điều kiện đăng thiết bị cho thuê."
+        : "Đã từ chối hồ sơ xác thực danh tính và thông báo cho người dùng."
+    );
   }
 
   async function handleTemplateSubmit(event: FormEvent<HTMLFormElement>) {
@@ -221,7 +300,22 @@ export default function ModeratorPortal() {
     );
   }, [equipments, equipmentSearch]);
 
+  const pendingPayouts = useMemo(
+    () => payouts.filter((p) => p.payout_status === "pending_moderator_approval"),
+    [payouts]
+  );
+
   const tabs: { id: Tab; label: string; badge?: number }[] = [
+    {
+      id: "kyc",
+      label: "🪪 Xác nhận Danh tính (KYC)",
+      badge: kycStats.pending,
+    },
+    {
+      id: "payouts",
+      label: "💸 Duyệt Giải ngân Owner",
+      badge: pendingPayouts.length,
+    },
     {
       id: "payments",
       label: "💳 Xác nhận Thanh toán QR",
@@ -327,6 +421,743 @@ export default function ModeratorPortal() {
         </nav>
 
         {loading && <div className="owner-section-card">Đang tải dữ liệu...</div>}
+
+        {/* TAB 0: QUẢN LÝ WEB XÁC NHẬN DANH TÍNH (KYC) CỦA OWNER & RENTER */}
+        {!loading && activeTab === "kyc" && (
+          <div className="owner-contracts-list">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#fff" }}>
+                  🪪 Kiểm duyệt & Xác nhận Danh tính (CCCD / KYC)
+                </h2>
+                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.85rem" }}>
+                  Chủ thiết bị (Owner) bắt buộc phải được Quản lý web xác nhận danh tính mới được phép đăng thiết bị cho thuê.
+                </p>
+              </div>
+
+              {/* Filter pills */}
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`button ${kycFilter === "all" ? "button-primary" : "button-secondary"}`}
+                  style={{ width: "auto", minHeight: "34px", padding: "0 12px", fontSize: "0.8rem" }}
+                  onClick={() => setKycFilter("all")}
+                >
+                  Tất cả ({kycSubmissions.length})
+                </button>
+                <button
+                  type="button"
+                  className={`button ${kycFilter === "pending" ? "button-primary" : "button-secondary"}`}
+                  style={{ width: "auto", minHeight: "34px", padding: "0 12px", fontSize: "0.8rem", background: kycFilter === "pending" ? "#ea580c" : undefined }}
+                  onClick={() => setKycFilter("pending")}
+                >
+                  ⏳ Chờ xác nhận ({kycStats.pending})
+                </button>
+                <button
+                  type="button"
+                  className={`button ${kycFilter === "verified" ? "button-primary" : "button-secondary"}`}
+                  style={{ width: "auto", minHeight: "34px", padding: "0 12px", fontSize: "0.8rem" }}
+                  onClick={() => setKycFilter("verified")}
+                >
+                  ✅ Đã xác nhận ({kycStats.verified})
+                </button>
+                <button
+                  type="button"
+                  className={`button ${kycFilter === "rejected" ? "button-primary" : "button-secondary"}`}
+                  style={{ width: "auto", minHeight: "34px", padding: "0 12px", fontSize: "0.8rem" }}
+                  onClick={() => setKycFilter("rejected")}
+                >
+                  ❌ Bị từ chối ({kycStats.rejected})
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div style={{ marginBottom: "16px" }}>
+              <input
+                className="input-field"
+                type="text"
+                placeholder="🔍 Tìm kiếm theo Tên người dùng, Email hoặc Số CCCD..."
+                value={kycSearch}
+                onChange={(e) => setKycSearch(e.target.value)}
+                style={{ background: "#0b101b" }}
+              />
+            </div>
+
+            {(() => {
+              const filtered = kycSubmissions.filter((sub) => {
+                if (kycFilter !== "all" && sub.kycStatus !== kycFilter) return false;
+                if (!kycSearch.trim()) return true;
+                const q = kycSearch.toLowerCase();
+                return (
+                  sub.name.toLowerCase().includes(q) ||
+                  sub.email.toLowerCase().includes(q) ||
+                  (sub.kycDocument?.idNumber || "").toLowerCase().includes(q)
+                );
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="owner-section-card owner-empty-state">
+                    <span style={{ fontSize: "2.5rem" }}>🪪</span>
+                    <h3>Không tìm thấy hồ sơ định danh nào</h3>
+                    <p>Các hồ sơ xác thực CCCD do Owner hoặc Renter gửi lên sẽ hiển thị tại đây để Quản lý web kiểm duyệt.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{ display: "grid", gap: "16px" }}>
+                  {filtered.map((item) => {
+                    const doc = item.kycDocument;
+                    const isPending = item.kycStatus === "pending";
+                    const isVerified = item.kycStatus === "verified";
+                    const isRejected = item.kycStatus === "rejected";
+
+                    return (
+                      <div
+                        key={item._id}
+                        className="owner-contract-card"
+                        style={{
+                          borderLeft: isVerified
+                            ? "4px solid #10b981"
+                            : isPending
+                            ? "4px solid #f97316"
+                            : isRejected
+                            ? "4px solid #ef4444"
+                            : "4px solid #64748b",
+                        }}
+                      >
+                        <div className="owner-contract-header">
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <h3 style={{ margin: 0, fontSize: "1.15rem", color: "#fff" }}>
+                                {item.name}
+                              </h3>
+                              <span
+                                style={{
+                                  background: item.role === "owner" ? "rgba(249, 115, 22, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                                  color: item.role === "owner" ? "#fb923c" : "#38bdf8",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "0.74rem",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {item.role === "owner" ? "Chủ thiết bị (Owner)" : "Khách thuê (Renter)"}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: "4px" }}>
+                              Email: <strong style={{ color: "#cbd5e1" }}>{item.email}</strong> • SĐT:{" "}
+                              <strong style={{ color: "#cbd5e1" }}>{item.phone || "Chưa có"}</strong> • Điểm uy tín:{" "}
+                              <strong style={{ color: "#34d399" }}>{item.trust_score || 0}</strong>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: "right" }}>
+                            <span className={`status-badge status-${item.kycStatus}`}>
+                              {isPending
+                                ? "⏳ Chờ Moderator xác nhận"
+                                : isVerified
+                                ? "✅ Đã xác nhận danh tính"
+                                : isRejected
+                                ? "❌ Đã từ chối"
+                                : "Chưa xác thực"}
+                            </span>
+                            <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "6px" }}>
+                              Nộp lúc: {dateTime(doc?.submittedAt || item.createdAt)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ID card details */}
+                        <div
+                          style={{
+                            margin: "14px 0",
+                            padding: "12px 16px",
+                            background: "#0c1322",
+                            borderRadius: "10px",
+                            border: "1px solid #1e293b",
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                            gap: "10px",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: "var(--muted)", display: "block", fontSize: "0.78rem" }}>
+                              Số CCCD / CMND gắn chip:
+                            </span>
+                            <strong style={{ color: "#38bdf8", fontSize: "1rem", letterSpacing: "1px" }}>
+                              {doc?.idNumber || "Chưa cung cấp"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--muted)", display: "block", fontSize: "0.78rem" }}>
+                              Quyền đăng thiết bị:
+                            </span>
+                            <strong style={{ color: isVerified ? "#34d399" : "#fb923c" }}>
+                              {isVerified ? "🔓 Được phép đăng bài cho thuê" : "🔒 Khóa đăng bài (Cần xác nhận danh tính)"}
+                            </strong>
+                          </div>
+                          {doc?.verifiedAt && (
+                            <div>
+                              <span style={{ color: "var(--muted)", display: "block", fontSize: "0.78rem" }}>
+                                Xác nhận bởi:
+                              </span>
+                              <span style={{ color: "#cbd5e1" }}>
+                                {typeof doc.verifiedBy === "object" ? doc.verifiedBy?.name : "Moderator"} (
+                                {dateTime(doc.verifiedAt)})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* ID Photos */}
+                        <div style={{ margin: "14px 0" }}>
+                          <span style={{ fontSize: "0.82rem", color: "#cbd5e1", fontWeight: 600, display: "block", marginBottom: "8px" }}>
+                            📷 Hình ảnh giấy tờ tùy thân (Nhấn vào ảnh để phóng to kiểm tra):
+                          </span>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                            {doc?.idCardFront ? (
+                              <div
+                                style={{
+                                  background: "#111827",
+                                  border: "1px solid #334155",
+                                  borderRadius: "8px",
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                  textAlign: "center",
+                                }}
+                                onClick={() => setKycLightboxImg(doc.idCardFront!)}
+                              >
+                                <img
+                                  src={doc.idCardFront}
+                                  alt="Mặt trước CCCD"
+                                  style={{ width: "100%", height: "130px", objectFit: "cover" }}
+                                />
+                                <div style={{ padding: "6px", fontSize: "0.75rem", color: "#38bdf8", fontWeight: 600 }}>
+                                  🔍 Mặt trước CCCD
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ background: "#111827", borderRadius: "8px", padding: "20px", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                                Không có ảnh mặt trước
+                              </div>
+                            )}
+
+                            {doc?.idCardBack ? (
+                              <div
+                                style={{
+                                  background: "#111827",
+                                  border: "1px solid #334155",
+                                  borderRadius: "8px",
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                  textAlign: "center",
+                                }}
+                                onClick={() => setKycLightboxImg(doc.idCardBack!)}
+                              >
+                                <img
+                                  src={doc.idCardBack}
+                                  alt="Mặt sau CCCD"
+                                  style={{ width: "100%", height: "130px", objectFit: "cover" }}
+                                />
+                                <div style={{ padding: "6px", fontSize: "0.75rem", color: "#38bdf8", fontWeight: 600 }}>
+                                  🔍 Mặt sau CCCD
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ background: "#111827", borderRadius: "8px", padding: "20px", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                                Không có ảnh mặt sau
+                              </div>
+                            )}
+
+                            {doc?.selfiePhoto && (
+                              <div
+                                style={{
+                                  background: "#111827",
+                                  border: "1px solid #334155",
+                                  borderRadius: "8px",
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                  textAlign: "center",
+                                }}
+                                onClick={() => setKycLightboxImg(doc.selfiePhoto!)}
+                              >
+                                <img
+                                  src={doc.selfiePhoto}
+                                  alt="Selfie cầm CCCD"
+                                  style={{ width: "100%", height: "130px", objectFit: "cover" }}
+                                />
+                                <div style={{ padding: "6px", fontSize: "0.75rem", color: "#38bdf8", fontWeight: 600 }}>
+                                  🔍 Selfie cầm CCCD
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Rejection reason notice if rejected */}
+                        {isRejected && doc?.rejectionReason && (
+                          <div
+                            style={{
+                              margin: "10px 0",
+                              padding: "10px 14px",
+                              borderRadius: "8px",
+                              background: "rgba(239, 68, 68, 0.12)",
+                              border: "1px solid rgba(239, 68, 68, 0.35)",
+                              color: "#fca5a5",
+                              fontSize: "0.84rem",
+                            }}
+                          >
+                            <strong>Lý do từ chối:</strong> {doc.rejectionReason}
+                          </div>
+                        )}
+
+                        {/* Moderator Actions */}
+                        <div style={{ borderTop: "1px solid #1e293b", paddingTop: "12px", marginTop: "12px" }}>
+                          {isPending ? (
+                            <div style={{ display: "grid", gap: "10px" }}>
+                              <input
+                                className="input-field"
+                                type="text"
+                                placeholder="Ghi chú / Nhập lý do bắt buộc nếu từ chối (ví dụ: ảnh mờ, thông tin không khớp)..."
+                                value={kycReasons[item._id] || ""}
+                                onChange={(e) =>
+                                  setKycReasons((prev) => ({ ...prev, [item._id]: e.target.value }))
+                                }
+                              />
+
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem", color: "var(--muted)" }}>
+                                  <span>Điểm uy tín thưởng khi duyệt:</span>
+                                  <input
+                                    type="number"
+                                    className="input-field"
+                                    style={{ width: "80px", minHeight: "32px", padding: "2px 8px" }}
+                                    value={kycBonus[item._id] ?? 20}
+                                    onChange={(e) =>
+                                      setKycBonus((prev) => ({ ...prev, [item._id]: Number(e.target.value) }))
+                                    }
+                                  />
+                                </div>
+
+                                <div style={{ display: "flex", gap: "10px" }}>
+                                  <button
+                                    type="button"
+                                    className="button button-quiet"
+                                    style={{ width: "auto", color: "#f87171" }}
+                                    disabled={busyId === item._id}
+                                    onClick={() => void handleReviewKyc(item._id, "rejected")}
+                                  >
+                                    ❌ Từ chối hồ sơ
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-primary"
+                                    style={{ width: "auto", background: "#10b981" }}
+                                    disabled={busyId === item._id}
+                                    onClick={() => void handleReviewKyc(item._id, "verified")}
+                                  >
+                                    {busyId === item._id ? "Đang xử lý..." : "✅ Xác nhận danh tính hợp lệ"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                              <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                                Trạng thái:{" "}
+                                <strong style={{ color: isVerified ? "#34d399" : "#f87171" }}>
+                                  {isVerified ? "Đã duyệt và mở quyền đăng thiết bị" : "Hồ sơ bị từ chối"}
+                                </strong>
+                              </span>
+                              {isVerified && (
+                                <button
+                                  type="button"
+                                  className="button button-quiet"
+                                  style={{ width: "auto", fontSize: "0.78rem" }}
+                                  disabled={busyId === item._id}
+                                  onClick={() => {
+                                    setKycReasons((prev) => ({ ...prev, [item._id]: "Hủy xác nhận để rà soát lại thông tin" }));
+                                    void handleReviewKyc(item._id, "rejected");
+                                  }}
+                                >
+                                  🔄 Hủy xác nhận (Yêu cầu nộp lại)
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Lightbox Modal for ID Card Zoom */}
+        {kycLightboxImg && (
+          <div
+            className="owner-modal-overlay"
+            style={{ zIndex: 9999, background: "rgba(0,0,0,0.85)" }}
+            onClick={() => setKycLightboxImg(null)}
+          >
+            <div
+              style={{ position: "relative", maxWidth: "800px", maxHeight: "90vh", padding: "10px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="close-modal-btn"
+                style={{ position: "absolute", top: "-14px", right: "-14px", zIndex: 10 }}
+                onClick={() => setKycLightboxImg(null)}
+              >
+                ✕
+              </button>
+              <img
+                src={kycLightboxImg}
+                alt="Phóng to CCCD"
+                style={{ width: "100%", maxHeight: "80vh", objectFit: "contain", borderRadius: "10px" }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* TAB: DUYỆT GIẢI NGÂN / YÊU CẦU THANH TOÁN TỪ OWNER KHI KHÁCH NHẬN HÀNG */}
+        {!loading && activeTab === "payouts" && (
+          <section className="moderator-list">
+            <div
+              className="owner-section-card"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                borderLeft: "4px solid #10b981",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: "0 0 4px", fontSize: "1rem" }}>
+                  💸 Danh sách yêu cầu thanh toán giải ngân cho Owner
+                </h3>
+                <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.88rem" }}>
+                  Khi khách thuê đã nhận bàn giao thiết bị, Owner gửi yêu cầu thanh toán kèm số tài khoản ngân hàng và mã QR. Quản lý web đối chiếu mã QR, quét chuyển khoản và bấm Xác nhận giải ngân.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className={`button ${payoutFilter === "all" ? "button-primary" : "button-quiet"}`}
+                  style={{ fontSize: "0.78rem", padding: "6px 12px" }}
+                  onClick={() => setPayoutFilter("all")}
+                >
+                  Tất cả ({payouts.length})
+                </button>
+                <button
+                  type="button"
+                  className={`button ${payoutFilter === "pending" ? "button-primary" : "button-quiet"}`}
+                  style={{ fontSize: "0.78rem", padding: "6px 12px", background: payoutFilter === "pending" ? "#fb923c" : undefined }}
+                  onClick={() => setPayoutFilter("pending")}
+                >
+                  Chờ duyệt ({pendingPayouts.length})
+                </button>
+                <button
+                  type="button"
+                  className={`button ${payoutFilter === "paid" ? "button-primary" : "button-quiet"}`}
+                  style={{ fontSize: "0.78rem", padding: "6px 12px", background: payoutFilter === "paid" ? "#10b981" : undefined }}
+                  onClick={() => setPayoutFilter("paid")}
+                >
+                  Đã giải ngân ({payouts.filter(p => p.payout_status === "paid").length})
+                </button>
+              </div>
+            </div>
+
+            {payouts
+              .filter((p) => {
+                if (payoutFilter === "pending") return p.payout_status === "pending_moderator_approval";
+                if (payoutFilter === "paid") return p.payout_status === "paid";
+                if (payoutFilter === "rejected") return p.payout_status === "rejected";
+                return true;
+              })
+              .length === 0 && (
+              <div className="owner-section-card" style={{ textAlign: "center", padding: "32px 16px" }}>
+                <span style={{ fontSize: "2rem" }}>🪙</span>
+                <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
+                  Chưa có yêu cầu thanh toán giải ngân nào phù hợp bộ lọc.
+                </p>
+              </div>
+            )}
+
+            {payouts
+              .filter((p) => {
+                if (payoutFilter === "pending") return p.payout_status === "pending_moderator_approval";
+                if (payoutFilter === "paid") return p.payout_status === "paid";
+                if (payoutFilter === "rejected") return p.payout_status === "rejected";
+                return true;
+              })
+              .map((p) => {
+                const isPending = p.payout_status === "pending_moderator_approval";
+                const isPaid = p.payout_status === "paid";
+                const isRejected = p.payout_status === "rejected";
+                const ownerName = typeof p.owner_id === "object" ? p.owner_id?.name : "Owner";
+                const ownerPhone = typeof p.owner_id === "object" ? p.owner_id?.phone : "";
+                const ownerEmail = typeof p.owner_id === "object" ? p.owner_id?.email : "";
+                const renterName = typeof p.renter_id === "object" ? p.renter_id?.name : "Renter";
+
+                // Auto QR url fallback
+                const qrUrl =
+                  p.qr_code_url ||
+                  (p.bank_info?.bank_code && p.bank_info?.account_number
+                    ? generateVietQrUrl(
+                        p.bank_info.bank_code,
+                        p.bank_info.account_number,
+                        p.owner_payout_amount,
+                        `GIAI NGAN HD ${p.contract_id?.contract_code || ""}`,
+                        p.bank_info.account_holder
+                      )
+                    : "");
+
+                return (
+                  <article className="owner-section-card moderator-card" key={p._id}>
+                    <div className="moderator-card-heading">
+                      <div>
+                        <span className="contract-code-tag">#{p.settlement_code}</span>
+                        <h2 style={{ margin: "4px 0 0" }}>
+                          Giải ngân tiền thuê • Hợp đồng #{p.contract_id?.contract_code || "HĐ"}
+                        </h2>
+                      </div>
+                      <span
+                        className={`status-badge ${
+                          isPending ? "status-pending" : isPaid ? "status-active" : "status-rejected"
+                        }`}
+                      >
+                        {isPending
+                          ? "⏳ Chờ duyệt giải ngân"
+                          : isPaid
+                          ? "✓ Đã giải ngân"
+                          : isRejected
+                          ? "✕ Đã từ chối"
+                          : p.payout_status}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, marginTop: 14 }}>
+                      <div>
+                        <div style={{ background: "#111827", padding: "12px 14px", borderRadius: 8, marginBottom: 14 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Chủ thiết bị (Owner):</span>
+                            <strong style={{ color: "#fff" }}>{ownerName} ({ownerPhone || ownerEmail})</strong>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Người thuê (Renter):</span>
+                            <span style={{ color: "var(--muted)" }}>{renterName}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Tổng tiền thuê hợp đồng:</span>
+                            <span>{p.total_rental_fee.toLocaleString("vi-VN")} đ</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Phí sàn (5%):</span>
+                            <span style={{ color: "var(--muted)" }}>-{p.platform_fee.toLocaleString("vi-VN")} đ</span>
+                          </div>
+                          {p.damage_deduction > 0 && (
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Cấn trừ hư hại:</span>
+                              <span style={{ color: "#ef4444" }}>+{p.damage_deduction.toLocaleString("vi-VN")} đ</span>
+                            </div>
+                          )}
+                          <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "8px 0" }} />
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "#fff", fontWeight: 600 }}>CẦN CHUYỂN KHOẢN GIẢI NGÂN:</span>
+                            <strong style={{ color: "#10b981", fontSize: "1.3rem" }}>
+                              {p.owner_payout_amount.toLocaleString("vi-VN")} đ
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Bank info box */}
+                        <div style={{ background: "#0b1329", padding: "12px 14px", borderRadius: 8, border: "1px solid #1e293b" }}>
+                          <h4 style={{ margin: "0 0 8px", fontSize: "0.9rem", color: "var(--orange)" }}>
+                            🏦 Thông tin nhận tiền của Owner:
+                          </h4>
+                          <div style={{ fontSize: "0.88rem", display: "grid", gap: 4 }}>
+                            <div>
+                              Ngân hàng: <strong style={{ color: "#fff" }}>{p.bank_info?.bank_name || "Chưa cập nhật"}</strong>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span>Số tài khoản:</span>
+                              <strong style={{ color: "#38bdf8", fontFamily: "monospace", fontSize: "1.05rem" }}>
+                                {p.bank_info?.account_number || "—"}
+                              </strong>
+                              {p.bank_info?.account_number && (
+                                <button
+                                  type="button"
+                                  className="button button-quiet"
+                                  style={{ padding: "2px 6px", fontSize: "0.72rem", height: "auto" }}
+                                  onClick={() => {
+                                    void navigator.clipboard.writeText(p.bank_info!.account_number);
+                                    setSuccess("Đã sao chép số tài khoản!");
+                                  }}
+                                >
+                                  📋 Copy
+                                </button>
+                              )}
+                            </div>
+                            <div>
+                              Tên chủ tài khoản: <strong style={{ color: "#fff" }}>{p.bank_info?.account_holder || "—"}</strong>
+                            </div>
+                            {p.request_note && (
+                              <div style={{ marginTop: 4, color: "var(--muted)", fontSize: "0.82rem" }}>
+                                <em>Ghi chú của Owner: "{p.request_note}"</em>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* QR Code and Actions */}
+                      <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                        <div style={{ textAlign: "center", background: "#111827", padding: "14px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "0.85rem", color: "#38bdf8", fontWeight: 600 }}>
+                            📱 Quét mã QR để chuyển khoản
+                          </span>
+                          {qrUrl ? (
+                            <div style={{ marginTop: 10 }}>
+                              <img
+                                src={qrUrl}
+                                alt="Mã QR giải ngân"
+                                style={{
+                                  width: 140,
+                                  height: 140,
+                                  borderRadius: 8,
+                                  background: "#fff",
+                                  padding: 4,
+                                  border: "1px solid #334155",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => setPayoutQrPreview(qrUrl)}
+                                title="Bấm để phóng to"
+                              />
+                              <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: 6 }}>
+                                Bấm vào ảnh để phóng to toàn màn hình
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ padding: "24px 0", color: "var(--muted)", fontSize: "0.82rem" }}>
+                              Chưa có mã QR
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Moderator Action Controls */}
+                        {isPending ? (
+                          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+                            <input
+                              className="input-field"
+                              type="text"
+                              placeholder="Mã giao dịch ngân hàng (Ví dụ: FT240989...)"
+                              value={transactionCodes[p._id] || ""}
+                              onChange={(e) => setTransactionCodes((prev) => ({ ...prev, [p._id]: e.target.value }))}
+                            />
+                            <input
+                              className="input-field"
+                              type="text"
+                              placeholder="Ghi chú xác nhận / Lý do nếu từ chối..."
+                              value={payoutNotes[p._id] || ""}
+                              onChange={(e) => setPayoutNotes((prev) => ({ ...prev, [p._id]: e.target.value }))}
+                            />
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button
+                                type="button"
+                                className="button button-primary"
+                                style={{ flex: 1, background: "#10b981", whiteSpace: "nowrap" }}
+                                disabled={busyId === p._id}
+                                onClick={() => void handleReviewPayout(p._id, "approve")}
+                              >
+                                {busyId === p._id ? "Đang xử lý..." : "✓ Xác nhận đã chuyển khoản"}
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-quiet"
+                                style={{ color: "#ef4444", borderColor: "#ef4444" }}
+                                disabled={busyId === p._id}
+                                onClick={() => void handleReviewPayout(p._id, "reject")}
+                              >
+                                ✕ Từ chối
+                              </button>
+                            </div>
+                          </div>
+                        ) : isPaid ? (
+                          <div style={{ marginTop: 14, padding: "10px", background: "rgba(16, 185, 129, 0.1)", border: "1px solid #10b981", borderRadius: 8 }}>
+                            <span style={{ color: "#10b981", fontWeight: 600, fontSize: "0.85rem" }}>
+                              ✓ Đã giải ngân thành công
+                            </span>
+                            {p.moderator_review?.transaction_code && (
+                              <div style={{ fontSize: "0.8rem", color: "#fff", marginTop: 4 }}>
+                                Mã GD: <strong>{p.moderator_review.transaction_code}</strong>
+                              </div>
+                            )}
+                            {p.paid_at && (
+                              <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>
+                                Thời gian: {new Date(p.paid_at).toLocaleString("vi-VN")}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 14, padding: "10px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", borderRadius: 8 }}>
+                            <span style={{ color: "#ef4444", fontWeight: 600, fontSize: "0.85rem" }}>
+                              ✕ Đã từ chối giải ngân
+                            </span>
+                            {p.moderator_review?.note && (
+                              <div style={{ fontSize: "0.8rem", color: "#f87171", marginTop: 4 }}>
+                                Lý do: {p.moderator_review.note}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+          </section>
+        )}
+
+        {/* FULLSCREEN QR PREVIEW FOR MODERATOR */}
+        {payoutQrPreview && (
+          <div className="owner-modal-overlay" onClick={() => setPayoutQrPreview(null)}>
+            <div
+              className="owner-modal-card"
+              style={{ maxWidth: "380px", textAlign: "center", padding: "24px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 14px", fontSize: "1.1rem", color: "#fff" }}>
+                📱 Quét mã QR chuyển khoản cho Owner
+              </h3>
+              <img
+                src={payoutQrPreview}
+                alt="Mã QR"
+                style={{ width: "100%", maxWidth: "320px", borderRadius: "10px", background: "#fff", padding: "8px" }}
+              />
+              <div style={{ marginTop: "16px" }}>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ width: "100%" }}
+                  onClick={() => setPayoutQrPreview(null)}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TAB MỚI: XÁC NHẬN THANH TOÁN QR CỦA NGƯỜI THUÊ */}
         {!loading && activeTab === "payments" && (
@@ -700,9 +1531,18 @@ export default function ModeratorPortal() {
                     <p><b>Giá thuê / tiền cọc:</b> {contract.rental_price.toLocaleString("vi-VN")} đ / <span style={{ color: "#10b981" }}>0 đ (Miễn cọc)</span></p>
                     <p><b>Phiên bản hợp đồng:</b> v{contract.version} • gửi lúc {dateTime(contract.createdAt)}</p>
                     <p>
-                      <b>Trạng thái chữ ký:</b>{" "}
-                      Owner: {contract.owner_signature?.signed ? "✅ Đã xác nhận" : "Chưa ký"} •{" "}
-                      Người thuê:{" "}
+                      <b>Trạng thái chữ ký số:</b>{" "}
+                      Owner:{" "}
+                      {contract.owner_signature?.signed ? (
+                        <span style={{ color: "#34d399", fontWeight: 600 }}>
+                          ✅ Đã ký số ({contract.owner_signature.signer_name || "Owner"}
+                          {contract.owner_signature.signed_at ? ` - ${dateTime(contract.owner_signature.signed_at)}` : ""}
+                          {contract.owner_signature.certificate_code ? ` • ${contract.owner_signature.certificate_code}` : ""})
+                        </span>
+                      ) : (
+                        <span style={{ color: "#f87171" }}>Chưa ký</span>
+                      )}{" "}
+                      • Người thuê:{" "}
                       {contract.renter_signature?.signed ? (
                         <strong style={{ color: "#10b981" }}>✅ Đã ký tên ({dateTime(contract.renter_signature.signed_at)})</strong>
                       ) : contract.status === "moderator_approved" ? (
@@ -711,6 +1551,18 @@ export default function ModeratorPortal() {
                         "Chưa gửi Renter"
                       )}
                     </p>
+                    {contract.owner_signature?.signature_image && (
+                      <div style={{ marginTop: "6px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>Chữ ký mẫu Owner:</span>
+                        <div style={{ background: "#ffffff", padding: "4px 8px", borderRadius: "6px", display: "inline-block" }}>
+                          <img
+                            src={contract.owner_signature.signature_image}
+                            alt="Chữ ký Owner"
+                            style={{ maxHeight: "36px", objectFit: "contain" }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {contract.special_conditions && <p><b>Điều khoản bổ sung:</b> {contract.special_conditions}</p>}
                   {contract.request_id?.renter_note && <p><b>Ghi chú yêu cầu thuê:</b> {contract.request_id.renter_note}</p>}

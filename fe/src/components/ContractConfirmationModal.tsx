@@ -93,6 +93,16 @@ export default function ContractConfirmationModal({
 
         {/* Contract Text Body */}
         <div className="flex-1 overflow-y-auto my-4 p-5 rounded-xl bg-[#0f1624] border border-[#1e2a40] text-xs text-slate-300 space-y-4 leading-relaxed">
+          {/* Moderator Approval Badge */}
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-300">
+            <span className="flex items-center gap-2 font-semibold">
+              <span>🛡️</span> Hợp đồng đã được Quản lý web (Moderator) kiểm tra & phê duyệt hợp lệ
+            </span>
+            <span className="text-[11px] font-mono text-emerald-400">
+              {rental.contract?.contractNumber || `HD-${rental.rentalCode}`}
+            </span>
+          </div>
+
           <div className="text-center pb-3 border-b border-[#212d42]">
             <h3 className="font-bold text-xs text-slate-300 uppercase tracking-wider">
               CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM

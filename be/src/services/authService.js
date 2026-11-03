@@ -51,6 +51,7 @@ function toPublicUser(user) {
     address: user.address || "",
     avatarUrl: user.avatarUrl || "",
     kycStatus: user.kycStatus || "unverified",
+    kycDocument: user.kycDocument || null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

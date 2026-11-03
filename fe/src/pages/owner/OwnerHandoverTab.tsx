@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import type { RentalContract, HandoverRecord } from "../../types/owner";
+import type { RentalContract, HandoverRecord, Settlement } from "../../types/owner";
+import { VIETNAM_BANKS, generateVietQrUrl } from "../../constants/vietnamBanks";
 import { ownerApi } from "../../services/ownerApi";
 
 interface Props {
@@ -65,6 +66,19 @@ export default function OwnerHandoverTab({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Payout request states when renter receives equipment
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [payoutBankCode, setPayoutBankCode] = useState("MB");
+  const [payoutBankName, setPayoutBankName] = useState("Ngân hàng TMCP Quân đội (MB Bank)");
+  const [payoutAccountNumber, setPayoutAccountNumber] = useState("");
+  const [payoutAccountHolder, setPayoutAccountHolder] = useState("");
+  const [payoutQrMode, setPayoutQrMode] = useState<"auto" | "custom">("auto");
+  const [payoutCustomQrUrl, setPayoutCustomQrUrl] = useState("");
+  const [payoutRequestNote, setPayoutRequestNote] = useState("");
+  const [payoutSettlement, setPayoutSettlement] = useState<Settlement | null>(null);
+  const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
+  const [previewHandoverQr, setPreviewHandoverQr] = useState<string | null>(null);
+
   useEffect(() => {
     if (activeContractId) {
       loadRecords(activeContractId);
@@ -112,6 +126,81 @@ export default function OwnerHandoverTab({
     }
   }
 
+  async function handleOpenPayoutModal() {
+    if (!activeContractId) return;
+    try {
+      const res = await ownerApi.getSettlementByContract(token, activeContractId).catch(() => null);
+      if (res && res.settlement) {
+        setPayoutSettlement(res.settlement);
+        if (res.settlement.bank_info?.bank_code) {
+          setPayoutBankCode(res.settlement.bank_info.bank_code);
+        }
+        if (res.settlement.bank_info?.bank_name) {
+          setPayoutBankName(res.settlement.bank_info.bank_name);
+        }
+        if (res.settlement.bank_info?.account_number) {
+          setPayoutAccountNumber(res.settlement.bank_info.account_number);
+        }
+        if (res.settlement.bank_info?.account_holder) {
+          setPayoutAccountHolder(res.settlement.bank_info.account_holder);
+        }
+        if (res.settlement.qr_code_url) {
+          setPayoutCustomQrUrl(res.settlement.qr_code_url);
+          setPayoutQrMode("custom");
+        } else {
+          setPayoutQrMode("auto");
+        }
+        if (res.settlement.request_note) {
+          setPayoutRequestNote(res.settlement.request_note);
+        }
+      }
+    } catch {}
+    setShowPayoutModal(true);
+  }
+
+  async function handleSubmitPayout(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeContractId) return;
+
+    if (!payoutBankName.trim() || !payoutAccountNumber.trim() || !payoutAccountHolder.trim()) {
+      onError("Vui lòng chọn ngân hàng, nhập số tài khoản và tên chủ tài khoản.");
+      return;
+    }
+
+    const curContract = contracts.find((c) => c._id === activeContractId);
+    const payoutAmount = payoutSettlement?.owner_payout_amount || Math.round((curContract?.rental_price || 0) * 0.95);
+    const autoQr = generateVietQrUrl(
+      payoutBankCode,
+      payoutAccountNumber,
+      payoutAmount,
+      `GIAI NGAN HD ${curContract?.contract_code || ""}`,
+      payoutAccountHolder
+    );
+    const effectiveQr = payoutQrMode === "auto" ? autoQr : payoutCustomQrUrl;
+
+    setIsSubmittingPayout(true);
+    onError("");
+    onSuccess("");
+    try {
+      await ownerApi.confirmSettlement(token, activeContractId, {
+        bank_info: {
+          bank_name: payoutBankName.trim(),
+          bank_code: payoutBankCode,
+          account_number: payoutAccountNumber.trim(),
+          account_holder: payoutAccountHolder.trim().toUpperCase(),
+        },
+        qr_code_url: effectiveQr,
+        request_note: payoutRequestNote.trim(),
+      });
+      onSuccess(`Đã gửi yêu cầu thanh toán giải ngân (${payoutAmount.toLocaleString("vi-VN")} đ) lên Quản lý web (Moderator) duyệt thành công!`);
+      setShowPayoutModal(false);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Gửi yêu cầu thanh toán thất bại.");
+    } finally {
+      setIsSubmittingPayout(false);
+    }
+  }
+
   // UC_O08: Submit Handover Protocol
   async function handleSubmitHandover(e: React.FormEvent) {
     e.preventDefault();
@@ -150,6 +239,11 @@ export default function OwnerHandoverTab({
   async function handleSubmitReturn(e: React.FormEvent) {
     e.preventDefault();
     if (!activeContractId) return;
+
+    if (Number(damageCost) < 0) {
+      onError("Chi phí khấu trừ hư hại không được là số âm (phải ≥ 0).");
+      return;
+    }
 
     setIsSubmitting(true);
     onError("");
@@ -311,6 +405,36 @@ export default function OwnerHandoverTab({
                     />
                   </div>
                 )}
+
+                {/* Gửi yêu cầu thanh toán tiền lên Quản lý web khi khách nhận hàng */}
+                <div
+                  style={{
+                    marginTop: "16px",
+                    padding: "12px 14px",
+                    background: "rgba(16, 185, 129, 0.08)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <div>
+                      <span style={{ color: "#10b981", fontWeight: 600, fontSize: "0.88rem" }}>
+                        💰 Khách thuê đã nhận bàn giao thiết bị!
+                      </span>
+                      <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "0.8rem" }}>
+                        Bạn có thể gửi ngay thông tin tài khoản ngân hàng & mã QR để Quản lý web duyệt giải ngân tiền thuê.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      style={{ fontSize: "0.78rem", padding: "6px 12px", background: "#10b981" }}
+                      onClick={() => void handleOpenPayoutModal()}
+                    >
+                      💸 Gửi yêu cầu thanh toán (QR & Ngân hàng)
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="owner-empty-state" style={{ padding: "30px 10px" }}>
@@ -532,6 +656,210 @@ export default function OwnerHandoverTab({
       )}
 
       {/* MODAL: Return Inspection (UC_O09) */}
+      {/* MODAL: GỬI YÊU CẦU THANH TOÁN KHI KHÁCH NHẬN HÀNG */}
+      {showPayoutModal && (
+        <div className="owner-modal-overlay">
+          <div className="owner-modal-card" style={{ maxWidth: "620px" }}>
+            <div className="owner-modal-header">
+              <h3>💳 Gửi yêu cầu thanh toán tiền thuê lên Quản lý web</h3>
+              <button className="close-modal-btn" onClick={() => setShowPayoutModal(false)}>
+                ✕
+              </button>
+            </div>
+
+            <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginTop: 0 }}>
+              Khách thuê đã nhận thiết bị theo biên bản bàn giao. Vui lòng cung cấp số tài khoản và mã QR để Quản lý web (Moderator) duyệt và chuyển khoản giải ngân tiền thuê:
+            </p>
+
+            {(() => {
+              const curContract = contracts.find((c) => c._id === activeContractId);
+              const fee = curContract?.rental_price || 0;
+              const platformFee = Math.round(fee * 0.05);
+              const payoutAmount = payoutSettlement?.owner_payout_amount || Math.max(0, fee - platformFee);
+              const autoQr = generateVietQrUrl(
+                payoutBankCode,
+                payoutAccountNumber,
+                payoutAmount,
+                `GIAI NGAN HD ${curContract?.contract_code || ""}`,
+                payoutAccountHolder
+              );
+
+              return (
+                <form onSubmit={handleSubmitPayout}>
+                  <div style={{ background: "#111827", padding: "12px 14px", borderRadius: 8, marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: "0.88rem" }}>
+                      <span style={{ color: "var(--muted)" }}>Tiền thuê thiết bị:</span>
+                      <strong style={{ color: "#fff" }}>{fee.toLocaleString("vi-VN")} đ</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: "0.88rem" }}>
+                      <span style={{ color: "var(--muted)" }}>Phí nền tảng (5%):</span>
+                      <span style={{ color: "var(--muted)" }}>-{platformFee.toLocaleString("vi-VN")} đ</span>
+                    </div>
+                    <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "6px 0" }} />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ color: "#fff", fontWeight: 600 }}>Thực nhận giải ngân cho Owner:</span>
+                      <strong style={{ color: "#10b981", fontSize: "1.2rem" }}>
+                        {payoutAmount.toLocaleString("vi-VN")} đ
+                      </strong>
+                    </div>
+                  </div>
+
+                  <h4 style={{ margin: "0 0 10px", fontSize: "0.92rem", color: "var(--orange)" }}>
+                    🏦 Thông tin ngân hàng & Mã QR nhận tiền:
+                  </h4>
+
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <label className="field-label">Chọn ngân hàng *</label>
+                      <select
+                        className="input-field"
+                        value={payoutBankCode}
+                        onChange={(e) => {
+                          setPayoutBankCode(e.target.value);
+                          const f = VIETNAM_BANKS.find((b) => b.code === e.target.value);
+                          if (f) setPayoutBankName(f.name);
+                        }}
+                        required
+                      >
+                        {VIETNAM_BANKS.map((b) => (
+                          <option key={b.code} value={b.code}>
+                            {b.shortName} — {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label className="field-label">Số tài khoản ngân hàng *</label>
+                        <input
+                          className="input-field"
+                          type="text"
+                          placeholder="Ví dụ: 0398889999"
+                          value={payoutAccountNumber}
+                          onChange={(e) => setPayoutAccountNumber(e.target.value.replace(/[^0-9A-Za-z]/g, ""))}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label">Tên chủ tài khoản (In hoa) *</label>
+                        <input
+                          className="input-field"
+                          type="text"
+                          placeholder="NGUYEN VAN A"
+                          value={payoutAccountHolder}
+                          onChange={(e) => setPayoutAccountHolder(e.target.value.toUpperCase())}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* QR Code section */}
+                    <div style={{ background: "#0b1329", padding: "12px", borderRadius: 8, border: "1px solid #1e293b" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <label className="field-label" style={{ margin: 0, color: "#fff" }}>
+                          📱 Mã QR chuyển khoản nhận tiền
+                        </label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            className={`button ${payoutQrMode === "auto" ? "button-primary" : "button-quiet"}`}
+                            style={{ fontSize: "0.72rem", padding: "2px 8px", height: "auto" }}
+                            onClick={() => setPayoutQrMode("auto")}
+                          >
+                            ⚡ Tự tạo VietQR
+                          </button>
+                          <button
+                            type="button"
+                            className={`button ${payoutQrMode === "custom" ? "button-primary" : "button-quiet"}`}
+                            style={{ fontSize: "0.72rem", padding: "2px 8px", height: "auto" }}
+                            onClick={() => setPayoutQrMode("custom")}
+                          >
+                            🖼️ Dán link QR
+                          </button>
+                        </div>
+                      </div>
+
+                      {payoutQrMode === "auto" ? (
+                        <div>
+                          {payoutAccountNumber ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <img
+                                src={autoQr}
+                                alt="VietQR"
+                                style={{ width: 110, height: 110, borderRadius: 6, background: "#fff", padding: 4, cursor: "pointer" }}
+                                onClick={() => setPreviewHandoverQr(autoQr)}
+                                title="Bấm để phóng to"
+                              />
+                              <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                                <p style={{ margin: "0 0 4px", color: "#10b981", fontWeight: 600 }}>
+                                  ✓ Đã tạo mã VietQR chuẩn
+                                </p>
+                                <p style={{ margin: "0 0 2px" }}>Ngân hàng: <strong style={{ color: "#fff" }}>{payoutBankName}</strong></p>
+                                <p style={{ margin: 0 }}>Số tiền: <strong style={{ color: "#10b981" }}>{payoutAmount.toLocaleString("vi-VN")} đ</strong></p>
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                              👉 Nhập số tài khoản để hiển thị mã VietQR tự động.
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <input
+                            className="input-field"
+                            type="url"
+                            placeholder="Dán link ảnh mã QR (https://...)"
+                            value={payoutCustomQrUrl}
+                            onChange={(e) => setPayoutCustomQrUrl(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="field-label">Ghi chú cho Quản lý web (Tùy chọn)</label>
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        placeholder="Khách đã nhận bàn giao máy tốt..."
+                        value={payoutRequestNote}
+                        onChange={(e) => setPayoutRequestNote(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-actions" style={{ marginTop: 16 }}>
+                    <button type="button" className="button button-quiet" onClick={() => setShowPayoutModal(false)}>
+                      Hủy
+                    </button>
+                    <button type="submit" className="button button-primary" disabled={isSubmittingPayout}>
+                      {isSubmittingPayout ? "Đang gửi..." : "📤 Gửi yêu cầu thanh toán lên Quản lý web"}
+                    </button>
+                  </div>
+                </form>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN PREVIEW MODAL */}
+      {previewHandoverQr && (
+        <div className="owner-modal-overlay" onClick={() => setPreviewHandoverQr(null)}>
+          <div className="owner-modal-card" style={{ maxWidth: "360px", textAlign: "center", padding: "20px" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 12px", color: "#fff", fontSize: "1rem" }}>📱 Mã QR Nhận tiền</h3>
+            <img src={previewHandoverQr} alt="QR" style={{ width: "100%", borderRadius: 8, background: "#fff", padding: 6 }} />
+            <div style={{ marginTop: 12 }}>
+              <button type="button" className="button button-secondary" style={{ width: "100%" }} onClick={() => setPreviewHandoverQr(null)}>
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReturnModal && (
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "600px" }}>
@@ -582,9 +910,13 @@ export default function OwnerHandoverTab({
                   <input
                     className="input-field"
                     type="number"
+                    min={0}
                     step={50000}
                     value={damageCost}
-                    onChange={(e) => setDamageCost(Number(e.target.value))}
+                    onChange={(e) => setDamageCost(Math.max(0, Number(e.target.value)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "-" || e.key === "e") e.preventDefault();
+                    }}
                   />
                   <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
                     Khoản này sẽ tự động được cấn trừ vào tiền cọc hoàn trả của Renter theo quy định tại UC_O10.

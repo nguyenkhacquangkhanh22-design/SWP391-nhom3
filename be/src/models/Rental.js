@@ -118,6 +118,13 @@ const rentalSchema = new mongoose.Schema(
       renterSignature: { type: String, trim: true },
       digitalSignature: { type: String, trim: true },
       contractUrl: { type: String, trim: true },
+      moderatorApproved: { type: Boolean, default: false },
+      moderatorStatus: {
+        type: String,
+        enum: ["none", "draft", "pending_approval", "moderator_rejected", "moderator_approved", "signed"],
+        default: "none",
+      },
+      ownerSigned: { type: Boolean, default: false },
     },
     payment: {
       isPaid: { type: Boolean, default: false },

@@ -43,6 +43,11 @@ export default function OwnerDisputesTab({ contracts, token, onError, onSuccess 
       return;
     }
 
+    if (Number(claimedCompensation) < 0) {
+      onError("Số tiền yêu cầu bồi thường không được là số âm (phải ≥ 0).");
+      return;
+    }
+
     setIsSubmitting(true);
     onError("");
     onSuccess("");
@@ -246,9 +251,13 @@ export default function OwnerDisputesTab({ contracts, token, onError, onSuccess 
                   <input
                     className="input-field"
                     type="number"
+                    min={0}
                     step={100000}
                     value={claimedCompensation}
-                    onChange={(e) => setClaimedCompensation(Number(e.target.value))}
+                    onChange={(e) => setClaimedCompensation(Math.max(0, Number(e.target.value)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "-" || e.key === "e") e.preventDefault();
+                    }}
                   />
                 </div>
 

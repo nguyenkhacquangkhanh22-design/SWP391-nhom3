@@ -160,6 +160,15 @@ async function createEquipmentListing(req, res) {
     throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục và giá thuê ngày");
   }
 
+  if (
+    Number(pricing.price_per_day) < 0 ||
+    Number(pricing.price_per_hour || 0) < 0 ||
+    Number(pricing.deposit_amount || 0) < 0 ||
+    Number(pricing.weekend_rate || 0) < 0
+  ) {
+    throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+  }
+
   const equipment = await Equipment.create({
     owner_id: ownerId,
     owner: ownerId,
@@ -244,6 +253,14 @@ async function updateEquipment(req, res) {
   if (condition) equipment.condition = condition;
 
   if (pricing) {
+    if (
+      (pricing.price_per_day !== undefined && Number(pricing.price_per_day) < 0) ||
+      (pricing.price_per_hour !== undefined && Number(pricing.price_per_hour) < 0) ||
+      (pricing.deposit_amount !== undefined && Number(pricing.deposit_amount) < 0) ||
+      (pricing.weekend_rate !== undefined && Number(pricing.weekend_rate) < 0)
+    ) {
+      throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+    }
     if (pricing.price_per_day !== undefined) {
       equipment.pricing.price_per_day = Number(pricing.price_per_day);
       equipment.dailyRate = Number(pricing.price_per_day);
@@ -545,6 +562,10 @@ async function getContractDetail(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
+  if (estimated_damage_cost !== undefined && Number(estimated_damage_cost) < 0) {
+    throw new AppError(400, "Chi phí khấu trừ hư hại không được là số âm (phải ≥ 0)");
+  }
+
   res.json({ contract });
 }
 
@@ -558,6 +579,7 @@ async function createRentalContract(req, res) {
     template_id,
     template_values,
     submit_immediately,
+    digital_signature,
   } = req.body;
 
   if (!request_id) {
@@ -719,17 +741,54 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
         terms_content: standardTerms,
       },
     ],
-    owner_signature: {
-      signed: true,
-      signed_at: new Date(),
-      signature_data: `OWNER_SIG_${ownerId}_${Date.now()}`,
-      signer_name: req.user.name,
-    },
+    owner_signature: (() => {
+      const certCode = `CERT-OWNER-${ownerId.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+      const signerName = (digital_signature && digital_signature.signer_name && digital_signature.signer_name.trim()) || req.user.name;
+      const signatureType = (digital_signature && digital_signature.signature_type) || "typed";
+      const signatureImage = (digital_signature && digital_signature.signature_image) || "";
+      const signatureNote = (digital_signature && digital_signature.signature_note) || "";
+      return {
+        signed: true,
+        signed_at: new Date(),
+        signature_data: signatureNote
+          ? `${signatureNote} [${certCode}]`
+          : `E-SIGNED BY ${signerName} [${certCode}]`,
+        signer_name: signerName,
+        signature_image: signatureImage,
+        signature_type: signatureType,
+        certificate_code: certCode,
+      };
+    })(),
     status: initialStatus,
   });
 
   rentalReq.status = "contract_created";
   await rentalReq.save();
+
+  // Đồng bộ hợp đồng sang bảng Rental cho Người thuê theo dõi trạng thái kiểm duyệt của Moderator
+  try {
+    const Rental = require("../models/Rental");
+    await Rental.updateMany(
+      {
+        $or: [
+          { rentalCode: rentalReq.request_code },
+          { renter: rentalReq.renter_id, equipment: rentalReq.equipment_id, status: { $in: ["APPROVED", "approved", "PENDING", "CONTRACT_PENDING", "contract_pending"] } },
+        ],
+      },
+      {
+        $set: {
+          status: "CONTRACT_PENDING",
+          "contract.contractNumber": contract.contract_code,
+          "contract.contractTerms": contract.terms_content,
+          "contract.moderatorApproved": false,
+          "contract.moderatorStatus": submit_immediately ? "pending_approval" : "draft",
+          "contract.ownerSigned": true,
+        },
+      }
+    );
+  } catch (syncErr) {
+    console.error("Failed to sync created contract to Rental:", syncErr);
+  }
 
   if (submit_immediately) {
     await notifyManagers(
@@ -750,7 +809,7 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
 // UC_O13: Update Draft Rental Contract (version tracking preserved)
 async function updateDraftContract(req, res) {
   const { id } = req.params;
-  const { terms_content, special_conditions, changes_summary, submit_immediately } = req.body;
+  const { terms_content, special_conditions, changes_summary, submit_immediately, digital_signature } = req.body;
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -787,12 +846,30 @@ async function updateDraftContract(req, res) {
     terms_content: terms_content.trim(),
   });
 
-  if (!contract.owner_signature?.signed) {
+  if (digital_signature) {
+    const certCode = `CERT-OWNER-${req.user._id.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const signerName = (digital_signature.signer_name && digital_signature.signer_name.trim()) || req.user.name;
     contract.owner_signature = {
       signed: true,
       signed_at: new Date(),
-      signature_data: `OWNER_SIG_${req.user._id}_${Date.now()}`,
+      signature_data: digital_signature.signature_note
+        ? `${digital_signature.signature_note} [${certCode}]`
+        : `E-SIGNED BY ${signerName} [${certCode}]`,
+      signer_name: signerName,
+      signature_image: digital_signature.signature_image || "",
+      signature_type: digital_signature.signature_type || "typed",
+      certificate_code: certCode,
+    };
+  } else if (!contract.owner_signature?.signed) {
+    const certCode = `CERT-OWNER-${req.user._id.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    contract.owner_signature = {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: `E-SIGNED BY ${req.user.name} [${certCode}]`,
       signer_name: req.user.name,
+      signature_image: "",
+      signature_type: "typed",
+      certificate_code: certCode,
     };
   }
 
@@ -824,6 +901,7 @@ async function updateDraftContract(req, res) {
 // UC_O14: Submit Rental Contract for Approval to Web Manager (Rental Moderator)
 async function submitRentalContractForApproval(req, res) {
   const { id } = req.params;
+  const { digital_signature } = req.body;
   const contract = await RentalContract.findOne({
     _id: id,
     owner_id: req.user._id,
@@ -840,18 +918,65 @@ async function submitRentalContractForApproval(req, res) {
     );
   }
 
-  if (!contract.owner_signature?.signed) {
+  if (digital_signature) {
+    const certCode = `CERT-OWNER-${req.user._id.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const signerName = (digital_signature.signer_name && digital_signature.signer_name.trim()) || req.user.name;
     contract.owner_signature = {
       signed: true,
       signed_at: new Date(),
-      signature_data: `OWNER_SIG_${req.user._id}_${Date.now()}`,
+      signature_data: digital_signature.signature_note
+        ? `${digital_signature.signature_note} [${certCode}]`
+        : `E-SIGNED BY ${signerName} [${certCode}]`,
+      signer_name: signerName,
+      signature_image: digital_signature.signature_image || "",
+      signature_type: digital_signature.signature_type || "typed",
+      certificate_code: certCode,
+    };
+  } else if (!contract.owner_signature?.signed) {
+    const certCode = `CERT-OWNER-${req.user._id.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    contract.owner_signature = {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: `E-SIGNED BY ${req.user.name} [${certCode}]`,
       signer_name: req.user.name,
+      signature_image: "",
+      signature_type: "typed",
+      certificate_code: certCode,
     };
   }
 
   contract.status = "pending_approval";
   contract.moderator_feedback = "";
   await contract.save();
+
+  // Đồng bộ chuyển trạng thái Rental sang chờ Quản lý web duyệt hợp đồng
+  try {
+    const Rental = require("../models/Rental");
+    const RentalRequest = require("../models/RentalRequest");
+    const rReq = await RentalRequest.findById(contract.request_id);
+    if (rReq) {
+      await Rental.updateMany(
+        {
+          $or: [
+            { rentalCode: rReq.request_code },
+            { renter: rReq.renter_id, equipment: rReq.equipment_id, status: { $in: ["APPROVED", "approved", "PENDING", "CONTRACT_PENDING", "contract_pending"] } },
+          ],
+        },
+        {
+          $set: {
+            status: "CONTRACT_PENDING",
+            "contract.contractNumber": contract.contract_code,
+            "contract.contractTerms": contract.terms_content,
+            "contract.moderatorApproved": false,
+            "contract.moderatorStatus": "pending_approval",
+            "contract.ownerSigned": true,
+          },
+        }
+      );
+    }
+  } catch (syncErr) {
+    console.error("Failed to sync submitted contract to Rental:", syncErr);
+  }
 
   await notifyManagers(
     `📜 Hợp đồng #${contract.contract_code} chờ Quản lý web duyệt`,
@@ -868,7 +993,7 @@ async function submitRentalContractForApproval(req, res) {
 // UC_O15: Confirm E-Contract (Owner confirms/signs if not yet signed)
 async function confirmEContract(req, res) {
   const { id } = req.params;
-  const { signature_note } = req.body;
+  const { signature_note, signer_name, signature_image, signature_type, digital_signature } = req.body;
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -879,13 +1004,25 @@ async function confirmEContract(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
+  const certCode = `CERT-OWNER-${req.user._id.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+  const finalSigner =
+    (digital_signature && digital_signature.signer_name && digital_signature.signer_name.trim()) ||
+    (signer_name && signer_name.trim()) ||
+    req.user.name;
+  const finalImage = (digital_signature && digital_signature.signature_image) || signature_image || "";
+  const finalType = (digital_signature && digital_signature.signature_type) || signature_type || "typed";
+  const finalNote = (digital_signature && digital_signature.signature_note) || signature_note || "";
+
   contract.owner_signature = {
     signed: true,
     signed_at: new Date(),
-    signature_data: signature_note
-      ? `${signature_note} (DIGITAL_SIG_${req.user._id}_${Date.now()})`
-      : `DIGITAL_SIG_${req.user._id}_${Date.now()}`,
-    signer_name: req.user.name,
+    signature_data: finalNote
+      ? `${finalNote} [${certCode}]`
+      : `E-SIGNED BY ${finalSigner} [${certCode}]`,
+    signer_name: finalSigner,
+    signature_image: finalImage,
+    signature_type: finalType,
+    certificate_code: certCode,
   };
   await contract.save();
 
@@ -913,6 +1050,9 @@ async function updateHandoverRecordAfterReview(req, res) {
   const { physical_condition, working_status, accessories_checklist, evidence_photos, notes } = req.body;
   if (typeof physical_condition !== "string" || !physical_condition.trim()) {
     throw new AppError(400, "Vui lòng nhập tình trạng thiết bị đã cập nhật.");
+  }
+  if (req.body.estimated_damage_cost !== undefined && Number(req.body.estimated_damage_cost) < 0) {
+    throw new AppError(400, "Chi phí khấu trừ hư hại không được là số âm (phải ≥ 0)");
   }
   const record = await HandoverRecord.findOneAndUpdate(
     {
@@ -998,6 +1138,24 @@ async function createHandoverRecord(req, res) {
 
   // Update equipment status to rented
   await Equipment.findByIdAndUpdate(contract.equipment_id, { status: "rented" });
+
+  // Ensure initial Settlement exists so Owner can immediately request payout upon customer receipt
+  const existingSettlement = await Settlement.findOne({ contract_id: contract._id });
+  if (!existingSettlement) {
+    const platformFee = Math.round((contract.rental_price || 0) * 0.05);
+    await Settlement.create({
+      settlement_code: generateCode("QT"),
+      contract_id: contract._id,
+      owner_id: contract.owner_id,
+      renter_id: contract.renter_id,
+      total_rental_fee: contract.rental_price || 0,
+      deposit_paid: contract.deposit_amount || 0,
+      deposit_refund_to_renter: contract.deposit_amount || 0,
+      platform_fee: platformFee,
+      owner_payout_amount: Math.max(0, (contract.rental_price || 0) - platformFee),
+      payout_status: "pending_owner_confirmation",
+    });
+  }
 
   res.status(201).json({
     message: "Lập biên bản bàn giao thiết bị thành công",
@@ -1102,30 +1260,87 @@ async function getSettlementByContract(req, res) {
   res.json({ settlement });
 }
 
-// UC_O10: Confirm Settlement & Payout
+// UC_O10: Confirm Settlement & Request Payout to Moderator
 async function confirmSettlementPayout(req, res) {
   const { contractId } = req.params;
-  const { bank_info } = req.body;
+  const { bank_info, qr_code_url, request_note } = req.body;
 
-  const settlement = await Settlement.findOne({
+  let settlement = await Settlement.findOne({
     contract_id: contractId,
     owner_id: req.user._id,
   });
 
   if (!settlement) {
-    throw new AppError(404, "Không tìm thấy dữ liệu quyết toán");
+    settlement = await Settlement.findOne({
+      _id: contractId,
+      owner_id: req.user._id,
+    });
+  }
+
+  if (!settlement) {
+    const contract = await RentalContract.findOne({
+      _id: contractId,
+      owner_id: req.user._id,
+    });
+    if (!contract) {
+      throw new AppError(404, "Không tìm thấy dữ liệu hợp đồng hoặc quyết toán");
+    }
+    const platformFee = Math.round((contract.rental_price || 0) * 0.05);
+    settlement = await Settlement.create({
+      settlement_code: generateCode("QT"),
+      contract_id: contract._id,
+      owner_id: contract.owner_id,
+      renter_id: contract.renter_id,
+      total_rental_fee: contract.rental_price || 0,
+      deposit_paid: contract.deposit_amount || 0,
+      deposit_refund_to_renter: contract.deposit_amount || 0,
+      platform_fee: platformFee,
+      owner_payout_amount: Math.max(0, (contract.rental_price || 0) - platformFee),
+      payout_status: "pending_owner_confirmation",
+    });
+  }
+
+  if (!bank_info || !bank_info.bank_name || !bank_info.account_number || !bank_info.account_holder) {
+    throw new AppError(400, "Vui lòng cung cấp đầy đủ tên ngân hàng, số tài khoản và tên chủ tài khoản");
   }
 
   settlement.owner_confirmed = true;
   settlement.owner_confirmed_at = new Date();
-  settlement.payout_status = "confirmed";
-  if (bank_info) {
-    settlement.bank_info = bank_info;
+  settlement.requested_at = new Date();
+  settlement.payout_status = "pending_moderator_approval";
+  settlement.bank_info = {
+    bank_name: bank_info.bank_name.trim(),
+    bank_code: (bank_info.bank_code || "").trim(),
+    account_number: bank_info.account_number.trim(),
+    account_holder: bank_info.account_holder.trim().toUpperCase(),
+  };
+  if (qr_code_url !== undefined) {
+    settlement.qr_code_url = qr_code_url.trim();
   }
+  if (request_note !== undefined) {
+    settlement.request_note = request_note.trim();
+  }
+
   await settlement.save();
 
+  const contract = await RentalContract.findById(settlement.contract_id);
+  await notifyManagers(
+    `💸 Yêu cầu thanh toán tiền thuê từ Owner ${req.user.name}`,
+    `Owner ${req.user.name} đã gửi yêu cầu thanh toán giải ngân số tiền ${settlement.owner_payout_amount.toLocaleString("vi-VN")} đ cho Hợp đồng #${contract?.contract_code || ""}. Vui lòng kiểm tra thông tin ngân hàng, mã QR và xác nhận giải ngân.`,
+    settlement._id
+  );
+
+  try {
+    getIO().emit("payout:requested", {
+      settlementId: settlement._id.toString(),
+      settlementCode: settlement.settlement_code,
+      ownerName: req.user.name,
+      amount: settlement.owner_payout_amount,
+    });
+  } catch (err) {}
+
   res.json({
-    message: "Xác nhận dữ liệu quyết toán & yêu cầu giải ngân thành công",
+    message: "Đã gửi yêu cầu thanh toán tiền lên Quản lý web (Moderator) thành công!",
     settlement,
   });
 }
@@ -1185,6 +1400,10 @@ async function submitRentalDispute(req, res) {
 
   if (!contract_id || !title || !reason || !description) {
     throw new AppError(400, "Vui lòng nhập đầy đủ hợp đồng, tiêu đề, lý do và mô tả khiếu nại");
+  }
+
+  if (claimed_compensation !== undefined && Number(claimed_compensation) < 0) {
+    throw new AppError(400, "Số tiền yêu cầu bồi thường không được là số âm (phải ≥ 0)");
   }
 
   const contract = await RentalContract.findOne({

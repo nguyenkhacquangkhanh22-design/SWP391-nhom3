@@ -227,6 +227,47 @@ class RentalService {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
+    // Bắt buộc hợp đồng phải được Quản lý web (Moderator) kiểm tra và phê duyệt trước khi gửi về cho Người thuê ký!
+    const RentalContract = require("../models/RentalContract");
+    const RentalRequest = require("../models/RentalRequest");
+    const matchingReq = await RentalRequest.findOne({
+      $or: [
+        { request_code: rental.rentalCode },
+        { renter_id: rental.renter, equipment_id: rental.equipment },
+      ],
+    }).sort({ createdAt: -1 });
+
+    const contractQuery = matchingReq
+      ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
+      : { contract_code: rental.contract?.contractNumber };
+
+    const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
+    if (matchingContract) {
+      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
+        throw new AppError(
+          400,
+          "Hợp đồng thuê đang được Quản lý web (Moderator) kiểm tra. Vui lòng chờ Quản lý web phê duyệt hợp đồng trước khi ký tên."
+        );
+      }
+      if (matchingContract.status === "moderator_rejected") {
+        throw new AppError(
+          400,
+          "Hợp đồng đang được Chủ máy (Owner) điều chỉnh theo yêu cầu của Quản lý web. Vui lòng chờ cập nhật trước khi ký tên."
+        );
+      }
+      if (matchingContract.status !== "moderator_approved" && matchingContract.status !== "signed") {
+        throw new AppError(
+          400,
+          "Hợp đồng này chưa được Quản lý web (Moderator) phê duyệt để chuyển cho bạn ký tên."
+        );
+      }
+    } else if (!rental.contract?.moderatorApproved) {
+      throw new AppError(
+        400,
+        "Hợp đồng thuê cần được Chủ thiết bị lập và Quản lý web (Moderator) kiểm tra phê duyệt trước khi bạn có thể ký tên."
+      );
+    }
+
     if (!rental.contract) {
       rental.contract = {};
     }
@@ -557,6 +598,38 @@ class RentalService {
         .lean(),
       Rental.countDocuments(filter),
     ]);
+
+    // Đồng bộ trạng thái kiểm duyệt của Moderator từ RentalContract vào từng Rental
+    try {
+      const RentalContract = require("../models/RentalContract");
+      const RentalRequest = require("../models/RentalRequest");
+      const codes = rentals.map((r) => r.rentalCode).filter(Boolean);
+      const reqs = await RentalRequest.find({ request_code: { $in: codes } }).select("_id request_code").lean();
+      const reqMap = new Map(reqs.map((rq) => [rq.request_code, rq._id]));
+      const reqIds = reqs.map((rq) => rq._id);
+      const contracts = await RentalContract.find({ request_id: { $in: reqIds } }).sort({ version: -1, createdAt: -1 }).lean();
+      const contractMap = new Map();
+      for (const c of contracts) {
+        if (!contractMap.has(c.request_id.toString())) {
+          contractMap.set(c.request_id.toString(), c);
+        }
+      }
+
+      for (const r of rentals) {
+        const rqId = reqMap.get(r.rentalCode);
+        const contract = rqId ? contractMap.get(rqId.toString()) : null;
+        if (contract) {
+          if (!r.contract) r.contract = {};
+          r.contract.contractNumber = contract.contract_code;
+          r.contract.contractTerms = contract.terms_content;
+          r.contract.moderatorStatus = contract.status;
+          r.contract.moderatorApproved = contract.status === "moderator_approved" || contract.status === "signed";
+          r.contract.ownerSigned = Boolean(contract.owner_signature?.signed);
+        }
+      }
+    } catch (enrichErr) {
+      console.error("Failed to enrich contracts in getRentalHistory:", enrichErr);
+    }
 
     return {
       rentals,

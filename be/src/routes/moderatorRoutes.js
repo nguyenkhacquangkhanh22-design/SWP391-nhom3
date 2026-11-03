@@ -36,4 +36,12 @@ router.patch("/contract-templates/:id/publish", asyncHandler(moderatorController
 router.patch("/contract-templates/:id/retire", asyncHandler(moderatorController.retireTemplate));
 router.post("/support-tickets", asyncHandler(moderatorController.submitSupportTicket));
 
+// Quản lý web (Moderator) xác nhận danh tính (KYC) của Owner & Renter
+// Yêu cầu giải ngân / thanh toán tiền cho Owner khi khách nhận hàng
+router.get("/payouts", asyncHandler(moderatorController.listPayoutRequests));
+router.patch("/payouts/:id/review", asyncHandler(moderatorController.reviewPayoutRequest));
+
+router.get("/kyc-submissions", asyncHandler(moderatorController.listKycSubmissions));
+router.patch("/kyc-submissions/:userId/review", asyncHandler(moderatorController.reviewKycSubmission));
+
 module.exports = router;

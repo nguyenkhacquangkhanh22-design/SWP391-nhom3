@@ -210,8 +210,8 @@ export default function RentalHistoryPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const s = status.toUpperCase();
+  const getStatusBadge = (rental: Rental) => {
+    const s = rental.status.toUpperCase();
     switch (s) {
       case "PENDING":
         return {
@@ -219,11 +219,31 @@ export default function RentalHistoryPage() {
           className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
         };
       case "APPROVED":
-      case "CONTRACT_PENDING":
+      case "CONTRACT_PENDING": {
+        const modStatus = rental.contract?.moderatorStatus;
+        if (modStatus === "pending_approval") {
+          return {
+            label: "🔍 HĐ đang gửi Quản lý web kiểm tra",
+            className: "bg-sky-500/10 text-sky-400 border-sky-500/30",
+          };
+        }
+        if (modStatus === "moderator_rejected") {
+          return {
+            label: "⚠️ Quản lý web yêu cầu sửa HĐ",
+            className: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+          };
+        }
+        if (rental.contract?.moderatorApproved || modStatus === "moderator_approved") {
+          return {
+            label: "📨 Quản lý web đã duyệt HĐ — Chờ bạn ký",
+            className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+          };
+        }
         return {
-          label: "✍️ Owner đã duyệt — Chờ ký hợp đồng",
-          className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+          label: "📝 Đã duyệt đơn — Chờ Owner lập HĐ",
+          className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
         };
+      }
       case "CONTRACT_SIGNED":
       case "PAYMENT_PENDING":
         return {
@@ -368,10 +388,15 @@ export default function RentalHistoryPage() {
         ) : (
           <div className="space-y-4">
             {filteredRentals.map((r) => {
-              const statusBadge = getStatusBadge(r.status);
+              const statusBadge = getStatusBadge(r);
               const upperStatus = r.status.toUpperCase();
 
-              const canSign = upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING";
+              const isModeratorApproved = Boolean(
+                r.contract?.moderatorApproved || r.contract?.moderatorStatus === "moderator_approved"
+              );
+              const isContractPendingReview = r.contract?.moderatorStatus === "pending_approval";
+              const isContractRejected = r.contract?.moderatorStatus === "moderator_rejected";
+              const canSign = (upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING") && isModeratorApproved;
               const canPay =
                 upperStatus === "CONTRACT_SIGNED" ||
                 upperStatus === "PAYMENT_PENDING" ||
@@ -509,8 +534,8 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng (UC_R08) */}
-                    {canSign && (
+                    {/* Nút ký hợp đồng (UC_R08) - Phải qua Moderator kiểm tra duyệt trước */}
+                    {canSign ? (
                       <button
                         onClick={() => setSigningRental(r)}
                         className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-all shadow-md text-center flex items-center justify-center gap-1.5"
@@ -518,7 +543,18 @@ export default function RentalHistoryPage() {
                         <span>✍️</span>
                         <span>Ký hợp đồng</span>
                       </button>
-                    )}
+                    ) : (upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING") ? (
+                      <div className="px-3.5 py-2 bg-slate-800/90 border border-slate-700/60 rounded-xl text-center">
+                        <span className="text-[11px] text-slate-300 flex items-center justify-center gap-1.5 font-medium">
+                          <span>🔒</span>
+                          {isContractPendingReview
+                            ? "Quản lý web đang kiểm tra HĐ"
+                            : isContractRejected
+                            ? "HĐ đang được sửa lại"
+                            : "Chờ Owner lập HĐ"}
+                        </span>
+                      </div>
+                    ) : null}
 
                     {/* Nút thanh toán QR (UC_R09) */}
                     {canPay && (

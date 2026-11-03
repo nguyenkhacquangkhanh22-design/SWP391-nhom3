@@ -60,6 +60,9 @@ export interface RentalContract {
   renterSignature?: string;
   digitalSignature?: string;
   contractUrl?: string;
+  moderatorApproved?: boolean;
+  moderatorStatus?: "none" | "draft" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
+  ownerSigned?: boolean;
 }
 
 export interface RentalPayment {

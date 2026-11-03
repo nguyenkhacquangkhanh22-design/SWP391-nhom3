@@ -1,4 +1,5 @@
 import { ApiError } from "./authApi";
+import type { Settlement } from "../types/owner";
 
 async function request<T>(
   path: string,
@@ -121,11 +122,19 @@ export interface ModeratorContract {
     signed: boolean;
     signed_at?: string;
     signer_name?: string;
+    signature_image?: string;
+    signature_type?: string;
+    certificate_code?: string;
+    signature_data?: string;
   };
   renter_signature?: {
     signed: boolean;
     signed_at?: string;
     signer_name?: string;
+    signature_image?: string;
+    signature_type?: string;
+    certificate_code?: string;
+    signature_data?: string;
   };
   moderation_history?: {
     action: string;
@@ -302,5 +311,44 @@ export const moderatorApi = {
     request<{ message: string; ticket: ModeratorTicket }>("/support-tickets", token, {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  getKycSubmissions: (
+    token: string,
+    params?: { status?: string; search?: string; page?: number; limit?: number }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.search) qs.set("search", params.search);
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return request<{
+      submissions: import("../types/admin").AdminKycSubmission[];
+      pagination: { currentPage: number; totalPages: number; totalCount: number; limit: number };
+      stats: { pending: number; verified: number; rejected: number; unverified: number; total_active: number };
+    }>(`/kyc-submissions${query}`, token);
+  },
+  reviewKycSubmission: (
+    token: string,
+    userId: string,
+    body: { status: "verified" | "rejected"; rejectionReason?: string; trustScoreBonus?: number }
+  ) =>
+    request<{
+      message: string;
+      user: import("../types/admin").AdminKycSubmission;
+    }>(`/kyc-submissions/${userId}/review`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getPayoutRequests: (token: string) =>
+    request<{ payouts: Settlement[] }>("/payouts", token),
+  reviewPayoutRequest: (
+    token: string,
+    id: string,
+    body: { action: "approve" | "reject"; note?: string; transaction_code?: string; receipt_image?: string }
+  ) =>
+    request<{ message: string; settlement: Settlement }>(`/payouts/${id}/review`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 };
