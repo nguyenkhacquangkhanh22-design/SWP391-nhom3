@@ -125,7 +125,7 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
             {(analytics?.pendingPayout || 0).toLocaleString("vi-VN")} đ
           </div>
           <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>
-            Cần Owner xác nhận quyết toán
+            Chờ khách xác nhận đã nhận thiết bị hoặc đối soát
           </div>
         </div>
 
@@ -213,6 +213,8 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
                           ? "⏳ Chờ xác nhận"
                           : st.payout_status === "confirmed"
                           ? "✅ Đã xác nhận"
+                          : st.payout_status === "processing"
+                          ? "⏳ Chờ khách xác nhận nhận hàng"
                           : st.payout_status === "paid"
                           ? "💵 Đã giải ngân"
                           : st.payout_status}
@@ -232,6 +234,10 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
                         >
                           Xác nhận (UC_O10)
                         </button>
+                      ) : st.payout_status === "processing" ? (
+                        <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                          Chờ khách xác nhận nhận hàng
+                        </span>
                       ) : (
                         <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
                           Đã chốt số liệu

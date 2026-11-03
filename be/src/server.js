@@ -6,6 +6,7 @@ const dns = require("node:dns");
 const app = require("./app");
 const connectDB = require("./config/db");
 const { initSocket } = require("./config/socket");
+const { startRentalReminderService } = require("./services/rentalReminderService");
 
 const port = process.env.PORT || 3000;
 
@@ -62,6 +63,7 @@ async function startServer() {
   if (typeof app.setServerReady === "function") {
     app.setServerReady(true);
   }
+  startRentalReminderService();
   console.log(`✓ Database & Seed Data ready! Server is fully operational on port ${port}`);
 }
 

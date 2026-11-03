@@ -133,6 +133,7 @@ export interface RentalContract {
     signature_data?: string;
     signer_name?: string;
   };
+  handover_records?: HandoverRecord[];
   createdAt: string;
 }
 

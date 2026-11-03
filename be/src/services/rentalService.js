@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const Rental = require("../models/Rental");
 const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
+const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
 class RentalService {
@@ -148,6 +149,25 @@ class RentalService {
     });
 
     await rental.save();
+
+    try {
+      await UserNotification.insertMany([
+        {
+          user_id: renterUser._id,
+          title: `✅ Đã tiếp nhận yêu cầu thuê #${rental.rentalCode}`,
+          message: `Yêu cầu thuê thiết bị đã được ghi nhận. Hãy theo dõi trạng thái đơn trong lịch sử thuê.`,
+          related_record_id: rental._id,
+        },
+        {
+          user_id: rental.owner,
+          title: `📬 Có yêu cầu thuê mới #${rental.rentalCode}`,
+          message: `Khách ${renterUser.name} vừa gửi yêu cầu thuê thiết bị của bạn.`,
+          related_record_id: rental._id,
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to notify users about new rental:", err);
+    }
 
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category brand modelNumber")
