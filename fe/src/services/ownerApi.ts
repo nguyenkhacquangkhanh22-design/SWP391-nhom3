@@ -38,6 +38,12 @@ async function request<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new ApiError(
+        "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+        401
+      );
+    }
     throw new ApiError(data.message || "Yêu cầu thất bại.", response.status);
   }
 
@@ -76,6 +82,12 @@ export const ownerApi = {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiError(
+          "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+          401
+        );
+      }
       throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
     }
 
@@ -104,6 +116,12 @@ export const ownerApi = {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiError(
+          "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+          401
+        );
+      }
       throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
     }
 
