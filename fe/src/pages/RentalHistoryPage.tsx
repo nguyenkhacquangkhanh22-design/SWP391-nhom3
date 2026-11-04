@@ -6,6 +6,8 @@ import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import PaymentQRModal from "../components/PaymentQRModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
+import { ownerApi } from "../services/ownerApi";
+import type { RentalContract } from "../types/owner";
 
 type TabKey = "ALL" | "PENDING" | "CONTRACT_SIGNED" | "ACTIVE" | "RETURNED";
 
@@ -26,6 +28,8 @@ const TABS: TabItem[] = [
 export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
   const [rentals, setRentals] = useState<Rental[]>([]);
+  const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
+  const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -66,9 +70,11 @@ export default function RentalHistoryPage() {
   const fetchHistory = () => {
     if (!token) return;
     setLoading(true);
-    smartEquipApi
-      .getRentalHistory(token)
-      .then((res) => setRentals(res.data))
+    Promise.all([smartEquipApi.getRentalHistory(token), ownerApi.getMyRentals(token)])
+      .then(([history, marketplace]) => {
+        setRentals(history.data);
+        setMarketplaceContracts(marketplace.contracts);
+      })
       .catch((err) => setError(err.message || "Không thể tải lịch sử đơn thuê"))
       .finally(() => setLoading(false));
   };
@@ -113,6 +119,25 @@ export default function RentalHistoryPage() {
     return true;
   });
 
+  // Confirm receipt before the owner can request the moderator to release payment.
+  const handleConfirmReceipt = async (contract: RentalContract) => {
+    if (!window.confirm("Xác nhận bạn đã nhận đúng thiết bị? Owner sẽ có thể gửi yêu cầu giải ngân lên Quản lý web.")) {
+      return;
+    }
+
+    setConfirmingReceiptId(contract._id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await ownerApi.confirmMyReceipt(token, contract._id);
+      setNotice(result.message);
+      fetchHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể xác nhận đã nhận thiết bị");
+    } finally {
+      setConfirmingReceiptId(null);
+    }
+  };
   // Mở modal báo trả máy
   const openReturnModal = (r: Rental) => {
     setReturningRentalId(r._id);
@@ -343,6 +368,42 @@ export default function RentalHistoryPage() {
               ✕
             </button>
           </div>
+        )}
+
+        {marketplaceContracts.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
+            <h2 className="mb-4 text-lg font-bold text-white">Đơn thuê marketplace & xác nhận nhận hàng</h2>
+            <div className="space-y-3">
+              {marketplaceContracts.map((contract) => {
+                const handover = contract.handover_records?.find((record) => record.record_type === "handover");
+                const isReceived = Boolean(handover?.renter_confirmed);
+                return (
+                  <div key={contract._id} className="flex flex-col gap-3 rounded-xl border border-[#273650] bg-[#0f1624] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-white">{contract.equipment_id?.title || contract.title}</p>
+                      <p className="text-xs text-slate-400">
+                        Hợp đồng {contract.contract_code} · Owner {typeof contract.owner_id === "object" ? contract.owner_id?.name : "—"} · {contract.status}
+                      </p>
+                    </div>
+                    {isReceived ? (
+                      <span className="text-sm font-semibold text-emerald-400">✓ Đã xác nhận nhận hàng</span>
+                    ) : contract.status === "active" && handover ? (
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmReceipt(contract)}
+                        disabled={confirmingReceiptId === contract._id}
+                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-60"
+                      >
+                        {confirmingReceiptId === contract._id ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-500">Chờ Owner bàn giao thiết bị</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* Filter Tabs */}

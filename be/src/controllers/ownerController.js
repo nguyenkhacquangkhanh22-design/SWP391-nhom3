@@ -1117,6 +1117,14 @@ async function createHandoverRecord(req, res) {
     throw new AppError(400, "Vui lòng ghi nhận tình trạng vật lý thiết bị khi bàn giao");
   }
 
+  const existingHandover = await HandoverRecord.findOne({
+    contract_id: contract._id,
+    record_type: "handover",
+  });
+  if (existingHandover) {
+    throw new AppError(409, "Biên bản bàn giao đã được lập cho hợp đồng này.");
+  }
+
   const record = await HandoverRecord.create({
     contract_id: contract._id,
     equipment_id: contract.equipment_id,
@@ -1130,7 +1138,7 @@ async function createHandoverRecord(req, res) {
     evidence_photos: Array.isArray(evidence_photos) ? evidence_photos : [],
     notes: notes || "",
     owner_confirmed: true,
-    renter_confirmed: true,
+    renter_confirmed: false,
   });
 
   contract.status = "active";
@@ -1139,7 +1147,7 @@ async function createHandoverRecord(req, res) {
   // Update equipment status to rented
   await Equipment.findByIdAndUpdate(contract.equipment_id, { status: "rented" });
 
-  // Ensure initial Settlement exists so Owner can immediately request payout upon customer receipt
+  // Ensure a settlement exists before the renter confirms receipt.
   const existingSettlement = await Settlement.findOne({ contract_id: contract._id });
   if (!existingSettlement) {
     const platformFee = Math.round((contract.rental_price || 0) * 0.05);
@@ -1155,6 +1163,17 @@ async function createHandoverRecord(req, res) {
       owner_payout_amount: Math.max(0, (contract.rental_price || 0) - platformFee),
       payout_status: "pending_owner_confirmation",
     });
+  }
+
+  try {
+    await UserNotification.create({
+      user_id: contract.renter_id,
+      title: `📦 Owner đã bàn giao thiết bị #${contract.contract_code}`,
+      message: `Owner đã lập biên bản bàn giao. Vui lòng kiểm tra thiết bị và xác nhận đã nhận hàng trong mục Lịch sử thuê để hoàn tất giải ngân.`,
+      related_record_id: record._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify renter about equipment handover:", err);
   }
 
   res.status(201).json({
@@ -1186,6 +1205,28 @@ async function createReturnInspectionRecord(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
+  const [handoverRecord, existingReturnRecord] = await Promise.all([
+    HandoverRecord.findOne({
+      contract_id: contract._id,
+      record_type: "handover",
+    }),
+    HandoverRecord.findOne({
+      contract_id: contract._id,
+      record_type: "return",
+    }),
+  ]);
+  if (!handoverRecord) {
+    throw new AppError(400, "Cần có biên bản bàn giao trước khi nghiệm thu thiết bị hoàn trả.");
+  }
+  if (existingReturnRecord) {
+    throw new AppError(409, "Thiết bị đã được nghiệm thu hoàn trả cho hợp đồng này.");
+  }
+
+  const damageCost = estimated_damage_cost === undefined ? 0 : Number(estimated_damage_cost);
+  if (!Number.isFinite(damageCost) || damageCost < 0 || damageCost > contract.deposit_amount) {
+    throw new AppError(400, "Chi phí hư hại phải nằm trong khoảng từ 0 đến tiền đặt cọc.");
+  }
+
   const record = await HandoverRecord.create({
     contract_id: contract._id,
     equipment_id: contract.equipment_id,
@@ -1198,7 +1239,7 @@ async function createReturnInspectionRecord(req, res) {
     working_status: working_status || "Hoạt động ổn định",
     missing_items: Array.isArray(missing_items) ? missing_items : [],
     damage_detected: damage_detected || "",
-    estimated_damage_cost: Number(estimated_damage_cost) || 0,
+    estimated_damage_cost: damageCost,
     evidence_photos: Array.isArray(evidence_photos) ? evidence_photos : [],
     notes: notes || "",
     owner_confirmed: true,
@@ -1212,14 +1253,36 @@ async function createReturnInspectionRecord(req, res) {
   await Equipment.findByIdAndUpdate(contract.equipment_id, { status: "available" });
 
   // Update settlement if damage deductions apply
-  const damageCost = Number(estimated_damage_cost) || 0;
   let settlement = await Settlement.findOne({ contract_id: contract._id });
   if (settlement) {
     settlement.damage_deduction = damageCost;
     settlement.deduction_reason = damage_detected || "";
     settlement.deposit_refund_to_renter = Math.max(0, settlement.deposit_paid - damageCost);
-    settlement.owner_payout_amount = settlement.total_rental_fee + damageCost - settlement.platform_fee;
+    if (settlement.payout_status !== "paid") {
+      settlement.owner_payout_amount = settlement.total_rental_fee + damageCost - settlement.platform_fee;
+    }
     await settlement.save();
+  }
+
+  try {
+    const hasDamage = damageCost > 0 || Boolean(damage_detected) ||
+      (Array.isArray(missing_items) && missing_items.length > 0);
+    const damageSummary = [
+      damage_detected,
+      ...(Array.isArray(missing_items) ? missing_items.map((item) => `Thiếu: ${item}`) : []),
+    ].filter(Boolean).join("; ");
+    await UserNotification.create({
+      user_id: contract.renter_id,
+      title: hasDamage
+        ? `⚠️ Đã nghiệm thu trả thiết bị #${contract.contract_code}: có ghi nhận hư hại`
+        : `✅ Đã xác nhận nhận thiết bị hoàn trả #${contract.contract_code}`,
+      message: hasDamage
+        ? `Owner đã nhận và kiểm tra thiết bị hoàn trả. Ghi nhận: ${damageSummary || "Có hư hại/mất phụ kiện"}. Khoản khấu trừ đề xuất: ${damageCost.toLocaleString("vi-VN")} đ.`
+        : "Owner đã xác nhận nhận lại thiết bị. Không ghi nhận hư hại hoặc phụ kiện thiếu; tiền cọc được hoàn theo quyết toán.",
+      related_record_id: record._id,
+    });
+  } catch (err) {
+    console.error("Failed to notify renter about return inspection:", err);
   }
 
   res.status(201).json({
@@ -1302,6 +1365,19 @@ async function confirmSettlementPayout(req, res) {
 
   if (!bank_info || !bank_info.bank_name || !bank_info.account_number || !bank_info.account_holder) {
     throw new AppError(400, "Vui lòng cung cấp đầy đủ tên ngân hàng, số tài khoản và tên chủ tài khoản");
+  }
+
+  if (settlement.payout_status === "paid") {
+    throw new AppError(409, "Khoản thanh toán cho hợp đồng này đã được giải ngân.");
+  }
+
+  const confirmedHandover = await HandoverRecord.findOne({
+    contract_id: settlement.contract_id,
+    record_type: "handover",
+    renter_confirmed: true,
+  });
+  if (!confirmedHandover) {
+    throw new AppError(409, "Chỉ có thể giải ngân sau khi người thuê xác nhận đã nhận thiết bị.");
   }
 
   settlement.owner_confirmed = true;

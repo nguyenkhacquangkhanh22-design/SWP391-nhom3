@@ -397,6 +397,13 @@ export const ownerApi = {
       token
     ),
 
+  confirmMyReceipt: (token: string, contractId: string) =>
+    request<{ message: string; contract: RentalContract }>(
+      `/api/equipments/my/contracts/${contractId}/confirm-receipt`,
+      { method: "POST", body: JSON.stringify({}) },
+      token
+    ),
+
   // 9. Owner Registration (UC_O02)
   submitOwnerRegistration: (token: string, data: Partial<OwnerApplication>) =>
     request<{ message: string; application: OwnerApplication }>(

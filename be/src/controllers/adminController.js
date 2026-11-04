@@ -717,11 +717,13 @@ async function resolveDispute(req, res) {
         0,
         settlement.deposit_paid - (settlement.overtime_fee || 0) - approvedAmount
       );
-      settlement.owner_payout_amount =
-        settlement.total_rental_fee -
-        settlement.platform_fee +
-        (settlement.overtime_fee || 0) +
-        approvedAmount;
+      if (settlement.payout_status !== "paid") {
+        settlement.owner_payout_amount =
+          settlement.total_rental_fee -
+          settlement.platform_fee +
+          (settlement.overtime_fee || 0) +
+          approvedAmount;
+      }
       await settlement.save();
     } else if (contract) {
       const depositPaid = Number(contract.deposit_amount) || 0;
@@ -1063,4 +1065,3 @@ module.exports = {
   reviewKycSubmission,
   listAuditLogs,
 };
-

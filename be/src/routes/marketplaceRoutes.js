@@ -10,6 +10,7 @@ router.get("/my/rentals", authenticate, asyncHandler(marketplaceController.getMy
 
 // Renter: Sign contract sent by Moderator
 router.post("/my/contracts/:id/sign", authenticate, asyncHandler(marketplaceController.signMyContract));
+router.post("/my/contracts/:id/confirm-receipt", authenticate, asyncHandler(marketplaceController.confirmReceipt));
 
 // UC_O19: Browse & Search Equipment (Public)
 router.get("/", asyncHandler(marketplaceController.browseEquipments));
