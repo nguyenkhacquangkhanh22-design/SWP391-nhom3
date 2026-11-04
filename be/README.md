@@ -61,6 +61,11 @@ Protected with role `owner` or `systemadmin`:
 | POST | `/support-tickets` | UC_O18 | Gửi yêu cầu hỗ trợ |
 | GET | `/support-tickets` | UC_O18 | Theo dõi tiến độ xử lý ticket hỗ trợ |
 
+Người thuê xác nhận đã nhận thiết bị tại `POST /api/equipments/my/contracts/:id/confirm-receipt`.
+Sau xác nhận, settlement được ghi nhận giải ngân; Owner nhận thông báo khi có biên bản
+bàn giao hoặc nghiệm thu trả. Hệ thống gửi thông báo nhắc trả trước một ngày cho các
+hợp đồng đang hoạt động và các đơn thuê ở luồng tương thích cũ.
+
 ### Owner Registration & Marketplace
 
 | Method | Path | Use Case | Purpose |

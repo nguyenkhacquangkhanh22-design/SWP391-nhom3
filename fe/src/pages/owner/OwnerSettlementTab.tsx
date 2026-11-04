@@ -186,7 +186,7 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
             {(analytics?.pendingPayout || 0).toLocaleString("vi-VN")} đ
           </div>
           <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>
-            Cần gửi/chờ duyệt yêu cầu
+            Chờ khách xác nhận nhận hàng, sau đó gửi yêu cầu lên Quản lý web duyệt
           </div>
         </div>
 
@@ -344,7 +344,7 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
                           style={{ fontSize: "0.78rem", padding: "6px 12px", background: st.payout_status === "rejected" ? "#ef4444" : undefined }}
                           onClick={() => openPayoutModal(st)}
                         >
-                          {st.payout_status === "rejected" ? "Gửi lại yêu cầu" : "💸 Gửi yêu cầu thanh toán"}
+                          {st.payout_status === "rejected" ? "Gửi lại yêu cầu" : "💸 Gửi yêu cầu giải ngân"}
                         </button>
                       ) : st.payout_status === "pending_moderator_approval" ? (
                         <button
@@ -354,6 +354,10 @@ export default function OwnerSettlementTab({ token, onError, onSuccess }: Props)
                         >
                           Cập nhật thông tin
                         </button>
+                      ) : st.payout_status === "processing" ? (
+                        <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                          Chờ khách xác nhận nhận hàng
+                        </span>
                       ) : (
                         <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
                           Hoàn tất

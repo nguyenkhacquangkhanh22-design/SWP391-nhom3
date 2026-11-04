@@ -123,6 +123,7 @@ export interface RentalContract {
   }[];
   owner_signature?: ContractSignature;
   renter_signature?: ContractSignature;
+  handover_records?: HandoverRecord[];
   createdAt: string;
 }
 
