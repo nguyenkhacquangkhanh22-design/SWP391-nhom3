@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
@@ -37,8 +37,48 @@ export default function EquipmentDetailPage() {
   const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
   const [returnMethod, setReturnMethod] = useState("motorcycle");
   const [quickVerifying, setQuickVerifying] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const isKycVerified = user?.kycStatus === "verified";
+
+  // Real-time inline validation (Báo lỗi nhập liệu sai để người thuê sửa liền)
+  const fieldErrors = useMemo(() => {
+    const errors: Record<string, string> = {};
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    if (!startDate) {
+      errors.startDate = "Vui lòng chọn ngày bắt đầu thuê.";
+    } else if (startDate < todayStr) {
+      errors.startDate = "Ngày bắt đầu không được ở trong quá khứ.";
+    }
+
+    if (!endDate) {
+      errors.endDate = "Vui lòng chọn ngày trả thiết bị.";
+    } else if (startDate && endDate < startDate) {
+      errors.endDate = "Ngày trả máy phải sau hoặc cùng ngày nhận máy.";
+    }
+
+    const needsAddress = deliveryMethod !== "pickup" || returnMethod !== "pickup";
+    if (needsAddress) {
+      if (!deliveryAddress.trim()) {
+        errors.deliveryAddress = "Vui lòng nhập địa chỉ cụ thể (Số nhà, đường, phường/quận) để shipper giao nhận máy.";
+      } else if (deliveryAddress.trim().length < 5) {
+        errors.deliveryAddress = "Địa chỉ quá ngắn, vui lòng nhập đầy đủ để shipper giao máy tận nơi.";
+      }
+    }
+
+    if (startDate && endDate && startDate === endDate && deliveryTime && returnTime) {
+      if (returnTime <= deliveryTime) {
+        errors.returnTime = "Giờ trả máy phải sau giờ nhận máy ít nhất 1 giờ.";
+      }
+    }
+
+    return errors;
+  }, [startDate, endDate, deliveryAddress, deliveryMethod, returnMethod, deliveryTime, returnTime]);
+
+  const markTouched = (field: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
 
   const handleQuickVerify = async () => {
     if (!token) return;
@@ -124,18 +164,15 @@ export default function EquipmentDetailPage() {
       return;
     }
 
-    if (!startDate || !endDate) {
-      setFormError("Vui lòng chọn ngày bắt đầu và ngày trả thiết bị.");
-      return;
-    }
-
-    if (totalDays <= 0) {
-      setFormError("Ngày kết thúc phải sau ngày bắt đầu ít nhất 1 ngày.");
-      return;
-    }
-
-    if (!deliveryAddress.trim()) {
-      setFormError("Vui lòng nhập địa chỉ nhận thiết bị.");
+    if (Object.keys(fieldErrors).length > 0) {
+      setTouched({
+        startDate: true,
+        endDate: true,
+        deliveryAddress: true,
+        deliveryTime: true,
+        returnTime: true,
+      });
+      setFormError("Vui lòng sửa các trường thông tin đang báo lỗi đỏ bên dưới để tiếp tục.");
       return;
     }
 
@@ -370,7 +407,7 @@ export default function EquipmentDetailPage() {
               )}
 
               {/* Booking Form */}
-              <form onSubmit={handleCreateRental} className="space-y-4 text-sm">
+              <form onSubmit={handleCreateRental} className="space-y-4 text-sm" noValidate>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -380,10 +417,23 @@ export default function EquipmentDetailPage() {
                       type="date"
                       min={new Date().toISOString().split("T")[0]}
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      onBlur={() => markTouched("startDate")}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        markTouched("startDate");
+                      }}
+                      className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none transition-all ${
+                        touched.startDate && fieldErrors.startDate
+                          ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                          : "border-[#283754] focus:border-orange-500"
+                      }`}
                       required
                     />
+                    {touched.startDate && fieldErrors.startDate && (
+                      <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                        <span>⚠️</span> {fieldErrors.startDate}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -393,10 +443,23 @@ export default function EquipmentDetailPage() {
                       type="date"
                       min={startDate || new Date().toISOString().split("T")[0]}
                       value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      onBlur={() => markTouched("endDate")}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        markTouched("endDate");
+                      }}
+                      className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none transition-all ${
+                        touched.endDate && fieldErrors.endDate
+                          ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                          : "border-[#283754] focus:border-orange-500"
+                      }`}
                       required
                     />
+                    {touched.endDate && fieldErrors.endDate && (
+                      <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                        <span>⚠️</span> {fieldErrors.endDate}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -421,10 +484,23 @@ export default function EquipmentDetailPage() {
                     <input
                       type="time"
                       value={returnTime}
-                      onChange={(e) => setReturnTime(e.target.value)}
-                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      onBlur={() => markTouched("returnTime")}
+                      onChange={(e) => {
+                        setReturnTime(e.target.value);
+                        markTouched("returnTime");
+                      }}
+                      className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none transition-all ${
+                        touched.returnTime && fieldErrors.returnTime
+                          ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                          : "border-[#283754] focus:border-orange-500"
+                      }`}
                       required
                     />
+                    {touched.returnTime && fieldErrors.returnTime && (
+                      <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                        <span>⚠️</span> {fieldErrors.returnTime}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -498,12 +574,25 @@ export default function EquipmentDetailPage() {
                   </label>
                   <input
                     type="text"
-                    placeholder="VD: Số nhà, đường, phường/quận..."
+                    placeholder="VD: Số 123 Nguyễn Huệ, Phường Bến Nghé, Quận 1..."
                     value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+                    onBlur={() => markTouched("deliveryAddress")}
+                    onChange={(e) => {
+                      setDeliveryAddress(e.target.value);
+                      markTouched("deliveryAddress");
+                    }}
+                    className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
+                      touched.deliveryAddress && fieldErrors.deliveryAddress
+                        ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                        : "border-[#283754] focus:border-orange-500"
+                    }`}
                     required
                   />
+                  {touched.deliveryAddress && fieldErrors.deliveryAddress && (
+                    <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                      <span>⚠️</span> {fieldErrors.deliveryAddress}
+                    </p>
+                  )}
                 </div>
 
                 {/* Renter Note */}
@@ -636,7 +725,7 @@ export default function EquipmentDetailPage() {
                   <div className="space-y-2">
                     <button
                       type="submit"
-                      disabled={submitting || totalDays <= 0}
+                      disabled={submitting}
                       className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
                     >
                       {submitting ? (

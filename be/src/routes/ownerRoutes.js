@@ -24,9 +24,12 @@ router.patch("/equipments/:id/visibility", asyncHandler(ownerController.toggleEq
 router.post("/equipments/:id/schedule", asyncHandler(ownerController.scheduleEquipmentAvailability));
 router.post("/equipments/:id/status-request", asyncHandler(ownerController.submitEquipmentStatusUpdateRequest));
 
-// 3. Rental Requests (UC_O07)
+// 3. Rental Requests & Direct Rental Management
 router.get("/rental-requests", asyncHandler(ownerController.getRentalRequests));
 router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respondRentalRequest));
+router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
+router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
+router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
 
 // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
 router.get("/contracts", asyncHandler(ownerController.getContracts));

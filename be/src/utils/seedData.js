@@ -100,7 +100,10 @@ async function seedData() {
   });
   await RentalContract.deleteMany({
     owner_id: owner._id,
-    contract_code: { $in: ["HD-2026-DRAFT01", "HD-2026-SIGNED02"] },
+    contract_code: { $in: ["HD-2026-DRAFT01", "HD-2026-SIGNED02", "HD-2026-RENT-001"] },
+  });
+  await Settlement.deleteMany({
+    settlement_code: { $in: ["SETTLE-2026-001", "SETTLE-2026-002"] },
   });
 
   // 4. Create sample Equipments (UC_O03, UC_O04, UC_O05, UC_O06)
@@ -374,6 +377,14 @@ async function seedData() {
     },
   });
   console.log("✓ Đã nạp hồ sơ quyết toán tiền & lịch sử giải ngân doanh thu (UC_O10, UC_O11)");
+
+  // 10. Nạp 5 Owner & 5 Renter cùng sản phẩm và đơn thuê thử nghiệm
+  try {
+    const seedFiveOwnersAndRentals = require("./seedFiveOwnersAndRentals");
+    await seedFiveOwnersAndRentals();
+  } catch (e5) {
+    console.warn("Lỗi nạp 5 owner & renter:", e5.message);
+  }
 
   console.log("--- Hoàn tất nạp dữ liệu mẫu thành công! ---");
 }

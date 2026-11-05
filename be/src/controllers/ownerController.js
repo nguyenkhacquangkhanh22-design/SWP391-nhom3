@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const Equipment = require("../models/Equipment");
+const Rental = require("../models/Rental");
 const RentalRequest = require("../models/RentalRequest");
 const RentalContract = require("../models/RentalContract");
 const HandoverRecord = require("../models/HandoverRecord");
@@ -455,9 +456,24 @@ async function respondRentalRequest(req, res) {
 
   if (action === "approve") {
     rentalReq.status = "approved";
+    // Đồng bộ sang model Rental chính để Renter có thể ký hợp đồng & chuyển khoản ngay
+    try {
+      await Rental.findOneAndUpdate(
+        { rentalCode: rentalReq.request_code },
+        { $set: { status: "APPROVED" } }
+      );
+    } catch (rErr) {
+      console.warn("Sync Rental approved error:", rErr?.message);
+    }
   } else {
     rentalReq.status = "rejected";
     rentalReq.rejection_reason = rejection_reason.trim();
+    try {
+      await Rental.findOneAndUpdate(
+        { rentalCode: rentalReq.request_code },
+        { $set: { status: "CANCELLED" } }
+      );
+    } catch (rErr) {}
   }
 
   rentalReq.responded_at = new Date();
@@ -470,11 +486,11 @@ async function respondRentalRequest(req, res) {
         user_id: rentalReq.renter_id,
         title:
           action === "approve"
-            ? `✅ Owner đã duyệt yêu cầu thuê #${rentalReq.request_code}`
-            : `❌ Owner từ chối yêu cầu thuê #${rentalReq.request_code}`,
+            ? `🎉 Chủ thiết bị đã duyệt yêu cầu thuê #${rentalReq.request_code}`
+            : `❌ Chủ thiết bị từ chối yêu cầu thuê #${rentalReq.request_code}`,
         message:
           action === "approve"
-            ? `Chủ thiết bị (${req.user.name}) đã duyệt yêu cầu thuê #${rentalReq.request_code} và đang lập hợp đồng gửi Quản lý web duyệt.`
+            ? `Chủ thiết bị (${req.user.name}) đã phê duyệt yêu cầu thuê #${rentalReq.request_code}. Bạn có thể tiến hành Ký hợp đồng bằng chữ ký tay điện tử và Thanh toán chuyển khoản ngay!`
             : `Chủ thiết bị (${req.user.name}) đã từ chối yêu cầu thuê #${rentalReq.request_code}: ${rentalReq.rejection_reason}`,
         related_record_id: rentalReq._id,
       });
@@ -484,7 +500,7 @@ async function respondRentalRequest(req, res) {
         ? `✅ Owner đã duyệt yêu cầu #${rentalReq.request_code}`
         : `❌ Owner từ chối yêu cầu #${rentalReq.request_code}`,
       action === "approve"
-        ? `Owner ${req.user.name} đã chấp thuận yêu cầu thuê #${rentalReq.request_code} và sẽ gửi hợp đồng lên để Quản lý web duyệt.`
+        ? `Owner ${req.user.name} đã chấp thuận yêu cầu thuê #${rentalReq.request_code}. Đơn đã chuyển sang trạng thái chờ Renter ký hợp đồng và chuyển khoản.`
         : `Owner ${req.user.name} từ chối yêu cầu thuê #${rentalReq.request_code}: ${rentalReq.rejection_reason}`,
       rentalReq._id
     );
@@ -495,7 +511,7 @@ async function respondRentalRequest(req, res) {
   res.json({
     message:
       action === "approve"
-        ? "Đã chấp nhận yêu cầu thuê! Bây giờ bạn hãy lập Hợp đồng cho thuê và gửi cho Quản lý web duyệt."
+        ? "Đã duyệt yêu cầu thuê thành công! Đơn thuê đã được trả về cho Khách thuê để Ký hợp đồng và Chuyển khoản."
         : "Đã từ chối yêu cầu thuê",
     request: rentalReq,
   });
@@ -1329,6 +1345,191 @@ async function replySupportTicket(req, res) {
   });
 }
 
+// -----------------------------------------------------------------------------
+// Direct Rental Order Management (Luồng chính Owner Duyệt Đơn & Duyệt Chuyển Khoản)
+// -----------------------------------------------------------------------------
+async function getOwnerRentals(req, res) {
+  const ownerId = req.user._id;
+  const { status, page = 1, limit = 20 } = req.query;
+
+  const filter = { owner: ownerId };
+  if (status && status !== "all") {
+    filter.status = status;
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.max(1, parseInt(limit, 10) || 20);
+
+  const [rentals, total] = await Promise.all([
+    Rental.find(filter)
+      .populate("renter", "name email phone avatarUrl trust_score")
+      .populate("equipment", "title images dailyRate depositAmount category")
+      .populate("owner", "name email phone bankInfo")
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    Rental.countDocuments(filter),
+  ]);
+
+  res.json({
+    success: true,
+    data: rentals,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  });
+}
+
+async function respondOwnerRental(req, res) {
+  const { id } = req.params;
+  const { action, rejection_reason } = req.body; // 'approve' | 'reject'
+  const ownerId = req.user._id;
+
+  const rental = await Rental.findOne({ _id: id, owner: ownerId })
+    .populate("renter", "name email phone")
+    .populate("equipment", "title");
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê của bạn");
+  }
+
+  if (action === "approve") {
+    rental.status = "APPROVED";
+    await rental.save();
+
+    // Đồng bộ RentalRequest nếu có
+    try {
+      await RentalRequest.findOneAndUpdate(
+        { request_code: rental.rentalCode },
+        { $set: { status: "approved", responded_at: new Date() } }
+      );
+    } catch (e) {}
+
+    if (UserNotification && rental.renter?._id) {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: "🎉 Chủ thiết bị đã duyệt đơn thuê!",
+        message: `Chủ thiết bị (${req.user.name}) đã duyệt đơn thuê #${rental.rentalCode} cho "${rental.equipment?.title}". Vui lòng Ký hợp đồng điện tử và Chuyển khoản thanh toán để nhận máy!`,
+        related_record_id: rental._id,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Đã duyệt yêu cầu thuê! Khách thuê có thể Ký hợp đồng và Chuyển khoản thanh toán.",
+      rental,
+    });
+  } else {
+    rental.status = "CANCELLED";
+    rental.notes = `${rental.notes ? rental.notes + " | " : ""}Chủ máy từ chối: ${rejection_reason || "Chủ máy bận hoặc thiết bị bảo trì"}`;
+    await rental.save();
+
+    try {
+      await RentalRequest.findOneAndUpdate(
+        { request_code: rental.rentalCode },
+        { $set: { status: "rejected", rejection_reason, responded_at: new Date() } }
+      );
+    } catch (e) {}
+
+    if (UserNotification && rental.renter?._id) {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: "❌ Yêu cầu thuê bị từ chối",
+        message: `Chủ thiết bị (${req.user.name}) đã từ chối yêu cầu thuê #${rental.rentalCode}: ${rejection_reason || "Thiết bị tạm thời không khả dụng"}.`,
+        related_record_id: rental._id,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Đã từ chối yêu cầu thuê.",
+      rental,
+    });
+  }
+}
+
+async function confirmOwnerRentalPayment(req, res) {
+  const { id } = req.params;
+  const { action, note } = req.body; // 'approve' | 'reject'
+  const ownerId = req.user._id;
+
+  const rental = await Rental.findOne({ _id: id, owner: ownerId })
+    .populate("renter", "name email phone")
+    .populate("equipment", "title images dailyRate");
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê của bạn");
+  }
+
+  if (action === "approve") {
+    rental.payment.isPaid = true;
+    rental.payment.paymentStatus = "paid";
+    rental.payment.paidAt = new Date();
+    rental.payment.confirmedBy = req.user._id;
+    rental.status = "PAID";
+    await rental.save();
+
+    // Đồng bộ sang RentalContract nếu có
+    try {
+      await RentalContract.findOneAndUpdate(
+        {
+          $or: [
+            { contract_code: rental.contract?.contractNumber },
+            { renter_id: rental.renter?._id, equipment_id: rental.equipment?._id },
+          ],
+        },
+        {
+          $set: {
+            payment_status: "paid",
+            paid_at: new Date(),
+            status: "signed",
+          },
+        }
+      );
+    } catch (e) {}
+
+    // Thông báo cho Renter
+    if (UserNotification && rental.renter?._id) {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: `✅ Chủ máy đã xác nhận nhận tiền đơn #${rental.rentalCode}`,
+        message: `Chủ thiết bị (${req.user.name}) đã kiểm tra và xác nhận nhận đủ tiền chuyển khoản ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ. Thiết bị đang được chuẩn bị để giao cho bạn!`,
+        related_record_id: rental._id,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Đã xác nhận nhận tiền thành công! Thiết bị chuyển sang trạng thái sẵn sàng giao hàng.",
+      rental,
+    });
+  } else {
+    rental.payment.paymentStatus = "rejected";
+    rental.payment.rejectionReason = note || "Bill chuyển khoản không hợp lệ hoặc chưa nhận được tiền";
+    rental.status = "APPROVED"; // Trả lại về approved để khách chuyển khoản lại
+    await rental.save();
+
+    if (UserNotification && rental.renter?._id) {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: `⚠️ Thanh toán đơn #${rental.rentalCode} chưa được chấp nhận`,
+        message: `Chủ thiết bị (${req.user.name}) từ chối xác nhận thanh toán: ${note || "Bill chuyển khoản không hợp lệ"}. Vui lòng kiểm tra và chuyển khoản lại!`,
+        related_record_id: rental._id,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Đã từ chối xác nhận thanh toán và yêu cầu khách kiểm tra lại.",
+      rental,
+    });
+  }
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -1362,4 +1563,7 @@ module.exports = {
   submitSupportTicket,
   getOwnerSupportTickets,
   replySupportTicket,
+  getOwnerRentals,
+  respondOwnerRental,
+  confirmOwnerRentalPayment,
 };

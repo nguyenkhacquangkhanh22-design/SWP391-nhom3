@@ -138,7 +138,7 @@ export const smartEquipApi = {
       token,
     ),
 
-    // Phê duyệt đơn thuê (Chủ máy / Quản lý / Test)
+  // Phê duyệt đơn thuê (Chủ máy / Quản lý / Test)
   approveRental: (token: string, rentalId: string, note?: string) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/approve`,
@@ -207,7 +207,7 @@ export const smartEquipApi = {
       token,
     ),
 
-    // Xóa toàn bộ lịch sử thuê của tài khoản Renter (Reset test)
+  // Xóa toàn bộ lịch sử thuê của tài khoản Renter (Reset test)
   resetRentalHistory: (token: string) =>
     request<{ success: boolean; message: string; data: any }>(
       "/api/rentals/reset-history",
@@ -266,4 +266,63 @@ export const smartEquipApi = {
       { method: "POST", body: JSON.stringify(data) },
       token,
     ),
+
+  // Chat Box giữa Owner & Khách thuê (gửi tin nhắn & gửi hợp đồng)
+  getChatMessages: (
+    token: string,
+    params: { rentalId?: string; otherUserId?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.rentalId) qs.set("rentalId", params.rentalId);
+    if (params.otherUserId) qs.set("otherUserId", params.otherUserId);
+    return request<{ success: boolean; data: any[] }>(
+      `/api/chat/messages?${qs.toString()}`,
+      {},
+      token,
+    );
+  },
+
+  sendChatMessage: (
+    token: string,
+    data: {
+      receiverId: string;
+      rentalId?: string;
+      message?: string;
+      messageType?: "text" | "contract" | "image";
+      contractData?: any;
+    },
+  ) =>
+    request<{ success: boolean; data: any }>(
+      "/api/chat/send",
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
+  markChatAsRead: (token: string, data: { senderId?: string; rentalId?: string }) =>
+    request<{ success: boolean; message: string }>(
+      "/api/chat/read",
+      { method: "PATCH", body: JSON.stringify(data) },
+      token,
+    ),
+
+  // AI-powered Product Filter & Assistant
+  aiFilterEquipment: (data: {
+    prompt: string;
+    category?: string;
+    maxPrice?: number;
+    minPrice?: number;
+  }) =>
+    request<{
+      success: boolean;
+      data: Equipment[];
+      matchedItems?: Array<{ equipment: Equipment; matchScore: number; matchReason: string }>;
+      aiAdvice: string;
+      purpose: string;
+      tags: string[];
+      suggestedAddons: string[];
+      detectedCriteria: any;
+    }>("/api/equipment/ai-filter", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

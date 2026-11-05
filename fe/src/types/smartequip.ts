@@ -8,6 +8,12 @@ export interface EquipmentOwner {
   avatarUrl?: string;
   trust_score?: number;
   kycStatus?: "unverified" | "pending" | "verified" | "rejected";
+  bankInfo?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+    bankCode?: string;
+  };
 }
 
 export interface Equipment {
@@ -31,6 +37,38 @@ export interface Equipment {
   isFeatured?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChatMessage {
+  _id: string;
+  rental_id?: string | any;
+  sender: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  receiver: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  message: string;
+  message_type: "text" | "contract" | "image";
+  contract_data?: {
+    contract_number?: string;
+    rental_code?: string;
+    equipment_title?: string;
+    rental_id?: string;
+    total_amount?: number;
+    status?: string;
+    is_signed?: boolean;
+  };
+  is_read: boolean;
+  createdAt: string;
 }
 
 export interface SystemInfo {
@@ -154,4 +192,36 @@ export interface Rental {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChatMessage {
+  _id: string;
+  rental_id?: string | any;
+  sender: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  receiver: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  message: string;
+  message_type: "text" | "contract" | "image";
+  contract_data?: {
+    contract_number?: string;
+    rental_code?: string;
+    equipment_title?: string;
+    rental_id?: string;
+    total_amount?: number;
+    status?: string;
+    is_signed?: boolean;
+  };
+  is_read: boolean;
+  createdAt: string;
 }

@@ -240,7 +240,7 @@ class RentalService {
 
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category brand modelNumber")
-      .populate("owner", "name email phone trust_score")
+      .populate("owner", "name email phone trust_score bankInfo")
       .populate("renter", "name email phone");
   }
 
@@ -342,7 +342,7 @@ class RentalService {
 
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category")
-      .populate("owner", "name email phone trust_score")
+      .populate("owner", "name email phone trust_score bankInfo")
       .populate("renter", "name email phone");
   }
 
@@ -690,7 +690,7 @@ class RentalService {
     const [rentals, total] = await Promise.all([
       Rental.find(filter)
         .populate("equipment", "title category images dailyRate depositAmount")
-        .populate("owner", "name email phone avatarUrl trust_score")
+        .populate("owner", "name email phone avatarUrl trust_score bankInfo")
         .populate("renter", "name email phone avatarUrl")
         .sort({ createdAt: -1 })
         .skip(skip)

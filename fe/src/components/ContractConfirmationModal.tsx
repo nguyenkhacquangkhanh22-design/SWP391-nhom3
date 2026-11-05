@@ -19,9 +19,14 @@ export default function ContractConfirmationModal({
   onClose,
   onSuccess,
 }: Props) {
+  const renterName =
+    typeof rental.renter === "object" && rental.renter !== null && rental.renter.name
+      ? rental.renter.name
+      : rental.contract?.renterSignature || "Người thuê SmartEquip";
+
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [handwrittenSignature, setHandwrittenSignature] = useState<string | null>(null);
-  const [signerName, setSignerName] = useState("");
+  const [signerName, setSignerName] = useState(() => renterName !== "Người thuê SmartEquip" ? renterName : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState<"contract" | "payment">("contract");
@@ -31,15 +36,20 @@ export default function ContractConfirmationModal({
 
   if (!isOpen) return null;
 
-  // Chi tiết thanh toán chuyển khoản VietQR MB Bank
-  const bankName = "MB Bank (Ngân hàng TMCP Quân Đội)";
-  const accountNumber = "111105056666";
-  const accountHolder = "NGUYEN KHAC QUANG KHANH";
+  // Chi tiết thanh toán chuyển khoản VietQR theo tài khoản ngân hàng của Chủ máy (Owner)
+  const ownerObj = typeof rental.owner === "object" ? rental.owner : null;
+  const ownerBankInfo = (ownerObj as any)?.bankInfo;
+
+  const bankName = ownerBankInfo?.bankName || "MB Bank (Ngân hàng TMCP Quân Đội)";
+  const accountNumber = ownerBankInfo?.accountNumber || "111105056666";
+  const accountHolder = ownerBankInfo?.accountHolder || ownerObj?.name || "NGUYEN KHAC QUANG KHANH";
+  const bankCode = ownerBankInfo?.bankCode || "MB";
+
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const transferContent = `THUE ${contractCode}`;
   const totalAmountToPay = rental.totalAmount || (rental.rentalFee + (rental.shippingFee || 0)); // KHÔNG CẦN TIỀN CỌC! (Tiền thuê + phí vận chuyển)
 
-  const vietQrDynamicUrl = `https://img.vietqr.io/image/MB-${accountNumber}-compact2.png?amount=${totalAmountToPay}&addInfo=${encodeURIComponent(
+  const vietQrDynamicUrl = `https://img.vietqr.io/image/${bankCode}-${accountNumber}-compact2.png?amount=${totalAmountToPay}&addInfo=${encodeURIComponent(
     transferContent
   )}&accountName=${encodeURIComponent(accountHolder)}`;
 
@@ -95,11 +105,6 @@ export default function ContractConfirmationModal({
     }
   };
 
-  const renterName =
-    typeof rental.renter === "object" && rental.renter !== null
-      ? rental.renter.name
-      : "Người thuê SmartEquip";
-
   const ownerName =
     typeof rental.owner === "object" && rental.owner !== null
       ? rental.owner.name
@@ -116,7 +121,7 @@ export default function ContractConfirmationModal({
               <h2 className="text-base font-bold text-white">
                 {step === "contract"
                   ? "Ký Hợp Đồng Thuê Điện Tử Bằng Tay"
-                  : "Thanh Toán Tiền Thuê Chuyển Khoản (VietQR MB Bank)"}
+                  : `Thanh Toán Tiền Thuê Chuyển Khoản (${bankName.split("(")[0].trim()})`}
               </h2>
               <p className="text-xs text-orange-400 mt-0.5">
                 Mã đơn: <strong className="font-mono text-white">{rental.rentalCode}</strong> | Mã HĐ:{" "}
@@ -364,7 +369,7 @@ export default function ContractConfirmationModal({
                   }}
                 />
               </div>
-              <span className="text-[10px] text-emerald-400 mt-1 font-semibold">✓ Mã QR chuẩn gọn MB Bank</span>
+              <span className="text-[10px] text-emerald-400 mt-1 font-semibold">✓ Mã QR VietQR tài khoản Chủ máy</span>
               <p className="text-[11px] text-slate-400 mt-2 text-center">
                 Mở ứng dụng Ngân hàng của bạn quét mã VietQR để thanh toán tiền thuê
               </p>
@@ -395,7 +400,7 @@ export default function ContractConfirmationModal({
                   <span>Ảnh chụp biên lai chuyển khoản thành công:</span>
                 </label>
                 <span className="text-[10px] text-amber-400 bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">
-                  Gửi để Quản lý duyệt nhanh
+                  Gửi để Chủ máy duyệt tiền nhanh
                 </span>
               </div>
 

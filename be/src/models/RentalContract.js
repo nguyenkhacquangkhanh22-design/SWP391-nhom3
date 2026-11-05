@@ -136,9 +136,22 @@ const rentalContractSchema = new mongoose.Schema(
         "moderator_rejected",    // Quản lý web từ chối / trả về chỉnh sửa
         "moderator_approved",    // Quản lý web đã duyệt & gửi cho Người thuê (Renter) ký tên
         "signed",                // Người thuê đã ký tên hoàn tất
+        "contract_signed",
+        "payment_pending",
+        "paid",
         "active",                // Đang trong thời gian thuê (đã bàn giao)
+        "returned",
         "completed",             // Đã kết thúc thuê
         "cancelled",             // Hủy
+        "DRAFT",
+        "SIGNED",
+        "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
+        "PAID",
+        "ACTIVE",
+        "RETURNED",
+        "COMPLETED",
+        "CANCELLED",
       ],
       default: "draft",
       index: true,

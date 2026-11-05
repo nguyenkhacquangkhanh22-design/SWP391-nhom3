@@ -25,6 +25,23 @@ class EquipmentController {
       data: equipment,
     });
   }
+
+  /**
+   * AI-powered Product Filter & Assistant: POST /api/equipment/ai-filter
+   */
+  async aiFilterEquipment(req, res) {
+    const result = await equipmentService.aiFilterEquipment(req.body);
+    res.status(200).json({
+      success: true,
+      message: "AI lọc thiết bị thành công",
+      data: result.equipments,
+      aiAdvice: result.aiAdvice,
+      purpose: result.purpose,
+      tags: result.tags,
+      suggestedAddons: result.suggestedAddons,
+      detectedCriteria: result.detectedCriteria,
+    });
+  }
 }
 
 module.exports = new EquipmentController();

@@ -27,6 +27,12 @@ export default function EquipmentListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // AI Filter / Assistant State
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [aiMatches, setAiMatches] = useState<Record<string, { score: number; reason: string }> | null>(null);
+
   const keywordParam = searchParams.get("keyword") || "";
   const categoryParam = searchParams.get("category") || "all";
   const minPriceParam = searchParams.get("minPrice") || "";
@@ -88,6 +94,48 @@ export default function EquipmentListPage() {
     setMinPrice("");
     setMaxPrice("");
     setSearchParams({});
+    setAiAdvice(null);
+    setAiMatches(null);
+  };
+
+  const handleAiFilter = async (customPrompt?: string) => {
+    const promptToUse = (typeof customPrompt === "string" ? customPrompt : aiPrompt).trim();
+    if (!promptToUse) return;
+
+    setAiLoading(true);
+    setError("");
+    try {
+      const res = await smartEquipApi.aiFilterEquipment({
+        prompt: promptToUse,
+        category: categoryParam !== "Tất cả danh mục" && categoryParam !== "all" ? categoryParam : undefined,
+      });
+
+      if (res && res.data) {
+        setEquipments(res.data);
+        setAiAdvice(res.aiAdvice || null);
+        const map: Record<string, { score: number; reason: string }> = {};
+        if (Array.isArray(res.matchedItems)) {
+          res.matchedItems.forEach((item: any) => {
+            const id = item.equipment?._id || item.equipment?.id;
+            if (id) {
+              map[id] = { score: item.matchScore, reason: item.matchReason };
+            }
+          });
+        }
+        setAiMatches(map);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Trợ lý AI gặp sự cố khi phân tích. Vui lòng thử lại.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleClearAi = () => {
+    setAiPrompt("");
+    setAiAdvice(null);
+    setAiMatches(null);
+    fetchEquipments();
   };
 
   return (
@@ -131,6 +179,104 @@ export default function EquipmentListPage() {
               Tìm kiếm
             </button>
           </form>
+
+          {/* AI Filter & Advisor Assistant Bar */}
+          <div className="mt-4 p-4 bg-gradient-to-r from-purple-950/60 via-indigo-950/50 to-slate-900 border border-purple-500/40 rounded-2xl shadow-xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✨</span>
+                <span className="text-sm font-bold text-white">
+                  Trợ Lý AI Lọc & Tư Vấn Thiết Bị Thông Minh
+                </span>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wider">
+                  AI Powered
+                </span>
+              </div>
+              {aiAdvice && (
+                <button
+                  type="button"
+                  onClick={handleClearAi}
+                  className="text-xs text-purple-300 hover:text-white underline self-start sm:self-auto cursor-pointer"
+                >
+                  ✕ Tắt lọc AI (Về mặc định)
+                </button>
+              )}
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleAiFilter();
+              }}
+              className="flex items-center gap-2 bg-[#0d1424] p-1.5 rounded-xl border border-purple-500/30 focus-within:border-purple-400 transition-all shadow-inner"
+            >
+              <span className="text-purple-400 pl-2.5">🤖</span>
+              <input
+                type="text"
+                placeholder="Nhập nhu cầu bằng tiếng Việt (VD: Cần máy ảnh chụp kỷ yếu chân dung đẹp, combo quay vlog dưới 500k...)"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                className="w-full bg-transparent border-none px-2 py-1.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={aiLoading || !aiPrompt.trim()}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-all shadow-md shadow-purple-600/30 whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+              >
+                {aiLoading ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>AI đang phân tích...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span>
+                    <span>AI Lọc Máy</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Quick scenario prompt chips */}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="text-[11px] text-slate-400 font-semibold mr-1">Gợi ý nhanh:</span>
+              {[
+                { label: "🎬 Combo Quay Vlog Du Lịch", prompt: "Combo máy ảnh nhỏ gọn chống rung tốt để quay vlog du lịch youtube" },
+                { label: "📸 Chụp Kỷ Yếu & Chân Dung", prompt: "Máy ảnh chụp chân dung kỷ yếu xóa phông đẹp sắc nét" },
+                { label: "🚁 Flycam Quay Trên Cao 4K", prompt: "Flycam drone quay video 4k trên cao góc rộng" },
+                { label: "🎙️ Thu Âm Podcast & Talkshow", prompt: "Bộ micro thu âm podcast phỏng vấn không dây âm thanh trong trẻo" },
+                { label: "💰 Thiết bị giá rẻ dưới 300k", prompt: "Thiết bị chụp quay giá rẻ dưới 300000 đ một ngày" },
+              ].map((chip, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setAiPrompt(chip.prompt);
+                    void handleAiFilter(chip.prompt);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#141b2e] hover:bg-purple-900/40 border border-purple-500/20 hover:border-purple-400/50 text-slate-300 hover:text-purple-200 text-[11px] font-medium transition-all cursor-pointer"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            {/* AI Advice Box */}
+            {aiAdvice && (
+              <div className="mt-2 p-3 bg-purple-900/30 border border-purple-500/40 rounded-xl text-xs text-purple-200 flex items-start gap-2.5 animate-fadeIn">
+                <span className="text-lg shrink-0">💡</span>
+                <div className="space-y-0.5">
+                  <div className="font-bold text-white text-[12px] flex items-center gap-2">
+                    <span>Lời Khuyên & Tư Vấn Từ Trợ Lý AI:</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
+                      ✓ Đã xếp hạng theo độ phù hợp
+                    </span>
+                  </div>
+                  <p className="leading-relaxed text-slate-200">{aiAdvice}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 2-Column Layout: Sidebar Filter & Equipment Grid */}
@@ -299,6 +445,20 @@ export default function EquipmentListPage() {
                         <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">
                           {item.description || "Thiết bị chính hãng, được kiểm tra định kỳ, đầy đủ linh phụ kiện."}
                         </p>
+
+                        {/* AI Match Score & Recommendation Reason */}
+                        {aiMatches && aiMatches[item._id] && (
+                          <div className="mt-2.5 p-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-[11px] text-purple-200 space-y-0.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-amber-300 flex items-center gap-1">
+                                <span>⭐</span>
+                                <span>Phù hợp {aiMatches[item._id].score}%</span>
+                              </span>
+                              <span className="text-[10px] text-purple-300 font-semibold uppercase">AI Đề Xuất</span>
+                            </div>
+                            <p className="text-[10.5px] text-slate-300 leading-snug">{aiMatches[item._id].reason}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 

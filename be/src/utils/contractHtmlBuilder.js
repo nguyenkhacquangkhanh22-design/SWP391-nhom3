@@ -159,8 +159,8 @@ function buildContractHtmlServer(rental) {
     : "★ BẢN MẪU DỰ THẢO THAM KHẢO & KÝ NHÁP - CHƯA CÓ HIỆU LỰC CHÍNH THỨC ★";
 
   const badgeHtml = isConfirmedPaid
-    ? `<span style="background:#065f46; color:#34d399; border:1px solid #059669; padding:3px 10px; border-radius:999px; font-weight:bold; font-size:9pt; white-space:nowrap; display:inline-block; vertical-align:middle;">✓ BẢN CHÍNH THỨC (ĐÃ KÝ)</span>`
-    : `<span style="background:#78350f; color:#fbbf24; border:1px solid #d97706; padding:3px 10px; border-radius:999px; font-weight:bold; font-size:9pt; white-space:nowrap; display:inline-block; vertical-align:middle;">📋 BẢN MẪU DỰ THẢO</span>`;
+    ? `<span style="background:#065f46; color:#34d399; border:1px solid #059669; padding:2px 10px; border-radius:999px; font-weight:bold; font-size:8.5pt; white-space:nowrap !important; display:inline-flex !important; align-items:center; word-break:keep-all !important; vertical-align:middle;">✓ BẢN CHÍNH THỨC (ĐÃ KÝ)</span>`
+    : `<span style="background:#78350f; color:#fbbf24; border:1px solid #d97706; padding:2px 10px; border-radius:999px; font-weight:bold; font-size:8.5pt; white-space:nowrap !important; display:inline-flex !important; align-items:center; word-break:keep-all !important; vertical-align:middle;">📋 BẢN MẪU DỰ THẢO</span>`;
 
   const bannerNoticeHtml = isConfirmedPaid
     ? `<div style="background:#ecfdf5; border:1px solid #6ee7b7; border-left:4px solid #059669; padding:10px 14px; border-radius:6px; font-size:11pt; color:#065f46; margin-bottom:16px; line-height:1.45;">

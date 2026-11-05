@@ -91,9 +91,27 @@ const rentalRequestSchema = new mongoose.Schema(
         "approved",          // Bước 3a: Owner đã duyệt yêu cầu thuê
         "rejected",          // Owner từ chối yêu cầu thuê
         "contract_created",  // Bước 3b: Owner đã lập hợp đồng cho thuê
+        "contract_signed",
+        "payment_pending",
+        "paid",
         "active",
+        "returned",
         "completed",
         "cancelled",
+        // Hỗ trợ chữ hoa
+        "PENDING_MODERATOR",
+        "MODERATOR_REJECTED",
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "CONTRACT_CREATED",
+        "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
+        "PAID",
+        "ACTIVE",
+        "RETURNED",
+        "COMPLETED",
+        "CANCELLED",
       ],
       default: "pending", // Renter gửi thẳng tới Owner theo luồng mới
       index: true,

@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import VietQRPaymentModal from "../components/VietQRPaymentModal";
 import ContractPdfModal from "../components/ContractPdfModal";
+import RentalChatModal from "../components/RentalChatModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
 import {
@@ -64,6 +65,7 @@ export default function RentalHistoryPage() {
   // Modal ký hợp đồng (UC_R08)
   const [signingRental, setSigningRental] = useState<Rental | null>(null);
   const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
+  const [chatRental, setChatRental] = useState<Rental | null>(null);
 
   // Modal trả thiết bị (UC_R10: hẹn giờ, địa điểm, tình trạng)
   const [returningRentalId, setReturningRentalId] = useState<string | null>(null);
@@ -288,7 +290,7 @@ export default function RentalHistoryPage() {
     const s = status.toUpperCase();
     if (s === "PAYMENT_PENDING" || paymentStatus === "pending_confirmation") {
       return {
-        label: "⏳ Đã chuyển khoản • Chờ Quản lý duyệt",
+        label: "⏳ Đã chuyển khoản • Chờ Chủ máy xác nhận",
         className: "bg-amber-500/15 text-amber-300 border-amber-500/40 font-semibold",
       };
     }
@@ -296,7 +298,7 @@ export default function RentalHistoryPage() {
       case "PENDING":
       case "CONTRACT_PENDING":
         return {
-          label: "⏳ Đang chờ Chủ máy & Quản lý duyệt",
+          label: "⏳ Đang chờ Chủ máy duyệt",
           className: "bg-amber-500/15 text-amber-300 border-amber-500/40",
         };
       case "APPROVED":
@@ -466,18 +468,22 @@ export default function RentalHistoryPage() {
               const isWaitingPaymentApproval = upperStatus === "PAYMENT_PENDING" || r.payment?.paymentStatus === "pending_confirmation";
               const isPendingApproval = upperStatus === "PENDING" || upperStatus === "CONTRACT_PENDING" || upperStatus === "PENDING_MODERATOR";
               const isApproved = upperStatus === "APPROVED";
-              const isPaidConfirmed =
-                r.payment?.isPaid === true ||
-                r.payment?.paymentStatus === "paid" ||
-                upperStatus === "PAID" ||
-                upperStatus === "CONFIRMED" ||
-                upperStatus === "ACTIVE" ||
-                upperStatus === "IN_PROGRESS";
               const isReturned =
                 upperStatus === "RETURNED" ||
                 upperStatus === "RETURN_REQUESTED" ||
-                Boolean(r.returnInfo?.requestedAt);
+                upperStatus === "RETURN_PENDING" ||
+                Boolean(r.returnInfo?.requestedAt) ||
+                Boolean(r.returnRequest?.requestedAt);
               const isCompleted = upperStatus === "COMPLETED";
+              const isPaidConfirmed =
+                !isReturned &&
+                !isCompleted &&
+                (r.payment?.isPaid === true ||
+                  r.payment?.paymentStatus === "paid" ||
+                  upperStatus === "PAID" ||
+                  upperStatus === "CONFIRMED" ||
+                  upperStatus === "ACTIVE" ||
+                  upperStatus === "IN_PROGRESS");
 
               const canSign = isApproved; // Chỉ ký khi đơn đã được duyệt!
               const canPay = upperStatus === "CONTRACT_SIGNED" && !isWaitingPaymentApproval;
@@ -891,11 +897,11 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Trạng thái chờ Moderator duyệt chuyển khoản */}
+                    {/* Trạng thái chờ Owner duyệt chuyển khoản */}
                     {isWaitingPaymentApproval && (
                       <div className="px-3.5 py-2.5 bg-amber-950/40 border border-amber-500/30 text-amber-300 rounded-xl text-xs text-center font-semibold flex items-center justify-center gap-1.5 shadow-sm">
                         <span>⏳</span>
-                        <span>Chờ Quản lý duyệt chuyển khoản</span>
+                        <span>Chờ Chủ máy duyệt chuyển khoản</span>
                       </div>
                     )}
 
@@ -968,6 +974,16 @@ export default function RentalHistoryPage() {
                       );
                     })()}
 
+                    {/* Nút Chat trực tiếp với Chủ máy & Gửi hợp đồng */}
+                    <button
+                      onClick={() => setChatRental(r)}
+                      className="px-3 py-2 bg-gradient-to-r from-teal-700/60 to-cyan-700/60 hover:from-teal-600 hover:to-cyan-600 border border-teal-500/40 text-teal-200 hover:text-white font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm"
+                      title="Nhắn tin trực tiếp với Chủ máy và gửi hợp đồng qua chat"
+                    >
+                      <span>💬</span>
+                      <span>Nhắn tin với Chủ máy</span>
+                    </button>
+
                     {/* Nút hủy yêu cầu (UC_R13) */}
                     {canCancel && (
                       <button
@@ -996,6 +1012,7 @@ export default function RentalHistoryPage() {
           contractCode={payingRental.contract?.contractNumber}
           equipmentTitle={payingRental.equipment?.title}
           loading={payingRentalId === payingRental._id}
+          owner={payingRental.owner}
         />
       )}
 
@@ -1214,6 +1231,18 @@ export default function RentalHistoryPage() {
           rental={viewingContractRental}
           isOpen={Boolean(viewingContractRental)}
           onClose={() => setViewingContractRental(null)}
+        />
+      )}
+
+      {/* Modal Chat Trực Tiếp Giữa Khách Thuê và Chủ Máy (Gửi Hợp Đồng Qua Lại) */}
+      {chatRental && (
+        <RentalChatModal
+          rental={chatRental}
+          isOpen={Boolean(chatRental)}
+          onClose={() => setChatRental(null)}
+          onViewContract={(r) => {
+            setViewingContractRental(r);
+          }}
         />
       )}
 

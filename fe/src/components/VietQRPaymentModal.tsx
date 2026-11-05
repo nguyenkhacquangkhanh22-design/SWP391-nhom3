@@ -9,6 +9,7 @@ interface VietQRPaymentModalProps {
   contractCode?: string;
   equipmentTitle?: string;
   loading?: boolean;
+  owner?: any;
 }
 
 export default function VietQRPaymentModal({
@@ -20,19 +21,22 @@ export default function VietQRPaymentModal({
   contractCode,
   equipmentTitle,
   loading = false,
+  owner,
 }: VietQRPaymentModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const bankName = "MB Bank (Ngân hàng TMCP Quân Đội)";
-  const accountNumber = "111105056666";
-  const accountHolder = "NGUYEN KHAC QUANG KHANH";
+  const ownerBankInfo = owner?.bankInfo;
+  const bankName = ownerBankInfo?.bankName || "MB Bank (Ngân hàng TMCP Quân Đội)";
+  const accountNumber = ownerBankInfo?.accountNumber || "111105056666";
+  const accountHolder = ownerBankInfo?.accountHolder || owner?.name || "NGUYEN KHAC QUANG KHANH";
+  const bankCode = ownerBankInfo?.bankCode || "MB";
   const transferContent = `THUE ${contractCode || rentalCode}`;
 
   // VietQR Dynamic URL with specific amount and memo
-  const vietQrDynamicUrl = `https://img.vietqr.io/image/MB-${accountNumber}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(
+  const vietQrDynamicUrl = `https://img.vietqr.io/image/${bankCode}-${accountNumber}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(
     transferContent
   )}&accountName=${encodeURIComponent(accountHolder)}`;
 
