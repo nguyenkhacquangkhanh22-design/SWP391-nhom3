@@ -30,6 +30,7 @@ router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respon
 router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
 router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
 router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
+router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));
 
 // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
 router.get("/contracts", asyncHandler(ownerController.getContracts));

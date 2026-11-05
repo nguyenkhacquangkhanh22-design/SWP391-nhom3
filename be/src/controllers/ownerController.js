@@ -1530,6 +1530,145 @@ async function confirmOwnerRentalPayment(req, res) {
   }
 }
 
+async function updateOwnerRentalContractTerms(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const {
+    contractTerms,
+    dailyRate,
+    totalDays,
+    rentalFee,
+    depositAmount,
+    discountAmount,
+    shippingFee,
+    totalAmount,
+    startDate,
+    endDate,
+    deliveryTime,
+    returnTime,
+    deliveryAddress,
+    deliveryMethod,
+    returnMethod,
+    changeSummary,
+  } = req.body;
+
+  const rental = await Rental.findOne({ _id: id, owner: ownerId })
+    .populate("renter", "name email phone avatarUrl")
+    .populate("equipment", "title images dailyRate depositAmount")
+    .populate("owner", "name email phone bankInfo");
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê của bạn");
+  }
+
+  // Cập nhật các trường nếu được cung cấp
+  if (contractTerms !== undefined) {
+    if (!rental.contract) rental.contract = {};
+    rental.contract.contractTerms = String(contractTerms).trim();
+  }
+  if (dailyRate !== undefined && Number(dailyRate) >= 0) rental.dailyRate = Number(dailyRate);
+  if (totalDays !== undefined && Number(totalDays) >= 1) rental.totalDays = Number(totalDays);
+  if (rentalFee !== undefined && Number(rentalFee) >= 0) rental.rentalFee = Number(rentalFee);
+  if (depositAmount !== undefined && Number(depositAmount) >= 0) rental.depositAmount = Number(depositAmount);
+  if (discountAmount !== undefined && Number(discountAmount) >= 0) rental.discountAmount = Number(discountAmount);
+  if (shippingFee !== undefined && Number(shippingFee) >= 0) rental.shippingFee = Number(shippingFee);
+  if (totalAmount !== undefined && Number(totalAmount) >= 0) {
+    rental.totalAmount = Number(totalAmount);
+  } else {
+    rental.totalAmount = Math.max(
+      0,
+      (rental.rentalFee || 0) + (rental.depositAmount || 0) + (rental.shippingFee || 0) - (rental.discountAmount || 0)
+    );
+  }
+
+  if (startDate) rental.startDate = new Date(startDate);
+  if (endDate) rental.endDate = new Date(endDate);
+  if (deliveryTime) rental.deliveryTime = String(deliveryTime).trim();
+  if (returnTime) rental.returnTime = String(returnTime).trim();
+  if (deliveryAddress !== undefined) rental.deliveryAddress = String(deliveryAddress).trim();
+  if (deliveryMethod) rental.deliveryMethod = String(deliveryMethod).trim();
+  if (returnMethod) rental.returnMethod = String(returnMethod).trim();
+
+  await rental.save();
+
+  // Đồng bộ sang RentalContract nếu có
+  try {
+    const RentalContract = require("../models/RentalContract");
+    await RentalContract.findOneAndUpdate(
+      {
+        $or: [
+          { contract_code: rental.contract?.contractNumber },
+          { request_id: rental._id },
+        ],
+      },
+      {
+        $set: {
+          terms_content: rental.contract?.contractTerms || "",
+          rental_price: rental.dailyRate,
+          deposit_amount: rental.depositAmount,
+          start_date: rental.startDate,
+          end_date: rental.endDate,
+          delivery_time: rental.deliveryTime,
+          return_time: rental.returnTime,
+          delivery_address: rental.deliveryAddress,
+          delivery_method: rental.deliveryMethod,
+          return_method: rental.returnMethod,
+          shipping_fee: rental.shippingFee,
+        },
+      }
+    );
+  } catch (e) {}
+
+  // Tự động gửi tin nhắn hợp đồng mới cập nhật vào chat giữa Owner và Renter
+  let chatMsg = null;
+  try {
+    const ChatMessage = require("../models/ChatMessage");
+    const summaryText = changeSummary
+      ? `📝 Chủ máy (${req.user.name}) vừa cập nhật điều khoản hợp đồng: ${changeSummary}. Mời bạn kiểm tra lại hợp đồng mới!`
+      : `📝 Chủ máy (${req.user.name}) vừa cập nhật lại các điều khoản & biểu phí hợp đồng theo thỏa thuận. Mời bạn kiểm tra lại!`;
+
+    chatMsg = await ChatMessage.create({
+      rental_id: rental._id,
+      sender: req.user._id,
+      receiver: rental.renter?._id || rental.renter,
+      message: summaryText,
+      message_type: "contract",
+      contract_data: {
+        contract_number: rental.contract?.contractNumber || `HD-${rental.rentalCode}`,
+        rental_code: rental.rentalCode,
+        equipment_title: rental.equipment?.title || "Thiết bị",
+        rental_id: rental._id,
+        total_amount: rental.totalAmount || rental.rentalFee,
+        status: rental.status,
+        is_signed: Boolean(rental.contract?.termsAccepted || rental.contract?.signedAt),
+      },
+      is_read: false,
+    });
+
+    const { getIO } = require("../config/socket");
+    getIO().emit("chat:message", chatMsg);
+  } catch (chatErr) {
+    console.warn("Không thể tự động gửi tin nhắn cập nhật HĐ vào chat:", chatErr?.message);
+  }
+
+  // Gửi thông báo cho Renter
+  if (UserNotification && rental.renter?._id) {
+    await UserNotification.create({
+      user_id: rental.renter._id,
+      title: `📝 Chủ máy đã cập nhật điều khoản hợp đồng #${rental.rentalCode}`,
+      message: `Chủ thiết bị (${req.user.name}) đã cập nhật lại điều khoản hợp đồng. Bạn có thể vào khung chat để xem và tải hợp đồng mới nhất!`,
+      related_record_id: rental._id,
+    });
+  }
+
+  res.json({
+    success: true,
+    message: "Đã cập nhật điều khoản hợp đồng và tự động gửi thông báo vào khung chat cho khách!",
+    rental,
+    chatMessage: chatMsg,
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -1566,4 +1705,5 @@ module.exports = {
   getOwnerRentals,
   respondOwnerRental,
   confirmOwnerRentalPayment,
+  updateOwnerRentalContractTerms,
 };

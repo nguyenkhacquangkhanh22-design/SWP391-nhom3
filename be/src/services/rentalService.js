@@ -289,6 +289,8 @@ class RentalService {
       "CONTRACT_PENDING",
       "CONTRACT_SIGNED",
       "PAYMENT_PENDING",
+      "PAID",
+      "ACTIVE",
     ];
     if (!signableStatuses.includes(normStatus)) {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);

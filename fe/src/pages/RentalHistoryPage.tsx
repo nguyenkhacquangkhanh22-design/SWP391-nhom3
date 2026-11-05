@@ -944,7 +944,7 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Nút xem & tải Hợp đồng PDF */}
+                    {/* Chỉ hiển thị nút HĐ Chính thức khi đã hoàn tất ký/thanh toán. Trước đó chỉ xem & trao đổi trong Khung Chat */}
                     {(() => {
                       const isOfficial = Boolean(
                         r.contract?.renterSignature ||
@@ -958,18 +958,15 @@ export default function RentalHistoryPage() {
                         r.status === "confirmed" ||
                         r.status === "COMPLETED"
                       );
+                      if (!isOfficial) return null;
                       return (
                         <button
                           onClick={() => setViewingContractRental(r)}
-                          className={`px-3 py-2 border font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm ${
-                            isOfficial
-                              ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/50"
-                              : "bg-[#1b2537] hover:bg-[#25334a] border-[#2b3c54] text-orange-400 hover:text-orange-300"
-                          }`}
-                          title={isOfficial ? "Mở xem Hợp đồng chính thức" : "Mở xem Hợp đồng mẫu (Dự thảo)"}
+                          className="px-3 py-2 border font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm bg-emerald-950/40 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/50"
+                          title="Mở xem Hợp đồng chính thức"
                         >
-                          <span>{isOfficial ? "📜" : "📄"}</span>
-                          <span>{isOfficial ? "HĐ Chính thức (PDF)" : "HĐ Mẫu (PDF)"}</span>
+                          <span>📜</span>
+                          <span>HĐ Chính thức (PDF)</span>
                         </button>
                       );
                     })()}

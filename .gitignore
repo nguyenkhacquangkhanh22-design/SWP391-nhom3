@@ -11,3 +11,5 @@ rental-moderator-tasks.md
 *.pdf
 docs/
 ACCOUNTS.md
+be/uploads/*
+!be/uploads/.gitkeep

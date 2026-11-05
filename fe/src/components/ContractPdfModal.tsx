@@ -12,6 +12,8 @@ interface Props {
   onClose: () => void;
   signatureUrl?: string | null;
   signerName?: string;
+  isOwner?: boolean;
+  onEditContract?: () => void;
 }
 
 export default function ContractPdfModal({
@@ -20,6 +22,8 @@ export default function ContractPdfModal({
   onClose,
   signatureUrl,
   signerName,
+  isOwner = false,
+  onEditContract,
 }: Props) {
   if (!isOpen) return null;
 
@@ -68,7 +72,7 @@ export default function ContractPdfModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md animate-fadeIn">
       <div className="bg-[#121927] border border-[#273650] w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col h-[94vh] overflow-hidden">
         {/* Top Header Bar Gọn Gàng */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#212e44] bg-[#162032] gap-3">
@@ -80,15 +84,15 @@ export default function ContractPdfModal({
                   Hợp Đồng Thuê Thiết Bị
                 </span>
                 {isSignedOrOfficial ? (
-                  <span className="text-[11px] font-bold bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 px-2 py-0.5 rounded-full">
+                  <span className="text-[11px] font-bold bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                     ✓ Bản chính thức (Đã ký)
                   </span>
                 ) : (
-                  <span className="text-[11px] font-bold bg-amber-950/80 border border-amber-500/50 text-amber-300 px-2 py-0.5 rounded-full">
-                    📋 Bản mẫu dự thảo
+                  <span className="text-[11px] font-bold bg-amber-950/80 border border-amber-500/50 text-amber-300 px-2 py-0.5 rounded-full whitespace-nowrap">
+                    📋 Dự thảo hợp đồng
                   </span>
                 )}
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 whitespace-nowrap">
                   Miễn cọc
                 </span>
               </div>
@@ -101,10 +105,23 @@ export default function ContractPdfModal({
 
           {/* Action Buttons Gọn Gàng */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Nút Chủ máy sửa hợp đồng */}
+            {isOwner && onEditContract && (
+              <button
+                type="button"
+                onClick={onEditContract}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 whitespace-nowrap"
+                title="Chỉnh sửa điều khoản hợp đồng theo thỏa thuận với khách"
+              >
+                <span>✏️</span>
+                <span>Sửa điều khoản HĐ</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handlePrintPdf}
-              className="px-3.5 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-orange-600/20 flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-orange-600/20 flex items-center gap-1.5 whitespace-nowrap"
               title="Mở hộp thoại in / Lưu file PDF"
             >
               <span>🖨️</span>
@@ -114,7 +131,7 @@ export default function ContractPdfModal({
             <button
               type="button"
               onClick={handleDownload}
-              className="px-3 py-1.5 bg-[#202e45] hover:bg-[#2b3c58] text-slate-200 font-semibold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-[#2d3e5c]"
+              className="px-3 py-1.5 bg-[#202e45] hover:bg-[#2b3c58] text-slate-200 font-semibold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-[#2d3e5c] whitespace-nowrap"
               title="Tải file hợp đồng về máy"
             >
               <span>📥</span>
@@ -131,6 +148,33 @@ export default function ContractPdfModal({
             </button>
           </div>
         </div>
+
+        {/* Thanh hướng dẫn quyền hạn: Renter vs Owner */}
+        {!isOwner ? (
+          <div className="px-5 py-2 bg-gradient-to-r from-amber-950/40 via-sky-950/40 to-slate-900 border-b border-sky-800/30 text-xs text-sky-200 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span>ℹ️</span>
+              <span>
+                <strong>Dành cho Người thuê:</strong> Bạn chỉ có quyền xem hợp đồng. Nếu không đồng ý điều khoản hoặc chi phí nào, hãy <strong>nhắn tin trực tiếp vào khung chat</strong> để Chủ máy điều chỉnh theo thỏa thuận.
+              </span>
+            </div>
+            <span className="text-[10.5px] bg-sky-500/20 text-sky-300 px-2.5 py-0.5 rounded-full border border-sky-500/30 font-semibold whitespace-nowrap">
+              Quyền xem hợp đồng
+            </span>
+          </div>
+        ) : (
+          <div className="px-5 py-2 bg-gradient-to-r from-indigo-950/40 via-purple-950/40 to-slate-900 border-b border-purple-800/30 text-xs text-purple-200 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span>✏️</span>
+              <span>
+                <strong>Dành cho Chủ máy:</strong> Bạn có quyền <strong>chỉnh sửa trực tiếp</strong> các điều khoản, đơn giá, thời gian thuê nếu khách không đồng ý điều khoản nào. Nhấp nút <strong>"Sửa điều khoản HĐ"</strong> ở trên để cập nhật!
+              </span>
+            </div>
+            <span className="text-[10.5px] bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full border border-purple-500/30 font-semibold whitespace-nowrap">
+              Quyền chỉnh sửa của Chủ máy
+            </span>
+          </div>
+        )}
 
         {/* Mẹo nhỏ hướng dẫn ngắn gọn */}
         <div className="px-5 py-1.5 bg-blue-950/30 border-b border-blue-900/20 text-[11px] text-blue-300/90 flex items-center gap-1.5">

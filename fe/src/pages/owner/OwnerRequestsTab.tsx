@@ -4,6 +4,7 @@ import type { Rental } from "../../types/smartequip";
 import { ownerApi } from "../../services/ownerApi";
 import RentalChatModal from "../../components/RentalChatModal";
 import ContractPdfModal from "../../components/ContractPdfModal";
+import OwnerEditContractModal from "../../components/OwnerEditContractModal";
 
 interface Props {
   requests: RentalRequest[];
@@ -36,6 +37,7 @@ export default function OwnerRequestsTab({
   const [directLoading, setDirectLoading] = useState(false);
   const [chatRental, setChatRental] = useState<Rental | null>(null);
   const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
+  const [editingContractRental, setEditingContractRental] = useState<Rental | null>(null);
   const [previewBillUrl, setPreviewBillUrl] = useState<string | null>(null);
 
   const fetchDirectRentals = async () => {
@@ -421,6 +423,17 @@ export default function OwnerRequestsTab({
                               >
                                 📄 HĐ PDF
                               </button>
+
+                              {/* NÚT SỬA HỢP ĐỒNG TRỰC TIẾP DÀNH CHO OWNER */}
+                              <button
+                                type="button"
+                                onClick={() => setEditingContractRental(r)}
+                                className="button button-quiet"
+                                style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto", color: "#38bdf8", borderColor: "#0284c7" }}
+                                title="Chỉnh sửa điều khoản, biểu phí hợp đồng theo thỏa thuận"
+                              >
+                                ✏️ Sửa HĐ
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -698,7 +711,28 @@ export default function OwnerRequestsTab({
         <ContractPdfModal
           rental={viewingContractRental}
           isOpen={Boolean(viewingContractRental)}
+          isOwner={true}
+          onEditContract={() => {
+            const target = viewingContractRental;
+            setViewingContractRental(null);
+            setEditingContractRental(target);
+          }}
           onClose={() => setViewingContractRental(null)}
+        />
+      )}
+
+      {/* MODAL CHỈNH SỬA ĐIỀU KHOẢN HỢP ĐỒNG TRỰC TIẾP DÀNH CHO OWNER */}
+      {editingContractRental && (
+        <OwnerEditContractModal
+          rental={editingContractRental}
+          token={token}
+          isOpen={Boolean(editingContractRental)}
+          onClose={() => setEditingContractRental(null)}
+          onSuccess={() => {
+            setEditingContractRental(null);
+            fetchDirectRentals();
+            onSuccess("Đã cập nhật điều khoản hợp đồng & tự động gửi bản cập nhật vào khung chat!");
+          }}
         />
       )}
 

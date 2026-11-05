@@ -3,6 +3,7 @@ import { useAuth } from "../app/AuthProvider";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { ChatMessage, Rental } from "../types/smartequip";
 import ContractPdfModal from "./ContractPdfModal";
+import OwnerEditContractModal from "./OwnerEditContractModal";
 
 interface Props {
   isOpen: boolean;
@@ -32,40 +33,52 @@ export default function RentalChatModal({
   const token = propToken || auth.token || "";
   const currentUserId = propCurrentUserId || (auth.user as any)?._id || (auth.user as any)?.id || "";
 
-  // Tự động suy ra partnerUser nếu không truyền vào
-  const isOwnerCurrent = currentUserId === (typeof rental.owner === "object" ? rental.owner?._id : rental.owner);
+  // Quản lý trạng thái đơn thuê cục bộ để cập nhật tức thời khi Owner chỉnh sửa điều khoản
+  const [currentRental, setCurrentRental] = useState<Rental>(rental);
+
+  useEffect(() => {
+    setCurrentRental(rental);
+  }, [rental]);
+
+  // Kiểm tra vai trò Owner
+  const isOwnerCurrent =
+    String(currentUserId) === String(typeof currentRental.owner === "object" ? currentRental.owner?._id : currentRental.owner) ||
+    String(auth.user?.role).toLowerCase() === "owner";
+
   const partnerUser = propPartnerUser || (isOwnerCurrent
     ? {
-        _id: typeof rental.renter === "object" ? rental.renter?._id : (rental.renter as any),
-        name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
-        avatarUrl: typeof rental.renter === "object" ? rental.renter?.avatarUrl : undefined,
+        _id: typeof currentRental.renter === "object" ? currentRental.renter?._id : (currentRental.renter as any),
+        name: typeof currentRental.renter === "object" ? currentRental.renter?.name : "Khách thuê",
+        avatarUrl: typeof currentRental.renter === "object" ? currentRental.renter?.avatarUrl : undefined,
         role: "renter",
       }
     : {
-        _id: typeof rental.owner === "object" ? rental.owner?._id : (rental.owner as any),
-        name: typeof rental.owner === "object" ? rental.owner?.name : "Chủ máy",
-        avatarUrl: typeof rental.owner === "object" ? rental.owner?.avatarUrl : undefined,
+        _id: typeof currentRental.owner === "object" ? currentRental.owner?._id : (currentRental.owner as any),
+        name: typeof currentRental.owner === "object" ? currentRental.owner?.name : "Chủ máy",
+        avatarUrl: typeof currentRental.owner === "object" ? currentRental.owner?.avatarUrl : undefined,
         role: "owner",
       });
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [showEditContractModal, setShowEditContractModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const res = await smartEquipApi.getChatMessages(token, {
-        rentalId: rental._id,
+        rentalId: currentRental._id,
         otherUserId: partnerUser._id,
       });
       setMessages(res.data || []);
       // Mark as read
       smartEquipApi.markChatAsRead(token, {
         senderId: partnerUser._id,
-        rentalId: rental._id,
+        rentalId: currentRental._id,
       }).catch(() => {});
     } catch (err) {
       console.warn("Fetch chat error:", err);
@@ -82,7 +95,7 @@ export default function RentalChatModal({
       }, 3500);
       return () => clearInterval(interval);
     }
-  }, [isOpen, rental._id, partnerUser._id]);
+  }, [isOpen, currentRental._id, partnerUser._id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -99,7 +112,7 @@ export default function RentalChatModal({
     try {
       const res = await smartEquipApi.sendChatMessage(token, {
         receiverId: partnerUser._id,
-        rentalId: rental._id,
+        rentalId: currentRental._id,
         message: textToSend,
         messageType: "text",
       });
@@ -117,24 +130,24 @@ export default function RentalChatModal({
     if (sending) return;
     setSending(true);
 
-    const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
-    const equipmentTitle = rental.equipment?.title || "Thiết bị điện tử";
-    const totalAmount = rental.totalAmount || rental.rentalFee;
-    const isSigned = Boolean(rental.contract?.termsAccepted || rental.contract?.signedAt || rental.contract?.digitalSignature);
+    const contractNumber = currentRental.contract?.contractNumber || `HD-${currentRental.rentalCode}`;
+    const equipmentTitle = currentRental.equipment?.title || "Thiết bị điện tử";
+    const totalAmount = currentRental.totalAmount || currentRental.rentalFee;
+    const isSigned = Boolean(currentRental.contract?.termsAccepted || currentRental.contract?.signedAt || currentRental.contract?.digitalSignature);
 
     try {
       const res = await smartEquipApi.sendChatMessage(token, {
         receiverId: partnerUser._id,
-        rentalId: rental._id,
+        rentalId: currentRental._id,
         message: `Đã gửi bản hợp đồng điện tử #${contractNumber}`,
         messageType: "contract",
         contractData: {
           contract_number: contractNumber,
-          rental_code: rental.rentalCode,
+          rental_code: currentRental.rentalCode,
           equipment_title: equipmentTitle,
-          rental_id: rental._id,
+          rental_id: currentRental._id,
           total_amount: totalAmount,
-          status: rental.status,
+          status: currentRental.status,
           is_signed: isSigned,
         },
       });
@@ -154,11 +167,11 @@ export default function RentalChatModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121927] border border-[#24354f] w-full max-w-xl h-[620px] max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
+      <div className="bg-[#121927] border border-[#24354f] w-full max-w-xl h-[640px] max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
         {/* Header */}
-        <div className="px-5 py-3.5 bg-[#172235] border-b border-[#24354f] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
+        <div className="px-5 py-3.5 bg-[#172235] border-b border-[#24354f] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative shrink-0">
               {partnerUser.avatarUrl ? (
                 <img
                   src={partnerUser.avatarUrl}
@@ -173,35 +186,50 @@ export default function RentalChatModal({
               <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#172235] rounded-full"></span>
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-white text-sm leading-tight">{partnerUser.name}</h3>
-                <span className="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full font-semibold">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-white text-sm leading-tight truncate">{partnerUser.name}</h3>
+                <span className="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
                   {partnerRoleLabel}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
-                <span>Đơn thuê: <strong className="text-amber-300 font-mono">#{rental.rentalCode}</strong></span>
+              <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                <span>Đơn: <strong className="text-amber-300 font-mono">#{currentRental.rentalCode}</strong></span>
                 <span>•</span>
-                <span className="truncate max-w-[180px]">{rental.equipment?.title}</span>
+                <span className="truncate">{currentRental.equipment?.title}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Nút Xem HĐ: Sửa lỗi ngắt hàng 2 dòng thành 1 dòng gọn gàng */}
             <button
               type="button"
               onClick={() => setShowPdfModal(true)}
-              className="px-2.5 py-1.5 bg-[#1e2c44] hover:bg-[#283b5c] text-orange-400 hover:text-orange-300 text-xs font-semibold rounded-lg border border-[#2c4063] transition-all flex items-center gap-1 shadow-sm"
-              title="Xem hợp đồng"
+              className="px-3 py-1.5 bg-[#1e2c44] hover:bg-[#283b5c] text-orange-400 hover:text-orange-300 text-xs font-semibold rounded-lg border border-[#2c4063] transition-all flex items-center gap-1 shadow-sm whitespace-nowrap shrink-0"
+              title="Xem hợp đồng điện tử"
             >
               <span>📄</span>
               <span>Xem HĐ</span>
             </button>
+
+            {/* Quyền Chủ máy: Nút chỉnh sửa hợp đồng trực tiếp */}
+            {isOwnerCurrent && (
+              <button
+                type="button"
+                onClick={() => setShowEditContractModal(true)}
+                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg border border-blue-400/40 transition-all flex items-center gap-1 shadow-sm whitespace-nowrap shrink-0"
+                title="Chỉnh sửa điều khoản & biểu phí hợp đồng theo thỏa thuận"
+              >
+                <span>✏️</span>
+                <span>Sửa HĐ</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
-              className="text-slate-400 hover:text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1e2c44] transition-all"
+              className="text-slate-400 hover:text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1e2c44] transition-all shrink-0"
             >
               ✕
             </button>
@@ -219,7 +247,7 @@ export default function RentalChatModal({
               <span className="text-3xl">💬</span>
               <p className="text-xs text-slate-300 font-semibold">Chưa có tin nhắn nào</p>
               <p className="text-[11px] text-slate-500 max-w-xs">
-                Bạn và đối tác có thể trao đổi về tình trạng máy, giờ nhận trả, hoặc bấm <strong>"Gửi bản hợp đồng"</strong> bên dưới để xác nhận các điều khoản thuê.
+                Bạn và đối tác có thể trao đổi về tình trạng máy, thời gian nhận trả, hoặc nhấn <strong>"Gửi bản hợp đồng"</strong> bên dưới để thảo luận các điều khoản.
               </p>
             </div>
           ) : (
@@ -281,20 +309,33 @@ export default function RentalChatModal({
                       </div>
 
                       <div className="pt-2 border-t border-[#253754] flex gap-2">
+                        {/* Nút Xem Hợp Đồng PDF: Mở ContractPdfModal trực tiếp với z-[9999] */}
                         <button
                           type="button"
                           onClick={() => {
                             if (onViewContract) {
-                              onViewContract(rental);
-                            } else {
-                              setShowPdfModal(true);
+                              onViewContract(currentRental);
                             }
+                            setShowPdfModal(true);
                           }}
                           className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1"
                         >
                           <span>🔍</span>
                           <span>Xem Hợp Đồng PDF</span>
                         </button>
+
+                        {/* Chủ máy có nút sửa hợp đồng nhanh ngay trên thẻ */}
+                        {isOwnerCurrent && (
+                          <button
+                            type="button"
+                            onClick={() => setShowEditContractModal(true)}
+                            className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 font-bold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 shrink-0"
+                            title="Sửa điều khoản cho hợp đồng này"
+                          >
+                            <span>✏️</span>
+                            <span>Sửa</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -317,27 +358,42 @@ export default function RentalChatModal({
         </div>
 
         {/* Quick Toolbar */}
-        <div className="px-4 py-2 bg-[#141d2d] border-t border-[#212f45] flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 font-medium">Thao tác nhanh:</span>
-            <button
-              type="button"
-              onClick={handleSendContract}
-              disabled={sending}
-              className="px-2.5 py-1 bg-gradient-to-r from-orange-600/30 to-amber-600/30 hover:from-orange-600/50 hover:to-amber-600/50 border border-orange-500/50 text-orange-300 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
-            >
-              <span>📄</span>
-              <span>Gửi bản hợp đồng vào chat</span>
-            </button>
-          </div>
-          <span className="text-[10px] text-slate-400">Tự động đồng bộ tin nhắn</span>
+        <div className="px-4 py-2 bg-[#141d2d] border-t border-[#212f45] flex items-center justify-between text-xs gap-2">
+          {isOwnerCurrent ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-slate-400 font-medium">Thao tác Chủ máy:</span>
+              <button
+                type="button"
+                onClick={handleSendContract}
+                disabled={sending}
+                className="px-2.5 py-1 bg-gradient-to-r from-orange-600/30 to-amber-600/30 hover:from-orange-600/50 hover:to-amber-600/50 border border-orange-500/50 text-orange-300 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <span>📄</span>
+                <span>Gửi hợp đồng vào chat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEditContractModal(true)}
+                className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <span>✏️</span>
+                <span>Sửa điều khoản HĐ</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[11px] text-sky-300">
+              <span>💬</span>
+              <span>Renter có quyền xem hợp đồng. Nếu bạn không đồng ý điều khoản nào, hãy gõ tin nhắn để Owner chỉnh sửa.</span>
+            </div>
+          )}
+          <span className="text-[10px] text-slate-400 shrink-0">Tự động đồng bộ tin nhắn</span>
         </div>
 
         {/* Chat Input */}
         <form onSubmit={handleSendMessage} className="p-3 bg-[#172235] border-t border-[#24354f] flex items-center gap-2">
           <input
             type="text"
-            placeholder="Nhập tin nhắn trao đổi với đối tác..."
+            placeholder={isOwnerCurrent ? "Nhập tin nhắn trao đổi hoặc phản hồi điều khoản với khách..." : "Nhắn tin phản hồi hoặc đề xuất sửa điều khoản với Chủ máy..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             disabled={sending}
@@ -346,7 +402,7 @@ export default function RentalChatModal({
           <button
             type="submit"
             disabled={!inputText.trim() || sending}
-            className="px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1"
+            className="px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1 shrink-0"
           >
             <span>Gửi</span>
             <span>➔</span>
@@ -354,12 +410,32 @@ export default function RentalChatModal({
         </form>
       </div>
 
-      {/* Modal Xem Hợp đồng PDF */}
+      {/* Modal Xem Hợp đồng PDF - Mở trực tiếp với z-[9999] */}
       {showPdfModal && (
         <ContractPdfModal
-          rental={rental}
+          rental={currentRental}
           isOpen={showPdfModal}
+          isOwner={isOwnerCurrent}
+          onEditContract={() => {
+            setShowPdfModal(false);
+            setShowEditContractModal(true);
+          }}
           onClose={() => setShowPdfModal(false)}
+        />
+      )}
+
+      {/* Modal Chỉnh Sửa Điều Khoản & Biểu Phí Hợp Đồng Cho Owner */}
+      {showEditContractModal && (
+        <OwnerEditContractModal
+          rental={currentRental}
+          token={token}
+          isOpen={showEditContractModal}
+          onClose={() => setShowEditContractModal(false)}
+          onSuccess={(updated) => {
+            setCurrentRental(updated);
+            setShowEditContractModal(false);
+            void fetchMessages(true);
+          }}
         />
       )}
     </div>

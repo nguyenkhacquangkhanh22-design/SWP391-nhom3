@@ -12,3 +12,4 @@ router.post("/send", asyncHandler(chatController.sendMessage));
 router.patch("/read", asyncHandler(chatController.markAsRead));
 
 module.exports = router;
+

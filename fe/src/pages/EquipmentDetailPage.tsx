@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Navbar from "../components/Navbar";
-import ContractPdfModal from "../components/ContractPdfModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Equipment, Rental } from "../types/smartequip";
 import {
@@ -94,7 +93,6 @@ export default function EquipmentDetailPage() {
   };
 
   // Modal ký hợp đồng sau khi tạo đơn thành công
-    const [showDraftPdf, setShowDraftPdf] = useState(false);
   const [submittedRental, setSubmittedRental] = useState<Rental | null>(null);
 
   useEffect(() => {
@@ -679,17 +677,9 @@ export default function EquipmentDetailPage() {
                     </span>
                   </div>
 
-                  {/* Nút xem trước Hợp đồng mẫu dự thảo */}
                   <div className="pt-2 flex justify-between items-center text-xs">
-                    <span className="text-slate-400">Điều khoản hợp đồng:</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowDraftPdf(true)}
-                      className="text-orange-400 hover:text-orange-300 font-semibold underline flex items-center gap-1 transition-all"
-                    >
-                      <span>📄</span>
-                      <span>Xem Hợp đồng mẫu (Dự thảo)</span>
-                    </button>
+                    <span className="text-slate-400">Hợp đồng điện tử:</span>
+                    <span className="text-slate-300 font-medium">💬 Xem & Trao đổi trực tiếp trong Khung Chat</span>
                   </div>
                 </div>
 
@@ -796,54 +786,6 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Modal Xem trước Hợp đồng mẫu (Dự thảo) */}
-      {showDraftPdf && equipment && (
-        <ContractPdfModal
-          rental={{
-            _id: "draft-sample",
-            rentalCode: "DRAFT-SAMPLE",
-            equipment: equipment,
-            renter: user ? user.name : "Người thuê SmartEquip",
-            owner: equipment.owner || {
-              _id: "owner-id",
-              name: "Chủ sở hữu thiết bị",
-              email: "owner@smartequip.vn",
-            },
-            startDate: startDate || new Date().toISOString(),
-            endDate: endDate || new Date(Date.now() + 86400000).toISOString(),
-            totalDays: totalDays > 0 ? totalDays : 1,
-            dailyRate: dailyRate > 0 ? dailyRate : (equipment.dailyRate || 100000),
-            rentalFee: rentalFee > 0 ? rentalFee : (equipment.dailyRate || 100000),
-            depositAmount: 0,
-            discountAmount: discountAmount,
-            shippingFee: shippingFee,
-            totalAmount: totalAmount > 0 ? totalAmount : (equipment.dailyRate || 100000) + shippingFee,
-            status: "pending",
-            deliveryAddress: deliveryAddress || "Địa chỉ nhận thiết bị của bạn",
-            deliveryTime: deliveryTime,
-            returnTime: returnTime,
-            deliveryMethod: deliveryMethod,
-            returnMethod: returnMethod,
-            payment: {
-              isPaid: false,
-              paymentStatus: "unpaid",
-              amountPaid: 0,
-            },
-            contract: {
-              contractNumber: "HD-MAU-DU-THAO",
-              contractTerms: "Hợp đồng mẫu dự thảo tham khảo",
-              termsAccepted: false,
-            },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }}
-          isOpen={showDraftPdf}
-          onClose={() => setShowDraftPdf(false)}
-        />
-      )}
-
-
     </div>
   );
 }

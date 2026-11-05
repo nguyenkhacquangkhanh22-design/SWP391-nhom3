@@ -182,6 +182,17 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
       })
     : signedDateStr;
 
+  const ownerBankInfo = (rental.owner as any)?.bankInfo;
+  const bankNameDisplay = ownerBankInfo?.bankName || "MB Bank";
+  const accNumDisplay = ownerBankInfo?.accountNumber || "111105056666";
+  const accHolderDisplay = ownerBankInfo?.accountHolder || ownerName;
+
+  const customTermsHtml = rental.contract?.contractTerms
+    ? `<li style="color:#0369a1; background:#f0f9ff; padding:6px 10px; border-radius:6px; border-left:3px solid #0284c7; margin-bottom:6px;">
+        <strong>Điều khoản cam kết bổ sung do Chủ máy & Khách thuê thỏa thuận:</strong> ${rental.contract.contractTerms}
+      </li>`
+    : "";
+
   const sealSvg = isConfirmedPaid ? getOfficialSealSvg() : getDraftSealSvg();
 
   const titleText = isConfirmedPaid
@@ -498,12 +509,13 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
     </table>
 
     <div style="font-size:10.5pt; color:#475569; margin-bottom:12px;">
-      * Phương thức thanh toán: <strong>Chuyển khoản VietQR Ngân hàng MB Bank (STK 111105056666 - NGUYEN KHAC QUANG KHANH)</strong>.
+      * Phương thức thanh toán: <strong>Chuyển khoản VietQR Ngân hàng ${bankNameDisplay} (STK ${accNumDisplay} - ${accHolderDisplay})</strong>.
     </div>
 
     <!-- Section 4: Terms and Commitments -->
     <div class="section-title">IV. ĐIỀU KHOẢN VÀ CAM KẾT CHÍNH THỨC</div>
     <ol class="terms-list">
+      ${customTermsHtml}
       <li><strong>Chính sách Miễn phí cọc SmartEquip:</strong> Nền tảng SmartEquip cùng Bên Cho Thuê áp dụng chính sách <strong>Miễn 100% tiền cọc bảo đảm</strong> cho khách thuê đã xác thực danh tính (KYC).</li>
       <li><strong>Đúng giờ giao nhận:</strong> Hai bên cam kết tuân thủ đúng khung giờ giao nhận (<strong>${deliveryTime}</strong>) và giờ trả máy (<strong>${returnTime}</strong>) theo phương thức vận chuyển đã lựa chọn.</li>
       <li><strong>Trách nhiệm bảo quản:</strong> Bên B cam kết sử dụng cẩn thận, đúng thông số kỹ thuật và hoàn trả đầy đủ linh kiện, phụ kiện kèm theo máy.</li>

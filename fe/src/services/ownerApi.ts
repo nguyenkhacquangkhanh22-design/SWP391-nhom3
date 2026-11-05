@@ -207,6 +207,34 @@ export const ownerApi = {
       token
     ),
 
+  updateOwnerRentalContractTerms: (
+    token: string,
+    rentalId: string,
+    data: {
+      contractTerms?: string;
+      dailyRate?: number;
+      totalDays?: number;
+      rentalFee?: number;
+      depositAmount?: number;
+      discountAmount?: number;
+      shippingFee?: number;
+      totalAmount?: number;
+      startDate?: string;
+      endDate?: string;
+      deliveryTime?: string;
+      returnTime?: string;
+      deliveryAddress?: string;
+      deliveryMethod?: string;
+      returnMethod?: string;
+      changeSummary?: string;
+    }
+  ) =>
+    request<{ success: boolean; message: string; rental: any; chatMessage?: any }>(
+      `/api/owner/rentals/${rentalId}/contract`,
+      { method: "PATCH", body: JSON.stringify(data) },
+      token
+    ),
+
   // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
   getContracts: (token: string) =>
     request<{ contracts: RentalContract[] }>("/api/owner/contracts", { method: "GET" }, token),
