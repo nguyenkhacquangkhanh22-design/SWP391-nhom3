@@ -272,22 +272,6 @@ export default function RentalChatModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Nút Xem HĐ: Gọn gàng trên cùng 1 hàng */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onViewContract) {
-                  onViewContract(currentRental);
-                }
-                setShowPdfModal(true);
-              }}
-              className="px-3 py-1.5 bg-[#1e2c44] hover:bg-[#283b5c] text-orange-400 hover:text-orange-300 text-xs font-semibold rounded-lg border border-[#2c4063] transition-all flex items-center gap-1 shadow-sm whitespace-nowrap shrink-0"
-              title="Xem hợp đồng điện tử"
-            >
-              <span>📄</span>
-              <span>Xem HĐ</span>
-            </button>
-
             <button
               type="button"
               onClick={onClose}
@@ -371,7 +355,7 @@ export default function RentalChatModal({
                       </div>
 
                       <div className="pt-2 border-t border-[#253754] flex gap-2">
-                        {/* Nút Xem Hợp Đồng PDF: Mở ContractPdfModal trực tiếp với z-[9999] */}
+                        {/* Nút Xem Hợp Đồng: Mở ContractPdfModal trực tiếp với z-[9999] */}
                         <button
                           type="button"
                           onClick={() => {
@@ -380,10 +364,10 @@ export default function RentalChatModal({
                             }
                             setShowPdfModal(true);
                           }}
-                          className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1"
+                          className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
                         >
-                          <span>🔍</span>
-                          <span>Xem Hợp Đồng PDF</span>
+                          <span>📄</span>
+                          <span>Xem hợp đồng</span>
                         </button>
                       </div>
                     </div>
@@ -510,7 +494,7 @@ export default function RentalChatModal({
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
             className="p-2 bg-[#1b263b] hover:bg-[#253552] text-slate-300 hover:text-orange-400 rounded-xl transition-all border border-[#2b3c59] flex items-center justify-center shrink-0"
-            title="Đính kèm ảnh thiết bị / biên lai (hoặc dán Ctrl+V trực tiếp)"
+            title="Đính kèm ảnh thiết bị / biên lai"
           >
             <span className="text-base">📷</span>
           </button>
@@ -519,8 +503,8 @@ export default function RentalChatModal({
             type="text"
             placeholder={
               selectedImageFile
-                ? "Nhập lời nhắn hoặc ghi chú kèm ảnh (tùy chọn)..."
-                : "Nhập tin nhắn (hỗ trợ dán ảnh Ctrl+V trực tiếp)..."
+                ? "Nhập lời nhắn hoặc ghi chú kèm ảnh..."
+                : "Nhập tin nhắn..."
             }
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

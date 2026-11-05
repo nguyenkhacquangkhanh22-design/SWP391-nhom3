@@ -966,7 +966,7 @@ export default function RentalHistoryPage() {
                           title="Mở xem Hợp đồng chính thức"
                         >
                           <span>📜</span>
-                          <span>HĐ Chính thức (PDF)</span>
+                          <span>Xem hợp đồng</span>
                         </button>
                       );
                     })()}
