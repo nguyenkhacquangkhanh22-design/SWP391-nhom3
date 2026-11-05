@@ -36,16 +36,34 @@ async function getConversation(req, res) {
   });
 }
 
+async function uploadChatImage(req, res) {
+  if (!req.file) {
+    throw new AppError(400, "Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, WEBP)");
+  }
+  const imageUrl = `/uploads/${req.file.filename}`;
+  res.json({
+    success: true,
+    url: imageUrl,
+    filename: req.file.filename,
+  });
+}
+
 async function sendMessage(req, res) {
   const currentUserId = req.user._id;
-  const { receiverId, rentalId, message, messageType = "text", contractData } = req.body;
+  const { receiverId, rentalId, message, messageType = "text", fileUrl, imageUrl, contractData } = req.body;
 
   if (!receiverId) {
     throw new AppError(400, "Receiver ID is required");
   }
 
+  const effectiveFileUrl = fileUrl || imageUrl || "";
+
   if (messageType === "text" && (!message || !message.trim())) {
     throw new AppError(400, "Message cannot be empty");
+  }
+
+  if (messageType === "image" && !effectiveFileUrl && (!message || !message.trim())) {
+    throw new AppError(400, "Vui lòng đính kèm hình ảnh để gửi");
   }
 
   const receiver = await User.findById(receiverId);
@@ -57,8 +75,9 @@ async function sendMessage(req, res) {
     sender: currentUserId,
     receiver: receiverId,
     rental_id: rentalId || undefined,
-    message: message ? message.trim() : "",
+    message: message ? message.trim() : (messageType === "image" ? "[Hình ảnh]" : ""),
     message_type: messageType,
+    file_url: effectiveFileUrl || (message && (message.startsWith("/uploads/") || message.startsWith("data:image")) ? message : ""),
     contract_data: contractData || undefined,
   });
 
@@ -89,6 +108,8 @@ async function sendMessage(req, res) {
       const senderName = req.user.name || "Người dùng";
       const previewText = messageType === "contract"
         ? `Đã gửi bản hợp đồng điện tử`
+        : messageType === "image"
+        ? `📷 Đã gửi một hình ảnh${message && message !== "[Hình ảnh]" ? `: ${message.slice(0, 40)}` : ""}`
         : message.slice(0, 80);
 
       await UserNotification.create({
@@ -127,6 +148,7 @@ async function markAsRead(req, res) {
 module.exports = {
   getConversation,
   sendMessage,
+  uploadChatImage,
   markAsRead,
 };
 

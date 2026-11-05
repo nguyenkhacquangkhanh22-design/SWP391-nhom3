@@ -65,6 +65,13 @@ export default function RentalChatModal({
   const [sending, setSending] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showEditContractModal, setShowEditContractModal] = useState(false);
+
+  // Gửi ảnh cho 2 phía (Renter & Owner)
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async (silent = false) => {
@@ -101,21 +108,84 @@ export default function RentalChatModal({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      alert("Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, WEBP...)");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Kích thước ảnh tối đa 15MB");
+      return;
+    }
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setSelectedImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleFileSelect(file);
+          break;
+        }
+      }
+    }
+  };
+
+  const handleCancelImage = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setSelectedImageFile(null);
+    setImagePreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || sending) return;
+    if ((!inputText.trim() && !selectedImageFile) || sending) return;
 
     const textToSend = inputText.trim();
+    const imageFileToSend = selectedImageFile;
+
     setInputText("");
+    setSelectedImageFile(null);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     setSending(true);
 
     try {
+      let uploadedFileUrl: string | undefined = undefined;
+      let msgType: "text" | "image" = "text";
+
+      if (imageFileToSend) {
+        msgType = "image";
+        const uploadRes = await smartEquipApi.uploadChatImage(token, imageFileToSend);
+        uploadedFileUrl = uploadRes.url;
+      }
+
       const res = await smartEquipApi.sendChatMessage(token, {
         receiverId: partnerUser._id,
         rentalId: currentRental._id,
-        message: textToSend,
-        messageType: "text",
+        message: textToSend || (msgType === "image" ? "[Hình ảnh]" : ""),
+        messageType: msgType,
+        fileUrl: uploadedFileUrl,
       });
+
       if (res.data) {
         setMessages((prev) => [...prev, res.data]);
       }
@@ -168,7 +238,7 @@ export default function RentalChatModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fadeIn">
       <div className="bg-[#121927] border border-[#24354f] w-full max-w-xl h-[640px] max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
-        {/* Header */}
+        {/* Header - Gọn gàng, đã bỏ nút Sửa HĐ dư thừa */}
         <div className="px-5 py-3.5 bg-[#172235] border-b border-[#24354f] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
@@ -202,29 +272,21 @@ export default function RentalChatModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Nút Xem HĐ: Sửa lỗi ngắt hàng 2 dòng thành 1 dòng gọn gàng */}
+            {/* Nút Xem HĐ: Gọn gàng trên cùng 1 hàng */}
             <button
               type="button"
-              onClick={() => setShowPdfModal(true)}
+              onClick={() => {
+                if (onViewContract) {
+                  onViewContract(currentRental);
+                }
+                setShowPdfModal(true);
+              }}
               className="px-3 py-1.5 bg-[#1e2c44] hover:bg-[#283b5c] text-orange-400 hover:text-orange-300 text-xs font-semibold rounded-lg border border-[#2c4063] transition-all flex items-center gap-1 shadow-sm whitespace-nowrap shrink-0"
               title="Xem hợp đồng điện tử"
             >
               <span>📄</span>
               <span>Xem HĐ</span>
             </button>
-
-            {/* Quyền Chủ máy: Nút chỉnh sửa hợp đồng trực tiếp */}
-            {isOwnerCurrent && (
-              <button
-                type="button"
-                onClick={() => setShowEditContractModal(true)}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg border border-blue-400/40 transition-all flex items-center gap-1 shadow-sm whitespace-nowrap shrink-0"
-                title="Chỉnh sửa điều khoản & biểu phí hợp đồng theo thỏa thuận"
-              >
-                <span>✏️</span>
-                <span>Sửa HĐ</span>
-              </button>
-            )}
 
             <button
               type="button"
@@ -247,7 +309,7 @@ export default function RentalChatModal({
               <span className="text-3xl">💬</span>
               <p className="text-xs text-slate-300 font-semibold">Chưa có tin nhắn nào</p>
               <p className="text-[11px] text-slate-500 max-w-xs">
-                Bạn và đối tác có thể trao đổi về tình trạng máy, thời gian nhận trả, hoặc nhấn <strong>"Gửi bản hợp đồng"</strong> bên dưới để thảo luận các điều khoản.
+                Bạn và đối tác có thể trao đổi tình trạng máy, gửi ảnh thiết bị bằng biểu tượng 📷, hoặc bấm <strong>"Gửi bản hợp đồng"</strong> để thảo luận điều khoản.
               </p>
             </div>
           ) : (
@@ -323,25 +385,43 @@ export default function RentalChatModal({
                           <span>🔍</span>
                           <span>Xem Hợp Đồng PDF</span>
                         </button>
-
-                        {/* Chủ máy có nút sửa hợp đồng nhanh ngay trên thẻ */}
-                        {isOwnerCurrent && (
-                          <button
-                            type="button"
-                            onClick={() => setShowEditContractModal(true)}
-                            className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 font-bold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 shrink-0"
-                            title="Sửa điều khoản cho hợp đồng này"
-                          >
-                            <span>✏️</span>
-                            <span>Sửa</span>
-                          </button>
-                        )}
                       </div>
+                    </div>
+                  ) : msg.message_type === "image" || msg.file_url ? (
+                    /* Image message bubble for Both Renter & Owner */
+                    <div
+                      className={`p-2 rounded-2xl max-w-xs sm:max-w-sm shadow-md overflow-hidden ${
+                        isMine
+                          ? "bg-gradient-to-br from-orange-600 to-amber-600 text-white rounded-br-none"
+                          : "bg-[#1c273b] border border-[#2b3c59] text-slate-100 rounded-bl-none"
+                      }`}
+                    >
+                      <div className="relative group overflow-hidden rounded-xl bg-black/30 flex items-center justify-center">
+                        <img
+                          src={msg.file_url || msg.message}
+                          alt="Ảnh đính kèm"
+                          onClick={() => setPreviewZoomImage(msg.file_url || msg.message)}
+                          className="max-h-60 max-w-full w-auto object-contain rounded-xl cursor-pointer hover:scale-[1.02] transition-transform duration-200"
+                          loading="lazy"
+                        />
+                        <div
+                          onClick={() => setPreviewZoomImage(msg.file_url || msg.message)}
+                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-xs font-semibold gap-1.5"
+                        >
+                          <span>🔍</span>
+                          <span>Xem ảnh lớn</span>
+                        </div>
+                      </div>
+                      {msg.message && msg.message !== "[Hình ảnh]" && (
+                        <p className="px-1.5 pt-2 pb-0.5 text-xs text-white leading-relaxed break-words font-medium">
+                          {msg.message}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     /* Normal text message */
                     <div
-                      className={`px-3.5 py-2.5 rounded-2xl text-xs max-w-sm leading-relaxed shadow-sm ${
+                      className={`px-3.5 py-2.5 rounded-2xl text-xs max-w-sm leading-relaxed shadow-sm break-words ${
                         isMine
                           ? "bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-br-none"
                           : "bg-[#1c273b] border border-[#2b3c59] text-slate-100 rounded-bl-none"
@@ -357,7 +437,7 @@ export default function RentalChatModal({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick Toolbar */}
+        {/* Quick Toolbar - Đã bỏ nút Sửa điều khoản HĐ dư thừa */}
         <div className="px-4 py-2 bg-[#141d2d] border-t border-[#212f45] flex items-center justify-between text-xs gap-2">
           {isOwnerCurrent ? (
             <div className="flex items-center gap-2 flex-wrap">
@@ -371,41 +451,100 @@ export default function RentalChatModal({
                 <span>📄</span>
                 <span>Gửi hợp đồng vào chat</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setShowEditContractModal(true)}
-                className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              >
-                <span>✏️</span>
-                <span>Sửa điều khoản HĐ</span>
-              </button>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-[11px] text-sky-300">
               <span>💬</span>
-              <span>Renter có quyền xem hợp đồng. Nếu bạn không đồng ý điều khoản nào, hãy gõ tin nhắn để Owner chỉnh sửa.</span>
+              <span>Renter có quyền xem hợp đồng và gửi ảnh thiết bị / tin nhắn cho Owner.</span>
             </div>
           )}
           <span className="text-[10px] text-slate-400 shrink-0">Tự động đồng bộ tin nhắn</span>
         </div>
 
-        {/* Chat Input */}
+        {/* Image Attachment Preview Banner if selected */}
+        {imagePreviewUrl && (
+          <div className="px-4 py-2 bg-[#0e1625] border-t border-[#23334d] flex items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src={imagePreviewUrl}
+                alt="Xem trước ảnh"
+                className="w-10 h-10 object-cover rounded-lg border border-orange-500/50 shrink-0"
+              />
+              <div className="min-w-0 text-xs">
+                <span className="font-semibold text-slate-200 block truncate">
+                  {selectedImageFile?.name || "Ảnh đã đính kèm"}
+                </span>
+                <span className="text-[10px] text-emerald-400">
+                  {selectedImageFile ? `${(selectedImageFile.size / 1024).toFixed(0)} KB • Sẵn sàng gửi` : "Ảnh từ clipboard"}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelImage}
+              className="text-xs text-rose-400 hover:text-rose-300 font-semibold px-2 py-1 rounded hover:bg-rose-950/30 transition-all flex items-center gap-1 shrink-0"
+            >
+              <span>✕</span>
+              <span>Hủy ảnh</span>
+            </button>
+          </div>
+        )}
+
+        {/* Chat Input Bar */}
         <form onSubmit={handleSendMessage} className="p-3 bg-[#172235] border-t border-[#24354f] flex items-center gap-2">
+          {/* Hidden File Input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileSelect(file);
+            }}
+          />
+
+          {/* Nút gửi ảnh cho 2 phía (Renter & Owner) */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            className="p-2 bg-[#1b263b] hover:bg-[#253552] text-slate-300 hover:text-orange-400 rounded-xl transition-all border border-[#2b3c59] flex items-center justify-center shrink-0"
+            title="Đính kèm ảnh thiết bị / biên lai (hoặc dán Ctrl+V trực tiếp)"
+          >
+            <span className="text-base">📷</span>
+          </button>
+
           <input
             type="text"
-            placeholder={isOwnerCurrent ? "Nhập tin nhắn trao đổi hoặc phản hồi điều khoản với khách..." : "Nhắn tin phản hồi hoặc đề xuất sửa điều khoản với Chủ máy..."}
+            placeholder={
+              selectedImageFile
+                ? "Nhập lời nhắn hoặc ghi chú kèm ảnh (tùy chọn)..."
+                : "Nhập tin nhắn (hỗ trợ dán ảnh Ctrl+V trực tiếp)..."
+            }
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            onPaste={handlePaste}
             disabled={sending}
             className="flex-1 bg-[#0f1624] border border-[#2b3c59] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
           />
+
           <button
             type="submit"
-            disabled={!inputText.trim() || sending}
+            disabled={(!inputText.trim() && !selectedImageFile) || sending}
             className="px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1 shrink-0"
           >
-            <span>Gửi</span>
-            <span>➔</span>
+            {sending ? (
+              <span className="flex items-center gap-1">
+                <span className="animate-spin text-[10px]">⏳</span>
+                <span>Gửi...</span>
+              </span>
+            ) : (
+              <>
+                <span>Gửi</span>
+                <span>➔</span>
+              </>
+            )}
           </button>
         </form>
       </div>
@@ -437,6 +576,41 @@ export default function RentalChatModal({
             void fetchMessages(true);
           }}
         />
+      )}
+
+      {/* Lightbox xem ảnh lớn khi click vào ảnh trong chat */}
+      {previewZoomImage && (
+        <div
+          className="fixed inset-0 z-[10001] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
+          onClick={() => setPreviewZoomImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewZoomImage}
+              alt="Ảnh phóng to"
+              className="max-w-full max-h-[82vh] object-contain rounded-xl shadow-2xl border border-slate-700"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <a
+                href={previewZoomImage}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="px-4 py-1.5 bg-[#1e2a3f] hover:bg-[#283854] text-slate-200 text-xs font-semibold rounded-lg border border-slate-600 transition-all flex items-center gap-1.5"
+              >
+                <span>📥</span>
+                <span>Mở ảnh gốc</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewZoomImage(null)}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition-all"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

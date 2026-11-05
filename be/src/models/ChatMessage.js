@@ -29,6 +29,11 @@ const chatMessageSchema = new mongoose.Schema(
       enum: ["text", "contract", "image"],
       default: "text",
     },
+    file_url: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     contract_data: {
       contract_number: { type: String, trim: true },
       rental_code: { type: String, trim: true },

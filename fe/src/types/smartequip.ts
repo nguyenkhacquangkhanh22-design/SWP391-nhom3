@@ -58,6 +58,7 @@ export interface ChatMessage {
   };
   message: string;
   message_type: "text" | "contract" | "image";
+  file_url?: string;
   contract_data?: {
     contract_number?: string;
     rental_code?: string;
@@ -213,6 +214,7 @@ export interface ChatMessage {
   };
   message: string;
   message_type: "text" | "contract" | "image";
+  file_url?: string;
   contract_data?: {
     contract_number?: string;
     rental_code?: string;

@@ -289,6 +289,7 @@ export const smartEquipApi = {
       rentalId?: string;
       message?: string;
       messageType?: "text" | "contract" | "image";
+      fileUrl?: string;
       contractData?: any;
     },
   ) =>
@@ -297,6 +298,21 @@ export const smartEquipApi = {
       { method: "POST", body: JSON.stringify(data) },
       token,
     ),
+
+  uploadChatImage: async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch("/api/chat/upload-image", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Không thể tải ảnh lên");
+    return data as { success: boolean; url: string; filename: string };
+  },
 
   markChatAsRead: (token: string, data: { senderId?: string; rentalId?: string }) =>
     request<{ success: boolean; message: string }>(
