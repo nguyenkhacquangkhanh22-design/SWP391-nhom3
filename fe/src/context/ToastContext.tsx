@@ -125,7 +125,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { user } = useAuth();
   const navigate = useNavigate();
-  const lastProcessedRef = useRef<Set<string>>(new Set());
+  const recentToastsRef = useRef<Map<string, number>>(new Map());
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -133,7 +133,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback(
     (options: ShowToastOptions): string => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      // Khóa định danh duy nhất để chống nảy thông báo trùng lặp 2 lần
+      const dedupeKey = options.rentalCode
+        ? `${options.type || "info"}#${options.rentalCode}`
+        : `${options.type || "info"}#${options.title}#${options.message}`;
+
+      const now = Date.now();
+      const lastShown = recentToastsRef.current.get(dedupeKey) || 0;
+      // Nếu cùng 1 thông báo vừa hiển thị trong vòng 6 giây -> Chặn tuyệt đối
+      if (now - lastShown < 6000) {
+        return "";
+      }
+      recentToastsRef.current.set(dedupeKey, now);
+
+      const id = `toast-${now}-${Math.random().toString(36).substring(2, 7)}`;
       const duration = options.duration ?? 6500;
       const newToast: ToastItem = {
         id,
@@ -143,11 +156,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         link: options.link,
         rentalCode: options.rentalCode,
         duration,
-        createdAt: Date.now(),
+        createdAt: now,
       };
 
       setToasts((prev) => {
-        // Giới hạn tối đa 4 thông báo cùng lúc trên màn hình
+        // Kiểm tra chặn nếu thông báo tương tự đang hiển thị trên màn hình
+        const isAlreadyVisible = prev.some(
+          (t) =>
+            t.type === newToast.type &&
+            ((t.rentalCode && newToast.rentalCode && t.rentalCode === newToast.rentalCode) ||
+              (t.title === newToast.title && t.message === newToast.message))
+        );
+        if (isAlreadyVisible) {
+          return prev;
+        }
         const updated = [newToast, ...prev];
         return updated.slice(0, 4);
       });
@@ -206,17 +228,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     socket.emit("join", "rentals");
 
-    // Helper kiểm tra trùng lặp sự kiện trong vòng 5 giây
-    const shouldProcess = (key: string) => {
-      if (!key) return true;
-      if (lastProcessedRef.current.has(key)) return false;
-      lastProcessedRef.current.add(key);
-      setTimeout(() => {
-        lastProcessedRef.current.delete(key);
-      }, 5000);
-      return true;
-    };
-
     // 1. Nhận thông báo trực tiếp từ kênh cá nhân `notification:toast`
     const handleNotificationToast = (data: {
       type?: ToastType;
@@ -228,21 +239,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       ownerId?: string;
       renterId?: string;
     }) => {
-      // Nếu là thông báo duyệt đơn, không hiện cho phía Owner
-      if (data.type === "rental_approved") {
-        if (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) {
-          return;
-        }
+      // Các loại sự kiện này đã được xử lý bởi kênh chuyên biệt bên dưới, tránh trùng lặp 2 lần
+      if (
+        data.type === "rental_created" ||
+        data.type === "rental_approved" ||
+        data.type === "payment_submitted" ||
+        data.type === "payment_approved"
+      ) {
+        return;
       }
-      // Nếu là thông báo đã thanh toán, không hiện cho phía Owner
-      if (data.type === "payment_approved") {
-        if (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) {
-          return;
-        }
-      }
-
-      const dedupeKey = `notif-${data.rentalId || data.rentalCode}-${data.type}`;
-      if (!shouldProcess(dedupeKey)) return;
 
       showToast({
         type: data.type || "info",
@@ -281,9 +286,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         isOwner;
 
       if (isTargetOwner) {
-        const dedupeKey = `created-${data.rentalId || data.rentalCode}`;
-        if (!shouldProcess(dedupeKey)) return;
-
         showToast({
           type: "rental_created",
           title: data.title || "📬 BẠN CÓ ĐƠN THUÊ MỚI!",
@@ -325,9 +327,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         isCustomer;
 
       if (isTargetRenter) {
-        const dedupeKey = `approved-${data.rentalId || data.rentalCode}`;
-        if (!shouldProcess(dedupeKey)) return;
-
         showToast({
           type: "rental_approved",
           title: data.title || "🎉 ĐƠN THUÊ ĐÃ ĐƯỢC DUYỆT!",
@@ -370,9 +369,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         isOwner;
 
       if (isTargetOwner) {
-        const dedupeKey = `paysubmitted-${data.rentalId || data.rentalCode}`;
-        if (!shouldProcess(dedupeKey)) return;
-
         showToast({
           type: "payment_submitted",
           title: data.title || "💳 KHÁCH ĐÃ CHUYỂN TIỀN!",
@@ -413,9 +409,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         isCustomer;
 
       if (isTargetRenter) {
-        const dedupeKey = `payapproved-${data.rentalId || data.rentalCode}`;
-        if (!shouldProcess(dedupeKey)) return;
-
         showToast({
           type: "payment_approved",
           title: data.title || "✅ THANH TOÁN THÀNH CÔNG!",

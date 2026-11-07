@@ -257,9 +257,6 @@ class RentalService {
         createdAt: new Date(),
       };
       io.emit("rental:created", toastData);
-      if (toastData.ownerId) {
-        io.to(`user:${toastData.ownerId}`).emit("notification:toast", toastData);
-      }
     } catch (socketErr) {
       console.warn("Socket emit error on createRentalRequest:", socketErr?.message);
     }
@@ -498,9 +495,6 @@ class RentalService {
         createdAt: new Date(),
       };
       io.emit("payment:submitted", toastData);
-      if (rental.owner) {
-        io.to(`user:${rental.owner}`).emit("notification:toast", toastData);
-      }
     } catch (e) { }
 
     return {
@@ -688,9 +682,6 @@ class RentalService {
         createdAt: new Date(),
       };
       io.emit("rental:approved", toastData);
-      if (rental.renter?._id) {
-        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
-      }
     } catch (socketErr) {
       console.warn("Socket emit error on approveRental:", socketErr?.message);
     }

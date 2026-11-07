@@ -1437,12 +1437,6 @@ async function respondOwnerRental(req, res) {
         createdAt: new Date(),
       };
       io.emit("rental:approved", toastData);
-      if (renterMongoId) {
-        io.to(`user:${renterMongoId}`).emit("notification:toast", toastData);
-      }
-      if (renterUserCode) {
-        io.to(`user:${renterUserCode}`).emit("notification:toast", toastData);
-      }
     } catch (socketErr) {
       console.warn("Socket emit error on respondOwnerRental approve:", socketErr?.message);
     }
@@ -1549,12 +1543,6 @@ async function confirmOwnerRentalPayment(req, res) {
         createdAt: new Date(),
       };
       io.emit("payment:approved", toastData);
-      if (renterMongoId) {
-        io.to(`user:${renterMongoId}`).emit("notification:toast", toastData);
-      }
-      if (renterUserCode) {
-        io.to(`user:${renterUserCode}`).emit("notification:toast", toastData);
-      }
     } catch (socketErr) {
       console.warn("Socket emit error on confirmOwnerRentalPayment approve:", socketErr?.message);
     }
