@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./app/AuthProvider";
+import { ToastProvider } from "./context/ToastContext";
 import AuthLayout from "./layouts/AuthLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -42,45 +43,47 @@ function HomeRedirect() {
 function App() {
   return (
     <AuthProvider>
-      <Routes>
-        {/* Guest & Public routes */}
-        <Route path="/" element={<HomeRedirect />} />
-        <Route path="/equipment" element={<EquipmentListPage />} />
-        <Route path="/equipment/:id" element={<EquipmentDetailPage />} />
-        <Route path="/equipments" element={<EquipmentListPage />} />
-        <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
-        <Route path="/register-owner" element={<RegisterOwnerPage />} />
+      <ToastProvider>
+        <Routes>
+          {/* Guest & Public routes */}
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="/equipment" element={<EquipmentListPage />} />
+          <Route path="/equipment/:id" element={<EquipmentDetailPage />} />
+          <Route path="/equipments" element={<EquipmentListPage />} />
+          <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
+          <Route path="/register-owner" element={<RegisterOwnerPage />} />
 
-        {/* Auth routes */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-        </Route>
+          {/* Auth routes */}
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+          </Route>
 
-        {/* Renter & User routes */}
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/rentals/history" element={<RentalHistoryPage />} />
+          {/* Renter & User routes */}
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/rentals/history" element={<RentalHistoryPage />} />
 
-        {/* Owner portal protected routes */}
-        <Route element={<OwnerRoute />}>
-          <Route path="/owner" element={<OwnerPortal />} />
-        </Route>
+          {/* Owner portal protected routes */}
+          <Route element={<OwnerRoute />}>
+            <Route path="/owner" element={<OwnerPortal />} />
+          </Route>
 
-        {/* Rental Moderator protected routes */}
-        <Route element={<ModeratorRoute />}>
-          <Route path="/moderator" element={<ModeratorPortal />} />
-        </Route>
+          {/* Rental Moderator protected routes */}
+          <Route element={<ModeratorRoute />}>
+            <Route path="/moderator" element={<ModeratorPortal />} />
+          </Route>
 
-        {/* System Admin protected routes */}
-        <Route element={<AdminRoute />}>
-          <Route path="/admin" element={<AdminDashboard />} />
-        </Route>
+          {/* System Admin protected routes */}
+          <Route element={<AdminRoute />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<HomeRedirect />} />
-      </Routes>
+          {/* Fallback */}
+          <Route path="*" element={<HomeRedirect />} />
+        </Routes>
+      </ToastProvider>
     </AuthProvider>
   );
 }

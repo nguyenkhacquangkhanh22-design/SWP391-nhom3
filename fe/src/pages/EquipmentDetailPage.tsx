@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
+import { useToast } from "../context/ToastContext";
 import Navbar from "../components/Navbar";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Equipment, Rental } from "../types/smartequip";
@@ -15,6 +16,7 @@ import {
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, token } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
@@ -189,6 +191,13 @@ export default function EquipmentDetailPage() {
       });
       // Đã gửi đơn thành công -> Không mở modal ký ngay mà chờ Chủ máy & Quản lý duyệt
       setSubmittedRental(res.data);
+      showToast({
+        type: "rental_created",
+        title: "📬 GỬI YÊU CẦU THUÊ THÀNH CÔNG!",
+        message: `Đơn thuê #${res.data?.rentalCode || ""} đã được gửi tới Chủ thiết bị. Vui lòng chờ Chủ duyệt yêu cầu thuê.`,
+        link: "/rentals/history",
+        rentalCode: res.data?.rentalCode,
+      });
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Không thể tạo yêu cầu thuê thiết bị",

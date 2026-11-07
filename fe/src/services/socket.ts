@@ -1,7 +1,9 @@
 import { io, Socket } from "socket.io-client";
 
-// Connect to backend URL via environment variable
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
+// Connect to backend URL via environment variable or current host
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "");
 
 let socket: Socket | null = null;
 

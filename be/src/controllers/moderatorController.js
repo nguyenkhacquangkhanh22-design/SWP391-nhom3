@@ -690,6 +690,36 @@ async function reviewPayment(req, res) {
       rental._id
     );
 
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const toastData = {
+        type: "payment_approved",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        renterId: String(rental.renter?._id || rental.renter),
+        ownerId: String(rental.owner?._id || rental.owner),
+        title: "✅ Thanh toán thành công!",
+        message: `Giao dịch thanh toán cho đơn #${rental.rentalCode} đã được phê duyệt! Sẵn sàng bàn giao thiết bị.`,
+        link: "/rentals/history",
+        createdAt: new Date(),
+      };
+      io.emit("payment:approved", toastData);
+      if (rental.renter?._id) {
+        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      }
+      if (rental.owner?._id) {
+        io.to(`user:${rental.owner._id}`).emit("notification:toast", {
+          ...toastData,
+          message: `Khách thuê đã thanh toán thành công đơn #${rental.rentalCode}. Vui lòng chuẩn bị thiết bị để bàn giao!`,
+          link: "/owner",
+        });
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on moderator confirm payment:", socketErr?.message);
+    }
+
     res.json({
       message: "Đã phê duyệt xác nhận thanh toán chuyển khoản thành công!",
       rental,

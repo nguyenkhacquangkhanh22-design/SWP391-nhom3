@@ -238,6 +238,32 @@ class RentalService {
       }
     }
 
+    // Phát Socket.IO thông báo tức thì (Realtime Toast) cho Owner và hệ thống
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const toastData = {
+        type: "rental_created",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        equipmentTitle: equipment.title,
+        renterName: renterUser.name || "Khách thuê SmartEquip",
+        renterId: String(renterUser._id),
+        ownerId: String(effectiveOwnerId || equipment.owner || equipment.owner_id || ""),
+        totalAmount: rental.totalAmount,
+        title: "📬 Bạn có đơn thuê mới!",
+        message: `Khách thuê ${renterUser.name} vừa gửi yêu cầu thuê thiết bị "${equipment.title}" (Mã: #${rental.rentalCode}).`,
+        link: "/owner",
+        createdAt: new Date(),
+      };
+      io.emit("rental:created", toastData);
+      if (toastData.ownerId) {
+        io.to(`user:${toastData.ownerId}`).emit("notification:toast", toastData);
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on createRentalRequest:", socketErr?.message);
+    }
+
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category brand modelNumber")
       .populate("owner", "name email phone trust_score bankInfo")
@@ -456,12 +482,25 @@ class RentalService {
         }
       );
       const { getIO } = require("../config/socket");
-      getIO().emit("payment:submitted", {
+      const io = getIO();
+      const toastData = {
+        type: "payment_submitted",
         rentalId: rental._id,
         rentalCode: rental.rentalCode,
+        renterId: String(renterUser._id),
+        renterName: renterUser.name,
+        ownerId: String(rental.owner),
         amount: rental.payment?.amountPaid,
         receiptImage: rental.payment?.receiptImage,
-      });
+        title: `💳 Khách đã chuyển tiền đơn #${rental.rentalCode}!`,
+        message: `Khách thuê ${renterUser.name} đã gửi ảnh biên lai chuyển khoản ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ. Vui lòng kiểm tra và duyệt tiền!`,
+        link: "/owner",
+        createdAt: new Date(),
+      };
+      io.emit("payment:submitted", toastData);
+      if (rental.owner) {
+        io.to(`user:${rental.owner}`).emit("notification:toast", toastData);
+      }
     } catch (e) {}
 
     return {
@@ -631,6 +670,29 @@ class RentalService {
       } catch (err) {
         console.error("Error sending notification:", err);
       }
+    }
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const toastData = {
+        type: "rental_approved",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        renterId: String(rental.renter?._id || rental.renter),
+        ownerId: String(rental.owner?._id || rental.owner),
+        title: "🎉 Đơn thuê đã được duyệt!",
+        message: `Đơn thuê #${rental.rentalCode} cho thiết bị "${rental.equipment?.title || "thiết bị"}" đã được duyệt thành công! Bạn có thể ký hợp đồng & thanh toán ngay.`,
+        link: "/rentals/history",
+        createdAt: new Date(),
+      };
+      io.emit("rental:approved", toastData);
+      if (rental.renter?._id) {
+        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on approveRental:", socketErr?.message);
     }
 
     return rental;

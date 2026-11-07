@@ -1418,6 +1418,29 @@ async function respondOwnerRental(req, res) {
       });
     }
 
+    try {
+      const io = getIO();
+      const toastData = {
+        type: "rental_approved",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        ownerName: req.user.name || "Chủ máy",
+        renterId: String(rental.renter?._id || rental.renter),
+        ownerId: String(req.user._id),
+        title: "🎉 Đơn thuê đã được duyệt!",
+        message: `Chủ máy (${req.user.name}) đã duyệt đơn thuê #${rental.rentalCode} cho "${rental.equipment?.title}". Bạn có thể ký hợp đồng & thanh toán ngay!`,
+        link: "/rentals/history",
+        createdAt: new Date(),
+      };
+      io.emit("rental:approved", toastData);
+      if (rental.renter?._id) {
+        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on respondOwnerRental approve:", socketErr?.message);
+    }
+
     return res.json({
       success: true,
       message: "Đã duyệt yêu cầu thuê! Khách thuê có thể Ký hợp đồng và Chuyển khoản thanh toán.",
@@ -1500,6 +1523,28 @@ async function confirmOwnerRentalPayment(req, res) {
         message: `Chủ thiết bị (${req.user.name}) đã kiểm tra và xác nhận nhận đủ tiền chuyển khoản ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ. Thiết bị đang được chuẩn bị để giao cho bạn!`,
         related_record_id: rental._id,
       });
+    }
+
+    try {
+      const io = getIO();
+      const toastData = {
+        type: "payment_approved",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        renterId: String(rental.renter?._id || rental.renter),
+        ownerId: String(ownerId),
+        title: "✅ Thanh toán thành công!",
+        message: `Chủ thiết bị (${req.user.name}) đã xác nhận nhận tiền cho đơn #${rental.rentalCode}. Sẵn sàng bàn giao thiết bị!`,
+        link: "/rentals/history",
+        createdAt: new Date(),
+      };
+      io.emit("payment:approved", toastData);
+      if (rental.renter?._id) {
+        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on confirmOwnerRentalPayment approve:", socketErr?.message);
     }
 
     return res.json({

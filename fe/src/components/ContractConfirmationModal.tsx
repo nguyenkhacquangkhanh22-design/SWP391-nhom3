@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
+import { useToast } from "../context/ToastContext";
 import SignaturePad from "./SignaturePad";
 import ContractPdfModal from "./ContractPdfModal";
 
@@ -19,6 +20,7 @@ export default function ContractConfirmationModal({
   onClose,
   onSuccess,
 }: Props) {
+  const { showToast } = useToast();
   const renterName =
     typeof rental.renter === "object" && rental.renter !== null && rental.renter.name
       ? rental.renter.name
@@ -96,6 +98,14 @@ export default function ContractConfirmationModal({
         receiptImage: receiptImage || undefined,
         digitalSignature: handwrittenSignature || undefined,
         renterSignature: signerName.trim() || undefined,
+      });
+
+      showToast({
+        type: "payment_submitted",
+        title: "💳 ĐÃ GỬI BIÊN LAI CHUYỂN KHOẢN!",
+        message: `Đã gửi biên lai chuyển khoản đơn #${rental.rentalCode}. Đang chờ Chủ máy kiểm tra và xác nhận thanh toán.`,
+        link: "/rentals/history",
+        rentalCode: rental.rentalCode,
       });
 
       onSuccess();

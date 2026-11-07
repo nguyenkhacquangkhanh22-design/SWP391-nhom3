@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { RentalRequest } from "../../types/owner";
 import type { Rental } from "../../types/smartequip";
 import { ownerApi } from "../../services/ownerApi";
+import { useToast } from "../../context/ToastContext";
 import RentalChatModal from "../../components/RentalChatModal";
 import ContractPdfModal from "../../components/ContractPdfModal";
 import OwnerEditContractModal from "../../components/OwnerEditContractModal";
@@ -23,6 +24,7 @@ export default function OwnerRequestsTab({
   onSuccess,
   onCreateContract,
 }: Props) {
+  const { showToast } = useToast();
   const [selectedRequest, setSelectedRequest] = useState<RentalRequest | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -67,6 +69,13 @@ export default function OwnerRequestsTab({
     try {
       await ownerApi.respondOwnerRental(token, rentalId, "approve");
       onSuccess(`✅ Đã duyệt đơn thuê #${rentalCode}! Hệ thống đã gửi thông báo đến Khách thuê để tiến hành Ký hợp đồng & Chuyển khoản.`);
+      showToast({
+        type: "rental_approved",
+        title: "🎉 ĐÃ DUYỆT ĐƠN THUÊ THÀNH CÔNG!",
+        message: `Đã duyệt đơn thuê #${rentalCode}. Thông báo đã gửi đến khách thuê để ký hợp đồng & thanh toán.`,
+        link: "/owner",
+        rentalCode: rentalCode,
+      });
       await fetchDirectRentals();
       onRefresh();
     } catch (err) {
@@ -84,6 +93,13 @@ export default function OwnerRequestsTab({
     try {
       await ownerApi.confirmOwnerRentalPayment(token, rentalId, "approve");
       onSuccess(`🎉 Đã xác nhận nhận tiền thành công cho đơn #${rentalCode}! Hợp đồng chính thức có hiệu lực, bạn hãy bắt đầu chuẩn bị và gửi hàng cho Khách thuê.`);
+      showToast({
+        type: "payment_approved",
+        title: "✅ ĐÃ XÁC NHẬN NHẬN TIỀN THÀNH CÔNG!",
+        message: `Đã xác nhận nhận đủ tiền chuyển khoản đơn #${rentalCode}! Hợp đồng chính thức có hiệu lực, sẵn sàng chuẩn bị và gửi hàng cho khách thuê.`,
+        link: "/owner",
+        rentalCode: rentalCode,
+      });
       await fetchDirectRentals();
       onRefresh();
     } catch (err) {

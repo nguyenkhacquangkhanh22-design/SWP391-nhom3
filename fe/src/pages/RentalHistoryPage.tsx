@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
+import { useToast } from "../context/ToastContext";
 import Navbar from "../components/Navbar";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import VietQRPaymentModal from "../components/VietQRPaymentModal";
@@ -36,6 +37,7 @@ const TABS: TabItem[] = [
 
 export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
+  const { showToast } = useToast();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -179,6 +181,13 @@ export default function RentalHistoryPage() {
         receiptImage,
       });
       setNotice(res.message || "Thanh toán chuyển khoản VietQR MB Bank thành công! Đơn thuê đã sẵn sàng bàn giao.");
+      showToast({
+        type: "payment_submitted",
+        title: "💳 ĐÃ GỬI BIÊN LAI CHUYỂN KHOẢN!",
+        message: `Đã gửi biên lai chuyển khoản đơn #${payingRental.rentalCode}. Đang chờ Chủ máy kiểm tra và xác nhận thanh toán.`,
+        link: "/rentals/history",
+        rentalCode: payingRental.rentalCode,
+      });
       setPayingRental(null);
       fetchHistory();
     } catch (err) {
