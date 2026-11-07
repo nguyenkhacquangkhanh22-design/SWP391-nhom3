@@ -1390,7 +1390,7 @@ async function respondOwnerRental(req, res) {
   const ownerId = req.user._id;
 
   const rental = await Rental.findOne({ _id: id, owner: ownerId })
-    .populate("renter", "name email phone")
+    .populate("renter", "name email phone User_Id")
     .populate("equipment", "title");
 
   if (!rental) {
@@ -1420,13 +1420,16 @@ async function respondOwnerRental(req, res) {
 
     try {
       const io = getIO();
+      const renterMongoId = String(rental.renter?._id || rental.renter || "");
+      const renterUserCode = String(rental.renter?.User_Id || "");
       const toastData = {
         type: "rental_approved",
         rentalId: rental._id,
         rentalCode: rental.rentalCode,
         equipmentTitle: rental.equipment?.title || "Thiết bị",
         ownerName: req.user.name || "Chủ máy",
-        renterId: String(rental.renter?._id || rental.renter),
+        renterId: renterMongoId,
+        renterUserCode: renterUserCode,
         ownerId: String(req.user._id),
         title: "🎉 Đơn thuê đã được duyệt!",
         message: `Chủ máy (${req.user.name}) đã duyệt đơn thuê #${rental.rentalCode} cho "${rental.equipment?.title}". Bạn có thể ký hợp đồng & thanh toán ngay!`,
@@ -1434,8 +1437,11 @@ async function respondOwnerRental(req, res) {
         createdAt: new Date(),
       };
       io.emit("rental:approved", toastData);
-      if (rental.renter?._id) {
-        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      if (renterMongoId) {
+        io.to(`user:${renterMongoId}`).emit("notification:toast", toastData);
+      }
+      if (renterUserCode) {
+        io.to(`user:${renterUserCode}`).emit("notification:toast", toastData);
       }
     } catch (socketErr) {
       console.warn("Socket emit error on respondOwnerRental approve:", socketErr?.message);
@@ -1481,7 +1487,7 @@ async function confirmOwnerRentalPayment(req, res) {
   const ownerId = req.user._id;
 
   const rental = await Rental.findOne({ _id: id, owner: ownerId })
-    .populate("renter", "name email phone")
+    .populate("renter", "name email phone User_Id")
     .populate("equipment", "title images dailyRate");
 
   if (!rental) {
@@ -1527,12 +1533,15 @@ async function confirmOwnerRentalPayment(req, res) {
 
     try {
       const io = getIO();
+      const renterMongoId = String(rental.renter?._id || rental.renter || "");
+      const renterUserCode = String(rental.renter?.User_Id || "");
       const toastData = {
         type: "payment_approved",
         rentalId: rental._id,
         rentalCode: rental.rentalCode,
         equipmentTitle: rental.equipment?.title || "Thiết bị",
-        renterId: String(rental.renter?._id || rental.renter),
+        renterId: renterMongoId,
+        renterUserCode: renterUserCode,
         ownerId: String(ownerId),
         title: "✅ Thanh toán thành công!",
         message: `Chủ thiết bị (${req.user.name}) đã xác nhận nhận tiền cho đơn #${rental.rentalCode}. Sẵn sàng bàn giao thiết bị!`,
@@ -1540,8 +1549,11 @@ async function confirmOwnerRentalPayment(req, res) {
         createdAt: new Date(),
       };
       io.emit("payment:approved", toastData);
-      if (rental.renter?._id) {
-        io.to(`user:${rental.renter._id}`).emit("notification:toast", toastData);
+      if (renterMongoId) {
+        io.to(`user:${renterMongoId}`).emit("notification:toast", toastData);
+      }
+      if (renterUserCode) {
+        io.to(`user:${renterUserCode}`).emit("notification:toast", toastData);
       }
     } catch (socketErr) {
       console.warn("Socket emit error on confirmOwnerRentalPayment approve:", socketErr?.message);

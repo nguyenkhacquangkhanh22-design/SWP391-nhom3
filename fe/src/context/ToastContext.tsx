@@ -177,21 +177,36 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // Thiết lập lắng nghe Realtime Socket.IO
   useEffect(() => {
     const socket = getSocket();
-    const currentUserId = String(
-      user?.User_Id || (user as unknown as { _id?: string })?._id || (user as unknown as { id?: string })?.id || ""
-    );
+    const userObj = user as unknown as { _id?: string; id?: string };
+    const mongoId = String(userObj?._id || userObj?.id || "");
+    const userCode = String(user?.User_Id || "");
     const userRole = (user?.role || "").toLowerCase().replace(/[\s_-]/g, "");
 
-    // Tham gia phòng của user và role để nhận tin nhắn riêng
-    if (currentUserId) {
-      socket.emit("join", `user:${currentUserId}`);
+    const isOwner =
+      userRole === "owner" ||
+      userRole === "moderator" ||
+      userRole === "rentalmoderator" ||
+      userRole === "systemadmin";
+
+    const isCustomer =
+      userRole === "user" ||
+      userRole === "renter" ||
+      userRole === "customer" ||
+      (!isOwner && userRole !== "systemadmin");
+
+    // Tham gia phòng của user theo cả MongoDB _id và User_Id
+    if (mongoId) {
+      socket.emit("join", `user:${mongoId}`);
+    }
+    if (userCode) {
+      socket.emit("join", `user:${userCode}`);
     }
     if (user?.role) {
       socket.emit("join", user.role);
     }
     socket.emit("join", "rentals");
 
-    // Helper kiểm tra trùng lặp sự kiện trong vòng vài giây
+    // Helper kiểm tra trùng lặp sự kiện trong vòng 5 giây
     const shouldProcess = (key: string) => {
       if (!key) return true;
       if (lastProcessedRef.current.has(key)) return false;
@@ -210,7 +225,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       link?: string;
       rentalCode?: string;
       rentalId?: string;
+      ownerId?: string;
+      renterId?: string;
     }) => {
+      // Nếu là thông báo duyệt đơn, không hiện cho phía Owner
+      if (data.type === "rental_approved") {
+        if (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) {
+          return;
+        }
+      }
+      // Nếu là thông báo đã thanh toán, không hiện cho phía Owner
+      if (data.type === "payment_approved") {
+        if (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) {
+          return;
+        }
+      }
+
       const dedupeKey = `notif-${data.rentalId || data.rentalCode}-${data.type}`;
       if (!shouldProcess(dedupeKey)) return;
 
@@ -223,9 +253,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    // 2. Khi khách gửi đơn thuê mới -> Báo Owner & Moderator
+    // 2. Khi khách gửi đơn thuê mới -> Báo cho CHỦ MÁY (Owner)
     const handleRentalCreated = (data: {
       ownerId?: string;
+      ownerUserCode?: string;
+      renterId?: string;
+      renterUserCode?: string;
       rentalCode?: string;
       equipmentTitle?: string;
       renterName?: string;
@@ -234,12 +267,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       message?: string;
       link?: string;
     }) => {
-      const isRecipient =
-        (data.ownerId && String(data.ownerId) === currentUserId) ||
-        userRole === "owner" ||
-        userRole === "rentalmoderator";
+      // Bỏ qua nếu người tạo là chính mình (Khách thuê đã có thông báo local)
+      if (
+        (data.renterId && (data.renterId === mongoId || data.renterId === userCode)) ||
+        (data.renterUserCode && (data.renterUserCode === mongoId || data.renterUserCode === userCode))
+      ) {
+        return;
+      }
 
-      if (isRecipient) {
+      const isTargetOwner =
+        (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) ||
+        (data.ownerUserCode && (data.ownerUserCode === mongoId || data.ownerUserCode === userCode)) ||
+        isOwner;
+
+      if (isTargetOwner) {
         const dedupeKey = `created-${data.rentalId || data.rentalCode}`;
         if (!shouldProcess(dedupeKey)) return;
 
@@ -257,9 +298,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // 3. Khi đơn thuê được duyệt -> Báo Renter
+    // 3. Khi đơn thuê được duyệt -> BÁO CHO BÊN KHÁCH (Renter), KHÔNG báo cho bên Owner
     const handleRentalApproved = (data: {
       renterId?: string;
+      renterUserCode?: string;
+      ownerId?: string;
+      ownerName?: string;
       rentalCode?: string;
       equipmentTitle?: string;
       rentalId?: string;
@@ -267,12 +311,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       message?: string;
       link?: string;
     }) => {
-      const isRecipient =
-        (data.renterId && String(data.renterId) === currentUserId) ||
-        userRole === "renter" ||
-        !userRole;
+      // Tuyệt đối không hiện thông báo này cho Owner đã duyệt đơn
+      if (
+        (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) ||
+        (isOwner && !isCustomer)
+      ) {
+        return;
+      }
 
-      if (isRecipient) {
+      const isTargetRenter =
+        (data.renterId && (data.renterId === mongoId || data.renterId === userCode)) ||
+        (data.renterUserCode && (data.renterUserCode === mongoId || data.renterUserCode === userCode)) ||
+        isCustomer;
+
+      if (isTargetRenter) {
         const dedupeKey = `approved-${data.rentalId || data.rentalCode}`;
         if (!shouldProcess(dedupeKey)) return;
 
@@ -281,18 +333,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           title: data.title || "🎉 ĐƠN THUÊ ĐÃ ĐƯỢC DUYỆT!",
           message:
             data.message ||
-            `Đơn thuê #${data.rentalCode || ""} cho "${
+            `Chủ máy đã duyệt đơn thuê #${data.rentalCode || ""} cho "${
               data.equipmentTitle || "thiết bị"
-            }" đã được duyệt thành công! Bạn có thể ký hợp đồng & thanh toán ngay.`,
+            }"! Bạn có thể ký hợp đồng & thanh toán ngay.`,
           link: data.link || "/rentals/history",
           rentalCode: data.rentalCode,
         });
       }
     };
 
-    // 4. Khi khách đã chuyển tiền chờ owner duyệt -> Báo Owner & Moderator
+    // 4. Khi khách đã chuyển tiền chờ owner duyệt -> Báo cho CHỦ MÁY (Owner)
     const handlePaymentSubmitted = (data: {
       ownerId?: string;
+      ownerUserCode?: string;
+      renterId?: string;
+      renterUserCode?: string;
       rentalCode?: string;
       renterName?: string;
       amount?: number;
@@ -301,12 +356,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       message?: string;
       link?: string;
     }) => {
-      const isRecipient =
-        (data.ownerId && String(data.ownerId) === currentUserId) ||
-        userRole === "owner" ||
-        userRole === "rentalmoderator";
+      // Bỏ qua nếu là người vừa gửi chuyển khoản (Khách thuê)
+      if (
+        (data.renterId && (data.renterId === mongoId || data.renterId === userCode)) ||
+        (data.renterUserCode && (data.renterUserCode === mongoId || data.renterUserCode === userCode))
+      ) {
+        return;
+      }
 
-      if (isRecipient) {
+      const isTargetOwner =
+        (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) ||
+        (data.ownerUserCode && (data.ownerUserCode === mongoId || data.ownerUserCode === userCode)) ||
+        isOwner;
+
+      if (isTargetOwner) {
         const dedupeKey = `paysubmitted-${data.rentalId || data.rentalCode}`;
         if (!shouldProcess(dedupeKey)) return;
 
@@ -324,9 +387,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // 5. Khi owner đã duyệt tiền (Đã thanh toán thành công) -> Báo Renter
+    // 5. Khi owner đã duyệt tiền (Đã thanh toán thành công) -> BÁO CHO BÊN KHÁCH (Renter)
     const handlePaymentApproved = (data: {
       renterId?: string;
+      renterUserCode?: string;
+      ownerId?: string;
       rentalCode?: string;
       equipmentTitle?: string;
       rentalId?: string;
@@ -334,12 +399,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       message?: string;
       link?: string;
     }) => {
-      const isRecipient =
-        (data.renterId && String(data.renterId) === currentUserId) ||
-        userRole === "renter" ||
-        !userRole;
+      // Tuyệt đối không hiện thông báo này cho Owner đã duyệt tiền
+      if (
+        (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) ||
+        (isOwner && !isCustomer)
+      ) {
+        return;
+      }
 
-      if (isRecipient) {
+      const isTargetRenter =
+        (data.renterId && (data.renterId === mongoId || data.renterId === userCode)) ||
+        (data.renterUserCode && (data.renterUserCode === mongoId || data.renterUserCode === userCode)) ||
+        isCustomer;
+
+      if (isTargetRenter) {
         const dedupeKey = `payapproved-${data.rentalId || data.rentalCode}`;
         if (!shouldProcess(dedupeKey)) return;
 

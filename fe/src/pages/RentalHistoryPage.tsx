@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import { useToast } from "../context/ToastContext";
+import { getSocket } from "../services/socket";
 import Navbar from "../components/Navbar";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import VietQRPaymentModal from "../components/VietQRPaymentModal";
@@ -128,11 +129,26 @@ export default function RentalHistoryPage() {
 
   useEffect(() => {
     fetchHistory(false);
+
+    // Lắng nghe realtime từ Socket.IO khi có duyệt đơn hoặc xác nhận thanh toán
+    const socket = getSocket();
+    const handleRentalUpdate = () => {
+      fetchHistory(true);
+    };
+
+    socket.on("rental:approved", handleRentalUpdate);
+    socket.on("payment:approved", handleRentalUpdate);
+
     // Tự động load lại sau mỗi 10 giây theo yêu cầu
     const interval = setInterval(() => {
       fetchHistory(true);
     }, 10000);
-    return () => clearInterval(interval);
+
+    return () => {
+      socket.off("rental:approved", handleRentalUpdate);
+      socket.off("payment:approved", handleRentalUpdate);
+      clearInterval(interval);
+    };
   }, [token]);
 
   if (isLoading) {

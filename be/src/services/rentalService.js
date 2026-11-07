@@ -13,7 +13,7 @@ const Rental = require("../models/Rental");
 const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
 let UserNotification = null;
-try { UserNotification = require("../models/UserNotification"); } catch (e) {}
+try { UserNotification = require("../models/UserNotification"); } catch (e) { }
 const AppError = require("../utils/AppError");
 
 class RentalService {
@@ -366,7 +366,7 @@ class RentalService {
           },
         }
       );
-    } catch (e) {}
+    } catch (e) { }
 
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category")
@@ -446,7 +446,7 @@ class RentalService {
       const managers = await User.find({
         role: { $regex: /^(rental[_ -]?moderator|systemadmin|admin)$/i },
       }).select("_id").lean();
-      
+
       const notifyIds = managers.map(m => m._id);
       if (rental.owner) notifyIds.push(rental.owner);
 
@@ -501,7 +501,7 @@ class RentalService {
       if (rental.owner) {
         io.to(`user:${rental.owner}`).emit("notification:toast", toastData);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return {
       message: "Đã gửi thông báo chuyển khoản thành công kèm biên lai. Đơn hàng đang chờ Quản lý xác nhận để bàn giao máy.",
@@ -635,7 +635,7 @@ class RentalService {
    * UC_R12: View Rental History
    * Lấy danh sách đơn thuê của chính Renter đó, hỗ trợ filter theo trạng thái
    */
-  
+
   /**
    * Phê duyệt đơn thuê (Chủ máy / Quản lý / Test)
    * Chuyển trạng thái từ PENDING -> APPROVED
@@ -715,7 +715,7 @@ class RentalService {
       }
       const Equipment = require("../models/Equipment");
       await Equipment.updateMany({}, { status: "AVAILABLE" });
-    } catch (e) {}
+    } catch (e) { }
 
     return {
       message: `Đã xóa sạch toàn bộ lịch sử thuê (${delRentals.deletedCount} đơn). Bạn có thể test lại từ đầu.`,
@@ -922,7 +922,7 @@ class RentalService {
     if (rental.equipment) {
       try {
         await Equipment.findByIdAndUpdate(rental.equipment, { status: "AVAILABLE" });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Đồng bộ hủy RentalRequest liên quan
@@ -936,7 +936,7 @@ class RentalService {
         },
         { status: "cancelled", rejection_reason: reason }
       );
-    } catch (e) {}
+    } catch (e) { }
 
     return {
       message: "Rental request cancelled successfully",
