@@ -1,0 +1,234 @@
+const Rental = require("../models/Rental");
+const AppError = require("../utils/AppError");
+
+/**
+ * Khởi tạo instance PayOS với fallback hỗ trợ cả @payos/node v1 và v2
+ */
+function getPayOS() {
+  const PayOSModule = require("@payos/node");
+  const PayOS = PayOSModule.PayOS || PayOSModule.default || PayOSModule;
+
+  const clientId =
+    process.env.PAYOS_CLIENT_ID || "4cbd12f3-30af-42d3-b8bc-b1f91c2c6197";
+  const apiKey =
+    process.env.PAYOS_API_KEY || "618a8071-fbc7-4c08-935e-ce0a30d68086";
+  const checksumKey =
+    process.env.PAYOS_CHECKSUM_KEY ||
+    "524799ac41dd5279c9aebeb3b2ad3af3a6f05a88f29a373c80a0862011970609";
+
+  try {
+    return new PayOS({ clientId, apiKey, checksumKey });
+  } catch (_err) {
+    return new PayOS(clientId, apiKey, checksumKey);
+  }
+}
+
+const paymentController = {
+  /**
+   * API 1: POST /api/payments/create-payment-link
+   * Nhận vào: rentalId, amount, description
+   * Gọi PayOS tạo link thanh toán VietQR động
+   * Trả về: checkoutUrl, orderCode, paymentLinkId
+   */
+  async createPaymentLink(req, res) {
+    const { rentalId, amount, description } = req.body;
+
+    if (!rentalId) {
+      throw new AppError(400, "Vui lòng cung cấp rentalId");
+    }
+
+    const rental = await Rental.findById(rentalId).populate("equipment", "title");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy thông tin đơn thuê");
+    }
+
+    const payAmount = Math.round(
+      Number(amount) || rental.totalAmount || rental.rentalFee || 0
+    );
+    if (payAmount <= 0) {
+      throw new AppError(400, "Số tiền thanh toán phải lớn hơn 0");
+    }
+
+    // PayOS yêu cầu orderCode là số nguyên dương an toàn (tối đa 15 chữ số)
+    // Sử dụng 6 số cuối timestamp + 4 số ngẫu nhiên
+    const orderCode = Number(
+      String(Date.now()).slice(-6) + Math.floor(1000 + Math.random() * 9000)
+    );
+
+    // PayOS yêu cầu description tối đa 25 ký tự, không dấu, không ký tự đặc biệt
+    const rawDesc = description || `TT ${rental.rentalCode || "SMARTEQUIP"}`;
+    const cleanDescription = rawDesc
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9 ]/g, "")
+      .trim()
+      .slice(0, 25);
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const returnUrl =
+      process.env.PAYOS_RETURN_URL || `${frontendUrl}/payment/success`;
+    const cancelUrl =
+      process.env.PAYOS_CANCEL_URL || `${frontendUrl}/payment/cancel`;
+
+    const paymentData = {
+      orderCode,
+      amount: payAmount,
+      description: cleanDescription,
+      returnUrl,
+      cancelUrl,
+      items: [
+        {
+          name: (rental.equipment?.title || "Thue thiet bi SmartEquip").slice(
+            0,
+            50
+          ),
+          quantity: 1,
+          price: payAmount,
+        },
+      ],
+    };
+
+    const payos = getPayOS();
+    let paymentLinkRes;
+
+    // Hỗ trợ cả 2 chuẩn API của @payos/node v1 (createPaymentLink) và v2 (paymentRequests.create)
+    if (typeof payos.createPaymentLink === "function") {
+      paymentLinkRes = await payos.createPaymentLink(paymentData);
+    } else if (
+      payos.paymentRequests &&
+      typeof payos.paymentRequests.create === "function"
+    ) {
+      paymentLinkRes = await payos.paymentRequests.create(paymentData);
+    } else {
+      throw new AppError(500, "Không tìm thấy hàm tạo link thanh toán của PayOS");
+    }
+
+    // Lưu orderCode và checkoutUrl vào model Rental để đối soát khi Webhook gọi về
+    rental.payment = rental.payment || {};
+    rental.payment.orderCode = orderCode;
+    rental.payment.paymentLinkId =
+      paymentLinkRes.paymentLinkId || paymentLinkRes.id;
+    rental.payment.checkoutUrl = paymentLinkRes.checkoutUrl;
+    rental.payment.paymentMethod = "payos_vietqr";
+    await rental.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Tạo link thanh toán PayOS thành công",
+      orderCode,
+      checkoutUrl: paymentLinkRes.checkoutUrl,
+      paymentLinkId: paymentLinkRes.paymentLinkId || paymentLinkRes.id,
+      qrCode: paymentLinkRes.qrCode,
+    });
+  },
+
+  /**
+   * API 2: POST /api/payments/webhook
+   * Đón webhook do PayOS gửi về (thông qua ngrok hoặc live domain)
+   * Xác thực chữ ký verifyPaymentWebhookData
+   * Tìm đơn hàng theo orderCode/description và cập nhật status = 'PAID'
+   * Trả về json({ success: true }) theo chuẩn PayOS
+   */
+  async webhook(req, res) {
+    const payos = getPayOS();
+    let webhookData;
+
+    try {
+      // Hỗ trợ cả verifyPaymentWebhookData (v1) và webhooks.verify (v2)
+      if (typeof payos.verifyPaymentWebhookData === "function") {
+        webhookData = payos.verifyPaymentWebhookData(req.body);
+      } else if (
+        payos.webhooks &&
+        typeof payos.webhooks.verify === "function"
+      ) {
+        webhookData = await payos.webhooks.verify(req.body);
+      } else {
+        webhookData = req.body?.data || req.body;
+      }
+    } catch (verifyErr) {
+      console.error(
+        "PayOS Webhook Signature Verification Failed:",
+        verifyErr.message
+      );
+      return res.status(400).json({
+        success: false,
+        message: "Chữ ký webhook không hợp lệ (Signature verification failed)",
+      });
+    }
+
+    if (!webhookData) {
+      return res.status(400).json({
+        success: false,
+        message: "Dữ liệu webhook rỗng hoặc không hợp lệ",
+      });
+    }
+
+    const orderCode = webhookData.orderCode;
+    const description = webhookData.description || "";
+
+    // Tìm đơn thuê tương ứng
+    let rental = null;
+    if (orderCode) {
+      rental = await Rental.findOne({ "payment.orderCode": orderCode });
+    }
+
+    if (!rental && description) {
+      rental = await Rental.findOne({
+        $or: [
+          { rentalCode: description.trim() },
+          { "contract.contractNumber": description.trim() },
+        ],
+      });
+
+      if (!rental) {
+        const match = description.match(/REQ[0-9A-Z-]+/i);
+        if (match) {
+          rental = await Rental.findOne({
+            rentalCode: new RegExp(match[0], "i"),
+          });
+        }
+      }
+    }
+
+    if (rental) {
+      // Cập nhật trạng thái đơn thành 'PAID' theo đúng yêu cầu
+      rental.status = "PAID";
+      rental.payment = rental.payment || {};
+      rental.payment.isPaid = true;
+      rental.payment.paidAt = new Date();
+      rental.payment.paymentStatus = "paid";
+      rental.payment.paymentMethod = "payos_vietqr";
+      rental.payment.amountPaid =
+        webhookData.amount || rental.totalAmount || rental.rentalFee;
+      rental.payment.transactionId =
+        webhookData.reference ||
+        webhookData.paymentLinkId ||
+        String(orderCode);
+      await rental.save();
+
+      // Bắn Socket.IO realtime để client Renter & Owner cập nhật giao diện
+      try {
+        const { getIO } = require("../config/socket");
+        const io = getIO();
+        io.emit("payment:approved", {
+          rentalId: rental._id,
+          rentalCode: rental.rentalCode,
+          status: "PAID",
+          orderCode,
+        });
+      } catch (socketErr) {
+        console.warn("Socket emit error on webhook:", socketErr?.message);
+      }
+    } else {
+      console.warn(
+        `PayOS Webhook: Không tìm thấy đơn thuê cho orderCode: ${orderCode}, description: ${description}`
+      );
+    }
+
+    // Trả về response đúng chuẩn yêu cầu của PayOS
+    return res.status(200).json({ success: true });
+  },
+};
+
+module.exports = paymentController;
+

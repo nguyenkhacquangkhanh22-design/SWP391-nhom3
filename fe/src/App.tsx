@@ -12,6 +12,8 @@ import HomePage from "./pages/HomePage";
 import EquipmentListPage from "./pages/EquipmentListPage";
 import EquipmentDetailPage from "./pages/EquipmentDetailPage";
 import RentalHistoryPage from "./pages/RentalHistoryPage";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage";
+import PaymentCancelPage from "./pages/PaymentCancelPage";
 import AdminRoute from "./routes/AdminRoute";
 import OwnerRoute from "./routes/OwnerRoute";
 import OwnerPortal from "./pages/owner/OwnerPortal";
@@ -64,6 +66,8 @@ function App() {
           {/* Renter & User routes */}
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/rentals/history" element={<RentalHistoryPage />} />
+          <Route path="/payment/success" element={<PaymentSuccessPage />} />
+          <Route path="/payment/cancel" element={<PaymentCancelPage />} />
 
           {/* Owner portal protected routes */}
           <Route element={<OwnerRoute />}>

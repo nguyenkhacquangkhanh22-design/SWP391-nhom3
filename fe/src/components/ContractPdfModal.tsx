@@ -14,6 +14,7 @@ interface Props {
   signerName?: string;
   isOwner?: boolean;
   onEditContract?: () => void;
+  onAgreeToSign?: (rental: Rental) => void;
 }
 
 export default function ContractPdfModal({
@@ -24,6 +25,7 @@ export default function ContractPdfModal({
   signerName,
   isOwner = false,
   onEditContract,
+  onAgreeToSign,
 }: Props) {
   if (!isOpen) return null;
 
@@ -115,6 +117,22 @@ export default function ContractPdfModal({
               >
                 <span>✏️</span>
                 <span>Sửa điều khoản HĐ</span>
+              </button>
+            )}
+
+            {/* Nút Khách thuê đồng ý ký HĐ khi xem hợp đồng */}
+            {!isOwner && !rental.contract?.agreedToSign && onAgreeToSign && (
+              <button
+                type="button"
+                onClick={() => {
+                  onAgreeToSign(rental);
+                  onClose();
+                }}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95"
+                title="Xác nhận đồng ý điều khoản trong hợp đồng"
+              >
+                <span>🤝</span>
+                <span>Đồng ý ký hợp đồng</span>
               </button>
             )}
 

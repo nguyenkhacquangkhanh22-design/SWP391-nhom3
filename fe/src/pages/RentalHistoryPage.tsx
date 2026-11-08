@@ -8,6 +8,7 @@ import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import VietQRPaymentModal from "../components/VietQRPaymentModal";
 import ContractPdfModal from "../components/ContractPdfModal";
 import RentalChatModal from "../components/RentalChatModal";
+import PaymentButton from "../components/PaymentButton";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
 import {
@@ -927,15 +928,22 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Nút thanh toán (UC_R09) */}
+                    {/* Nút thanh toán (UC_R09) - Hỗ trợ PayOS VietQR tự động và chuyển khoản */}
                     {canPay && (
-                      <button
-                        onClick={() => setPayingRental(r)}
-                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md text-center flex items-center justify-center gap-1.5"
-                      >
-                        <span>💳</span>
-                        <span>Thanh toán VietQR</span>
-                      </button>
+                      <div className="flex flex-col gap-1.5 w-full">
+                        <PaymentButton
+                          rentalId={r._id}
+                          amount={r.totalAmount || r.rentalFee}
+                          description={`TT don ${r.rentalCode}`}
+                        />
+                        <button
+                          onClick={() => setPayingRental(r)}
+                          className="px-3 py-1.5 bg-[#172235] hover:bg-[#202f48] border border-[#2b3c58] text-slate-300 font-medium rounded-xl text-[11px] transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <span>🏦</span>
+                          <span>Chuyển khoản thủ công</span>
+                        </button>
+                      </div>
                     )}
 
                     {/* Trạng thái chờ Owner duyệt chuyển khoản */}
@@ -1043,6 +1051,7 @@ export default function RentalHistoryPage() {
       {payingRental && (
         <VietQRPaymentModal
           isOpen={!!payingRental}
+          rentalId={payingRental._id}
           onClose={() => setPayingRental(null)}
           onConfirmPayment={(receiptImg) => handlePayConfirm(receiptImg)}
           amount={payingRental.totalAmount || payingRental.rentalFee}
@@ -1269,6 +1278,16 @@ export default function RentalHistoryPage() {
           rental={viewingContractRental}
           isOpen={Boolean(viewingContractRental)}
           onClose={() => setViewingContractRental(null)}
+          onAgreeToSign={async (r) => {
+            try {
+              await smartEquipApi.agreeToSignContract(token, r._id);
+              fetchHistory(true);
+              setViewingContractRental(null);
+              setSigningRental(r);
+            } catch (err) {
+              console.error(err);
+            }
+          }}
         />
       )}
 

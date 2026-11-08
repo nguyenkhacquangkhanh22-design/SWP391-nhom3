@@ -1,0 +1,23 @@
+const express = require("express");
+const paymentController = require("../controllers/paymentController");
+const asyncHandler = require("../utils/asyncHandler");
+
+const router = express.Router();
+
+/**
+ * API 1: POST /api/payments/create-payment-link
+ * Tạo link thanh toán VietQR động của PayOS
+ */
+router.post(
+  "/create-payment-link",
+  asyncHandler(paymentController.createPaymentLink)
+);
+
+/**
+ * API 2: POST /api/payments/webhook
+ * Đón webhook do PayOS gửi về khi thanh toán thành công
+ */
+router.post("/webhook", asyncHandler(paymentController.webhook));
+
+module.exports = router;
+

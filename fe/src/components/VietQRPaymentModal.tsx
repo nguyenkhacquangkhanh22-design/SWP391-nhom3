@@ -1,7 +1,9 @@
 import { useState } from "react";
+import PaymentButton from "./PaymentButton";
 
 interface VietQRPaymentModalProps {
   isOpen: boolean;
+  rentalId?: string;
   onClose: () => void;
   onConfirmPayment: (receiptImage?: string) => Promise<void> | void;
   amount: number;
@@ -14,6 +16,7 @@ interface VietQRPaymentModalProps {
 
 export default function VietQRPaymentModal({
   isOpen,
+  rentalId,
   onClose,
   onConfirmPayment,
   amount,
@@ -218,6 +221,27 @@ export default function VietQRPaymentModal({
             </p>
           )}
         </div>
+
+        {/* PayOS Automated VietQR Banner & Button */}
+        {rentalId && (
+          <div className="p-3 bg-gradient-to-r from-emerald-950/60 via-teal-950/60 to-slate-900 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs text-emerald-200">
+              <div className="font-bold flex items-center gap-1.5">
+                <span>⚡</span>
+                <span>Thanh toán tự động qua cổng PayOS</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Quét mã VietQR động - Hệ thống tự động duyệt đơn tức thì không cần chờ!
+              </p>
+            </div>
+            <PaymentButton
+              rentalId={rentalId}
+              amount={amount}
+              description={`TT don ${rentalCode}`}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95"
+            />
+          </div>
+        )}
 
         {/* Footer Actions */}
         <div className="pt-3 border-t border-[#212c42] flex items-center justify-between gap-3">
