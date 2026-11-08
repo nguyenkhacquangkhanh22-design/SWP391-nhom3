@@ -228,6 +228,92 @@ const paymentController = {
     // Trả về response đúng chuẩn yêu cầu của PayOS
     return res.status(200).json({ success: true });
   },
+
+  /**
+   * API 3: GET /api/payments/verify/:orderCode
+   * Tra cứu trạng thái thanh toán trực tiếp từ PayOS SDK và tự động duyệt đơn sang 'PAID'
+   * Giúp tự động cập nhật ngay cả khi không dùng ngrok/webhook trên localhost
+   */
+  async verifyPayment(req, res) {
+    const { orderCode } = req.params;
+    if (!orderCode) {
+      throw new AppError(400, "Vui lòng cung cấp orderCode");
+    }
+
+    const payos = getPayOS();
+    let paymentInfo;
+
+    try {
+      if (
+        payos.paymentRequests &&
+        typeof payos.paymentRequests.get === "function"
+      ) {
+        paymentInfo = await payos.paymentRequests.get(Number(orderCode));
+      } else if (typeof payos.getPaymentLinkInformation === "function") {
+        paymentInfo = await payos.getPaymentLinkInformation(Number(orderCode));
+      } else {
+        throw new Error("Không tìm thấy hàm tra cứu PayOS");
+      }
+    } catch (err) {
+      console.error("Lỗi tra cứu PayOS:", err.message);
+      return res.status(400).json({
+        success: false,
+        message: `Lỗi tra cứu PayOS: ${err.message}`,
+      });
+    }
+
+    if (!paymentInfo) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thông tin đơn hàng trên PayOS",
+      });
+    }
+
+    let rental = await Rental.findOne({
+      "payment.orderCode": Number(orderCode),
+    });
+
+    if (!rental && paymentInfo.id) {
+      rental = await Rental.findOne({
+        "payment.paymentLinkId": paymentInfo.id,
+      });
+    }
+
+    if (rental && paymentInfo.status === "PAID") {
+      rental.status = "PAID";
+      rental.payment = rental.payment || {};
+      rental.payment.isPaid = true;
+      rental.payment.paidAt = rental.payment.paidAt || new Date();
+      rental.payment.paymentStatus = "paid";
+      rental.payment.paymentMethod = "payos_vietqr";
+      rental.payment.amountPaid =
+        paymentInfo.amountPaid || paymentInfo.amount || rental.totalAmount;
+      if (paymentInfo.transactions && paymentInfo.transactions.length > 0) {
+        rental.payment.transactionId =
+          paymentInfo.transactions[0].reference || paymentInfo.id;
+      }
+      await rental.save();
+
+      try {
+        const { getIO } = require("../config/socket");
+        const io = getIO();
+        io.emit("payment:approved", {
+          rentalId: rental._id,
+          rentalCode: rental.rentalCode,
+          status: "PAID",
+          orderCode,
+        });
+      } catch (socketErr) {
+        console.warn("Socket emit error on verifyPayment:", socketErr?.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: paymentInfo,
+      rentalStatus: rental?.status || "UNKNOWN",
+    });
+  },
 };
 
 module.exports = paymentController;

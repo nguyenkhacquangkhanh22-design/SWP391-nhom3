@@ -1,12 +1,26 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import axios from "axios";
 import Navbar from "../components/Navbar";
 
 export default function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
   const orderCode = searchParams.get("orderCode");
   const status = searchParams.get("status");
-  const [countdown, setCountdown] = useState(6);
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    if (orderCode) {
+      axios
+        .get(`/api/payments/verify/${orderCode}`)
+        .then((res) => {
+          console.log("Xác nhận PayOS tự động thành công:", res.data);
+        })
+        .catch((err) => {
+          console.warn("Lỗi đồng bộ PayOS:", err?.message);
+        });
+    }
+  }, [orderCode]);
 
   useEffect(() => {
     const timer = setInterval(() => {

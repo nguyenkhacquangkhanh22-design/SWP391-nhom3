@@ -705,6 +705,62 @@ class RentalService {
     }
     await rental.save();
 
+    // Tự động gửi bản hợp đồng đầu tiên vào khung chat từ Owner sang Renter để khách coi
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      const existingContractMsg = await ChatMessage.findOne({
+        rental_id: rental._id,
+        message_type: "contract",
+      });
+
+      if (!existingContractMsg && rental.owner && rental.renter) {
+        const ownerId = rental.owner._id || rental.owner;
+        const renterId = rental.renter._id || rental.renter;
+        const contractNumber =
+          rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        const equipmentTitle = rental.equipment?.title || "Thiết bị điện tử";
+        const totalAmount = rental.totalAmount || rental.rentalFee || 0;
+
+        const autoContractMsg = new ChatMessage({
+          sender: ownerId,
+          receiver: renterId,
+          rental_id: rental._id,
+          message: `Đã gửi bản hợp đồng điện tử #${contractNumber}`,
+          message_type: "contract",
+          contract_data: {
+            contract_number: contractNumber,
+            rental_code: rental.rentalCode,
+            equipment_title: equipmentTitle,
+            rental_id: rental._id,
+            total_amount: totalAmount,
+            status: "APPROVED",
+            is_signed: false,
+          },
+        });
+        await autoContractMsg.save();
+
+        const welcomeMsg = new ChatMessage({
+          sender: ownerId,
+          receiver: renterId,
+          rental_id: rental._id,
+          message: `Chào bạn! Tôi đã kiểm tra và phê duyệt yêu cầu thuê #${rental.rentalCode}. Hợp đồng dự thảo đã được gửi ở trên, bạn hãy xem qua điều khoản và bấm "Đồng ý ký HĐ" khi thống nhất nhé!`,
+          message_type: "text",
+        });
+        await welcomeMsg.save();
+
+        const { getIO } = require("../config/socket");
+        const io = getIO();
+        if (io) {
+          io.to(`user:${renterId}`).emit("chat:new_message", autoContractMsg);
+          io.to(`rental:${rental._id}`).emit("chat:new_message", autoContractMsg);
+          io.to(`user:${renterId}`).emit("chat:new_message", welcomeMsg);
+          io.to(`rental:${rental._id}`).emit("chat:new_message", welcomeMsg);
+        }
+      }
+    } catch (chatErr) {
+      console.warn("Auto send contract chat error on approveRental:", chatErr.message);
+    }
+
     if (UserNotification && rental.renter?._id) {
       try {
         await UserNotification.create({

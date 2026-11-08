@@ -19,5 +19,11 @@ router.post(
  */
 router.post("/webhook", asyncHandler(paymentController.webhook));
 
+/**
+ * API 3: GET /api/payments/verify/:orderCode
+ * Tra cứu trạng thái thanh toán trực tiếp từ PayOS và tự động cập nhật 'PAID'
+ */
+router.get("/verify/:orderCode", asyncHandler(paymentController.verifyPayment));
+
 module.exports = router;
 

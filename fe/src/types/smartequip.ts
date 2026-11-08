@@ -106,11 +106,14 @@ export interface RentalContract {
 export interface RentalPayment {
   isPaid?: boolean;
   paymentStatus: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded";
-  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | string;
+  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | "payos_vietqr" | string;
   transactionId?: string;
   paidAt?: string;
   amountPaid: number;
   receiptImage?: string;
+  orderCode?: number;
+  paymentLinkId?: string;
+  checkoutUrl?: string;
 }
 
 export interface RentalReturnRequest {

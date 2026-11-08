@@ -1,7 +1,7 @@
 import { useState } from "react";
+import axios from "axios";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
-import { useToast } from "../context/ToastContext";
 import SignaturePad from "./SignaturePad";
 import ContractPdfModal from "./ContractPdfModal";
 
@@ -20,7 +20,6 @@ export default function ContractConfirmationModal({
   onClose,
   onSuccess,
 }: Props) {
-  const { showToast } = useToast();
   const renterName =
     typeof rental.renter === "object" && rental.renter !== null && rental.renter.name
       ? rental.renter.name
@@ -32,34 +31,12 @@ export default function ContractConfirmationModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState<"contract" | "payment">("contract");
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [showPdfModal, setShowPdfModal] = useState(false);
 
   if (!isOpen) return null;
 
-  // Chi tiết thanh toán chuyển khoản VietQR theo tài khoản ngân hàng của Chủ máy (Owner)
-  const ownerObj = typeof rental.owner === "object" ? rental.owner : null;
-  const ownerBankInfo = (ownerObj as any)?.bankInfo;
-
-  const bankName = ownerBankInfo?.bankName || "MB Bank (Ngân hàng TMCP Quân Đội)";
-  const accountNumber = ownerBankInfo?.accountNumber || "111105056666";
-  const accountHolder = ownerBankInfo?.accountHolder || ownerObj?.name || "NGUYEN KHAC QUANG KHANH";
-  const bankCode = ownerBankInfo?.bankCode || "MB";
-
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
-  const transferContent = `THUE ${contractCode}`;
   const totalAmountToPay = rental.totalAmount || (rental.rentalFee + (rental.shippingFee || 0)); // KHÔNG CẦN TIỀN CỌC! (Tiền thuê + phí vận chuyển)
-
-  const vietQrDynamicUrl = `https://img.vietqr.io/image/${bankCode}-${accountNumber}-compact2.png?amount=${totalAmountToPay}&addInfo=${encodeURIComponent(
-    transferContent
-  )}&accountName=${encodeURIComponent(accountHolder)}`;
-
-  const handleCopy = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
 
   const handleGoToPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,11 +52,12 @@ export default function ContractConfirmationModal({
     setStep("payment");
   };
 
-  const handleCompleteSignAndPay = async () => {
+  const handlePayOSPayment = async () => {
+    if (loading) return;
     setLoading(true);
     setError("");
     try {
-      // 1. Luôn cập nhật và xác nhận chữ ký tay điện tử
+      // 1. Luôn cập nhật và xác nhận chữ ký tay điện tử vào hợp đồng
       if (handwrittenSignature || signerName.trim()) {
         try {
           await smartEquipApi.confirmContract(token, rental._id, {
@@ -88,29 +66,30 @@ export default function ContractConfirmationModal({
             digitalSignature: handwrittenSignature || rental.contract?.digitalSignature || "",
           });
         } catch (signErr: any) {
-          console.warn("Ký hợp đồng notice:", signErr?.message);
+          console.warn("Lưu chữ ký hợp đồng notice:", signErr?.message);
         }
       }
 
-      // 2. Xác nhận thanh toán qua chuyển khoản VietQR kèm ảnh biên lai & bảo tồn chữ ký
-      await smartEquipApi.payRental(token, rental._id, {
-        paymentMethod: "bank_transfer",
-        receiptImage: receiptImage || undefined,
-        digitalSignature: handwrittenSignature || undefined,
-        renterSignature: signerName.trim() || undefined,
+      // 2. Gọi thẳng API POST /api/payments/create-payment-link (chuyền vào rentalId, amount, description)
+      const response = await axios.post("/api/payments/create-payment-link", {
+        rentalId: rental._id,
+        amount: totalAmountToPay,
+        description: `TT don ${rental.rentalCode}`,
       });
 
-      showToast({
-        type: "payment_submitted",
-        title: "💳 ĐÃ GỬI BIÊN LAI CHUYỂN KHOẢN!",
-        message: `Đã gửi biên lai chuyển khoản đơn #${rental.rentalCode}. Đang chờ Chủ máy kiểm tra và xác nhận thanh toán.`,
-        link: "/rentals/history",
-        rentalCode: rental.rentalCode,
-      });
-
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể hoàn tất xác nhận thanh toán");
+      const { checkoutUrl } = response.data;
+      if (checkoutUrl) {
+        if (onSuccess) onSuccess();
+        // Chuyển hướng người dùng sang cổng thanh toán PayOS
+        window.location.href = checkoutUrl;
+      } else {
+        throw new Error("Không nhận được liên kết thanh toán từ PayOS");
+      }
+    } catch (err: any) {
+      console.error("Lỗi khởi tạo cổng thanh toán PayOS:", err);
+      const errorMsg =
+        err.response?.data?.message || err.message || "Không thể kết nối đến cổng thanh toán PayOS";
+      setError(errorMsg);
       setLoading(false);
     }
   };
@@ -131,7 +110,7 @@ export default function ContractConfirmationModal({
               <h2 className="text-base font-bold text-white">
                 {step === "contract"
                   ? "Ký Hợp Đồng Thuê Điện Tử Bằng Tay"
-                  : `Thanh Toán Tiền Thuê Chuyển Khoản (${bankName.split("(")[0].trim()})`}
+                  : "Thanh Toán Tự Động Qua Cổng PayOS (VietQR)"}
               </h2>
               <p className="text-xs text-orange-400 mt-0.5">
                 Mã đơn: <strong className="font-mono text-white">{rental.rentalCode}</strong> | Mã HĐ:{" "}
@@ -183,7 +162,7 @@ export default function ContractConfirmationModal({
             <span className="w-5 h-5 rounded-full bg-slate-700/50 flex items-center justify-center text-[10px] font-bold">
               2
             </span>
-            <span>Thanh toán VietQR (Không cọc)</span>
+            <span>Thanh toán PayOS (VietQR)</span>
           </div>
         </div>
 
@@ -360,197 +339,100 @@ export default function ContractConfirmationModal({
           </div>
         )}
 
-        {/* STEP 2: THANH TOÁN CHUYỂN KHOẢN VIETQR (KHÔNG CỌC) */}
+        {/* STEP 2: THANH TOÁN TỰ ĐỘNG QUA CỔNG PAYOS (VIETQR) */}
         {step === "payment" && (
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            {/* VietQR Container */}
-            <div className="flex flex-col items-center justify-center bg-[#0d1422] p-4 rounded-xl border border-[#202d44]">
-              <div className="relative bg-white p-2 rounded-xl shadow-lg border-2 border-orange-500/40 w-[200px] h-[200px] flex items-center justify-center overflow-hidden">
-                <img
-                  src={vietQrDynamicUrl}
-                  alt="Mã QR VietQR MB Bank"
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (target.src !== "/vietqr-mb.jpg") {
-                      target.src = "/vietqr-mb.jpg";
-                      target.className = "w-[200px] h-[250px] object-cover object-top";
-                    }
-                  }}
-                />
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 py-1">
+            {/* Khối hiển thị Số tiền thanh toán (lấy từ dữ liệu đơn hàng) */}
+            <div className="bg-gradient-to-br from-[#121c2e] via-[#16233a] to-[#111928] p-5 rounded-2xl border-2 border-emerald-500/40 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Số tiền thanh toán:
+                </span>
+                <span className="text-[11px] bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 px-2.5 py-0.5 rounded-full font-bold">
+                  ✓ Miễn 100% tiền cọc
+                </span>
               </div>
-              <span className="text-[10px] text-emerald-400 mt-1 font-semibold">✓ Mã QR VietQR tài khoản Chủ máy</span>
-              <p className="text-[11px] text-slate-400 mt-2 text-center">
-                Mở ứng dụng Ngân hàng của bạn quét mã VietQR để thanh toán tiền thuê
-              </p>
-            </div>
 
-            {/* Số tiền thanh toán */}
-            <div className="bg-gradient-to-r from-orange-950/40 via-amber-950/30 to-orange-950/40 p-3 rounded-xl border border-orange-500/30 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] text-orange-300 block">Số tiền thanh toán:</span>
-                <span className="text-xl font-extrabold text-orange-400">
+              <div className="flex items-baseline justify-between flex-wrap gap-2 pt-1 border-b border-[#213049] pb-3">
+                <span className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-500">
                   {totalAmountToPay.toLocaleString("vi-VN")} đ
                 </span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
-                  ✓ Không cần tiền cọc
-                </span>
-                <p className="text-[10px] text-slate-400 mt-1">Chỉ thanh toán phí thuê</p>
-              </div>
-            </div>
-
-            {/* Bảng thông tin tài khoản MB Bank */}
-            {/* Upload ảnh biên lai chuyển khoản (Yêu cầu 2) */}
-            <div className="bg-[#101725] p-3.5 rounded-xl border border-[#212d42] space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-200 flex items-center gap-1.5">
-                  <span>📸</span>
-                  <span>Ảnh chụp biên lai chuyển khoản thành công:</span>
-                </label>
-                <span className="text-[10px] text-amber-400 bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">
-                  Gửi để Chủ máy duyệt tiền nhanh
+                <span className="text-xs text-slate-400">
+                  (Chỉ tính phí thuê thiết bị)
                 </span>
               </div>
 
-              {receiptImage ? (
-                <div className="p-2 rounded-xl border border-emerald-500/40 bg-[#0d1422] flex items-center gap-3">
-                  <img
-                    src={receiptImage}
-                    alt="Biên lai chuyển khoản"
-                    className="w-16 h-16 object-cover rounded-lg border border-[#263752]"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-bold text-emerald-400 block">✓ Đã đính kèm ảnh biên lai</span>
-                    <button
-                      type="button"
-                      onClick={() => setReceiptImage(null)}
-                      className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold underline mt-1"
-                    >
-                      Gỡ ảnh / Chọn ảnh khác
-                    </button>
-                  </div>
+              {/* Tóm tắt thông tin đơn hàng */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 text-slate-300">
+                <div className="truncate">
+                  Thiết bị: <strong className="text-white">{rental.equipment?.title || "Thiết bị điện tử"}</strong>
                 </div>
-              ) : (
-                <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-[#283852] hover:border-orange-500/60 rounded-xl cursor-pointer bg-[#0c1322] hover:bg-[#131d30] transition-all">
-                  <span className="text-lg">📷</span>
-                  <span className="text-xs text-slate-300 font-medium mt-1">Bấm để tải ảnh chụp màn hình bill ngân hàng</span>
-                  <span className="text-[10px] text-slate-500">JPG, PNG, WEBP (Tối đa 10MB)</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      const r = new FileReader();
-                      r.onloadend = () => setReceiptImage(r.result as string);
-                      r.readAsDataURL(f);
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-
-            <div className="bg-[#111927] p-3.5 rounded-xl border border-[#212d42] space-y-2 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-[#1b263b]">
-                <span className="text-slate-400">Ngân hàng:</span>
-                <span className="font-bold text-white text-right">{bankName}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-1 border-b border-[#1b263b]">
-                <span className="text-slate-400">Số tài khoản:</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-orange-300 text-sm">{accountNumber}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(accountNumber, "stk")}
-                    className="px-2 py-0.5 bg-[#1f2b3e] hover:bg-orange-600 text-slate-300 hover:text-white rounded text-[10px] font-semibold transition-all"
-                  >
-                    {copiedField === "stk" ? "✓ Đã chép" : "Sao chép"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between py-1 border-b border-[#1b263b]">
-                <span className="text-slate-400">Chủ tài khoản:</span>
-                <span className="font-bold text-white">{accountHolder}</span>
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <span className="text-slate-400">Nội dung chuyển khoản:</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-emerald-400">{transferContent}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(transferContent, "memo")}
-                    className="px-2 py-0.5 bg-[#1f2b3e] hover:bg-emerald-600 text-slate-300 hover:text-white rounded text-[10px] font-semibold transition-all"
-                  >
-                    {copiedField === "memo" ? "✓ Đã chép" : "Sao chép"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Banner tải / lưu hợp đồng PDF */}
-            <div className="p-3 bg-[#0d1525] border border-[#202e48] rounded-xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="text-xl">📄</span>
                 <div>
-                  <span className="text-xs font-bold text-white block">Hợp đồng điện tử kèm chữ ký tay</span>
-                  <span className="text-[11px] text-slate-400">Bạn có thể mở kiểm tra và tải file PDF về máy</span>
+                  Mã đơn: <strong className="text-orange-400 font-mono">{rental.rentalCode}</strong>
+                </div>
+                <div>
+                  Chủ thiết bị: <strong className="text-white">{ownerName}</strong>
+                </div>
+                <div>
+                  Mã hợp đồng: <strong className="text-slate-300 font-mono">{contractCode}</strong>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowPdfModal(true)}
-                className="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 text-orange-300 hover:text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 flex-shrink-0"
-              >
-                <span>🖨️</span>
-                <span>Lưu file PDF</span>
-              </button>
             </div>
 
-            {/* Xem trước chữ ký đã vẽ nền trắng */}
+            {/* Thông tin tiện ích cổng PayOS */}
+            <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                <span className="text-base">⚡</span>
+                <span>Thanh toán tự động qua cổng PayOS (Chuẩn VietQR)</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Nhấn nút bên dưới để chuyển hướng sang cổng thanh toán an toàn <strong>PayOS</strong>. Hệ thống sẽ tạo sẵn <strong>mã VietQR động</strong> đúng số tiền và tự động duyệt đơn ngay khi bạn chuyển tiền thành công!
+              </p>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1">
+                <span>🏦</span>
+                <span>Hỗ trợ tất cả ứng dụng ngân hàng: MB, Vietcombank, Techcombank, ACB, BIDV, VPBank, MoMo...</span>
+              </div>
+            </div>
+
+            {/* Xem trước chữ ký đã vẽ */}
             {handwrittenSignature && (
               <div className="p-2.5 rounded-xl bg-[#0c1322] border border-[#1e2a40] flex items-center justify-between text-xs">
-                <span className="text-slate-400">Chữ ký tay của bạn (Nền trắng):</span>
+                <span className="text-slate-400">Chữ ký tay điện tử của bạn:</span>
                 <div className="bg-white p-1 rounded-lg border border-slate-300 shadow-sm flex items-center justify-center">
                   <img
                     src={handwrittenSignature}
                     alt="Chữ ký đã vẽ"
-                    className="h-9 max-w-[170px] object-contain block"
+                    className="h-8 max-w-[150px] object-contain block"
                   />
                 </div>
               </div>
             )}
 
-            {/* Footer Buttons Step 2 */}
-            <div className="pt-3 border-t border-[#212c42] flex items-center justify-between gap-3">
+            {/* Nút bấm lớn, nổi bật ghi: "Thanh Toán Tự Động Qua PayOS" */}
+            <div className="pt-3 border-t border-[#212c42] space-y-3">
               <button
                 type="button"
-                onClick={() => setStep("contract")}
+                onClick={handlePayOSPayment}
                 disabled={loading}
-                className="px-4 py-2 bg-[#1b2436] hover:bg-[#25324c] text-slate-300 font-semibold rounded-xl text-xs transition-all"
+                className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-base rounded-2xl transition-all shadow-xl shadow-emerald-950/60 flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 cursor-pointer animate-pulse hover:animate-none"
               >
-                ← Quay lại hợp đồng
+                <span>{loading ? "⏳" : "💳"}</span>
+                <span>{loading ? "Đang kết nối cổng PayOS..." : "Thanh Toán Tự Động Qua PayOS"}</span>
+                <span>➔</span>
               </button>
-              <button
-                type="button"
-                onClick={handleCompleteSignAndPay}
-                disabled={loading}
-                className="flex-1 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-1.5"
-              >
-                {loading ? (
-                  <span>Đang ghi nhận chữ ký & thanh toán...</span>
-                ) : (
-                  <>
-                    <span>✅</span>
-                    <span>Xác nhận Ký & Đã Chuyển Khoản Thành Công</span>
-                  </>
-                )}
-              </button>
+
+              <div className="flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => setStep("contract")}
+                  disabled={loading}
+                  className="px-3.5 py-1.5 text-slate-400 hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>←</span>
+                  <span>Quay lại kiểm tra hợp đồng</span>
+                </button>
+                <span className="text-[11px] text-slate-500">Bảo mật giao dịch VietQR 256-bit</span>
+              </div>
             </div>
           </div>
         )}

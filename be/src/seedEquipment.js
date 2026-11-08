@@ -12,6 +12,24 @@ const Equipment = require("./models/Equipment");
 
 const sampleEquipments = [
   {
+    title: "Thiết Bị Test Cổng Thanh Toán PayOS (1.000 đ/ngày)",
+    description:
+      "Thiết bị chuyên biệt để kiểm thử quy trình tạo mã VietQR động PayOS và webhook tự động duyệt đơn tức thì. Giá thuê chỉ 1.000 đ / ngày.",
+    category: "Thiết bị Test Thanh toán",
+    brand: "SmartEquip Lab",
+    modelNumber: "PAYOS-1K",
+    dailyRate: 1000,
+    depositAmount: 0,
+    status: "APPROVED",
+    images: [
+      "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=800&q=80",
+    ],
+    condition: "like-new",
+    isFeatured: true,
+    location: { address: "Trung tâm Demo SmartEquip, Quận 1", city: "TP. Hồ Chí Minh" },
+  },
+  {
     title: "Máy ảnh Sony Alpha A7 IV (Body) + Ống kính 24-70mm GM",
     description: "Máy ảnh Full-frame đa năng 33MP, quay phim 4K 60p 10-bit 4:2:2. Cảm biến sắc nét, lấy nét mắt tự động Real-time Eye AF. Đi kèm thẻ nhớ 128GB tốc độ cao và 2 pin.",
     category: "Máy ảnh & Quay phim",

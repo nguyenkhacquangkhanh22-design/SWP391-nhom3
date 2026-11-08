@@ -454,6 +454,18 @@ export default function RentalChatModal({
                             <span>{agreeing ? "Đang gửi..." : "Đồng ý ký HĐ"}</span>
                           </button>
                         )}
+
+                        {/* Nút Ký hợp đồng ngay nếu đã đồng ý nhưng chưa ký */}
+                        {!isOwnerCurrent && isApproved && currentRental.contract?.agreedToSign && !currentRental.contract?.termsAccepted && onAgreeToSign && (
+                          <button
+                            type="button"
+                            onClick={() => onAgreeToSign(currentRental)}
+                            className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <span>✍️</span>
+                            <span>Ký HĐ ngay ➔</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : msg.message_type === "image" || msg.file_url ? (

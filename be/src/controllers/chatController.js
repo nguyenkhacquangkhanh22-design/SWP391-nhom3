@@ -12,6 +12,67 @@ async function getConversation(req, res) {
 
   if (rentalId) {
     query.rental_id = rentalId;
+
+    // Tự động kiểm tra: Nếu đơn thuê đã APPROVED mà chưa có hợp đồng trong chat, tự động tạo ngay để khách coi
+    try {
+      const hasContract = await ChatMessage.exists({
+        rental_id: rentalId,
+        message_type: "contract",
+      });
+
+      if (!hasContract) {
+        const Rental = require("../models/Rental");
+        const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+        const upperStatus = String(rental?.status || "").toUpperCase();
+        if (
+          rental &&
+          (upperStatus === "APPROVED" ||
+            upperStatus === "CONTRACT_SIGNED" ||
+            upperStatus === "PAYMENT_PENDING" ||
+            upperStatus === "PAID") &&
+          rental.owner &&
+          rental.renter
+        ) {
+          const ownerId = rental.owner._id || rental.owner;
+          const renterId = rental.renter._id || rental.renter;
+          const contractNumber =
+            rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+          const equipmentTitle = rental.equipment?.title || "Thiết bị điện tử";
+          const totalAmount = rental.totalAmount || rental.rentalFee || 0;
+
+          await ChatMessage.create({
+            sender: ownerId,
+            receiver: renterId,
+            rental_id: rental._id,
+            message: `Đã gửi bản hợp đồng điện tử #${contractNumber}`,
+            message_type: "contract",
+            contract_data: {
+              contract_number: contractNumber,
+              rental_code: rental.rentalCode,
+              equipment_title: equipmentTitle,
+              rental_id: rental._id,
+              total_amount: totalAmount,
+              status: rental.status,
+              is_signed: Boolean(
+                rental.contract?.termsAccepted ||
+                  rental.contract?.signedAt ||
+                  rental.contract?.digitalSignature
+              ),
+            },
+          });
+
+          await ChatMessage.create({
+            sender: ownerId,
+            receiver: renterId,
+            rental_id: rental._id,
+            message: `Chào bạn! Tôi đã kiểm tra và phê duyệt yêu cầu thuê #${rental.rentalCode}. Hợp đồng dự thảo đã được gửi ở trên, bạn hãy xem qua điều khoản và bấm "Đồng ý ký HĐ" khi thống nhất nhé!`,
+            message_type: "text",
+          });
+        }
+      }
+    } catch (autoErr) {
+      console.warn("Auto populate contract in getConversation error:", autoErr.message);
+    }
   } else if (otherUserId) {
     query.$or = [
       { sender: currentUserId, receiver: otherUserId },

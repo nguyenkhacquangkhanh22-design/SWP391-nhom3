@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
+import axios from "axios";
 import { useAuth } from "../app/AuthProvider";
 import { useToast } from "../context/ToastContext";
 import { getSocket } from "../services/socket";
@@ -118,7 +119,28 @@ export default function RentalHistoryPage() {
 
     smartEquipApi
       .getRentalHistory(token)
-      .then((res) => setRentals(res.data))
+      .then((res) => {
+        const list = res.data || [];
+        setRentals(list);
+
+        // Tự động đối soát và đồng bộ đơn hàng với cổng PayOS nếu có đơn đang ở trạng thái đã ký
+        list.forEach((r) => {
+          const upper = String(r.status).toUpperCase();
+          if (upper === "CONTRACT_SIGNED" && r.payment?.orderCode) {
+            axios
+              .get(`/api/payments/verify/${r.payment.orderCode}`)
+              .then((verifyRes) => {
+                if (
+                  verifyRes.data?.data?.status === "PAID" ||
+                  verifyRes.data?.rentalStatus === "PAID"
+                ) {
+                  fetchHistory(true);
+                }
+              })
+              .catch(() => {});
+          }
+        });
+      })
       .catch((err) => {
         if (!silent) setError(err.message || "Không thể tải lịch sử đơn thuê");
       })
@@ -928,22 +950,13 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Nút thanh toán (UC_R09) - Hỗ trợ PayOS VietQR tự động và chuyển khoản */}
+                    {/* Nút thanh toán (UC_R09) - PayOS VietQR tự động */}
                     {canPay && (
-                      <div className="flex flex-col gap-1.5 w-full">
-                        <PaymentButton
-                          rentalId={r._id}
-                          amount={r.totalAmount || r.rentalFee}
-                          description={`TT don ${r.rentalCode}`}
-                        />
-                        <button
-                          onClick={() => setPayingRental(r)}
-                          className="px-3 py-1.5 bg-[#172235] hover:bg-[#202f48] border border-[#2b3c58] text-slate-300 font-medium rounded-xl text-[11px] transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>🏦</span>
-                          <span>Chuyển khoản thủ công</span>
-                        </button>
-                      </div>
+                      <PaymentButton
+                        rentalId={r._id}
+                        amount={r.totalAmount || r.rentalFee}
+                        description={`TT don ${r.rentalCode}`}
+                      />
                     )}
 
                     {/* Trạng thái chờ Owner duyệt chuyển khoản */}
