@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../app/AuthProvider";
+import { getSocket } from "../services/socket";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { ChatMessage, Rental } from "../types/smartequip";
 import ContractPdfModal from "./ContractPdfModal";
@@ -18,6 +19,7 @@ interface Props {
     role?: string;
   };
   onViewContract?: (rental: Rental) => void;
+  onAgreeToSign?: (rental: Rental) => void;
 }
 
 export default function RentalChatModal({
@@ -28,6 +30,7 @@ export default function RentalChatModal({
   currentUserId: propCurrentUserId,
   partnerUser: propPartnerUser,
   onViewContract,
+  onAgreeToSign,
 }: Props) {
   const auth = useAuth();
   const token = propToken || auth.token || "";
@@ -70,7 +73,73 @@ export default function RentalChatModal({
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
+  const [agreeing, setAgreeing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isApproved =
+    String(currentRental.status).toUpperCase() === "APPROVED" ||
+    String(currentRental.status).toLowerCase() === "approved";
+
+  // Lắng nghe realtime khi đối tác đồng ý ký hợp đồng
+  useEffect(() => {
+    const socket = getSocket();
+    const handleRentalAgreed = (payload: { rentalId: string }) => {
+      if (String(payload.rentalId) === String(currentRental._id)) {
+        setCurrentRental((prev) => ({
+          ...prev,
+          contract: {
+            ...prev.contract,
+            agreedToSign: true,
+            agreedAt: new Date().toISOString(),
+          },
+        }));
+      }
+    };
+    socket.on("rental:agreed", handleRentalAgreed);
+    return () => {
+      socket.off("rental:agreed", handleRentalAgreed);
+    };
+  }, [currentRental._id]);
+
+  const handleAgreeToSign = async () => {
+    if (agreeing) return;
+    setAgreeing(true);
+    try {
+      const res = await smartEquipApi.agreeToSignContract(token, currentRental._id);
+      const updated: Rental = res.data || {
+        ...currentRental,
+        contract: {
+          ...currentRental.contract,
+          agreedToSign: true,
+          agreedAt: new Date().toISOString(),
+        },
+      };
+      setCurrentRental(updated);
+
+      // Tự động gửi tin nhắn thông báo vào cuộc trò chuyện để hai bên đều thấy
+      try {
+        const sendRes = await smartEquipApi.sendChatMessage(token, {
+          receiverId: partnerUser._id,
+          rentalId: currentRental._id,
+          message: "🤝 Tôi đã trao đổi và hoàn toàn đồng ý với các điều khoản hợp đồng. Sẵn sàng tiến hành ký kết & thanh toán!",
+          messageType: "text",
+        });
+        if (sendRes.data) {
+          setMessages((prev) => [...prev, sendRes.data]);
+        }
+      } catch (msgErr) {
+        console.warn("Send agreement chat message error:", msgErr);
+      }
+
+      if (onAgreeToSign) {
+        onAgreeToSign(updated);
+      }
+    } catch (err) {
+      console.error("Lỗi đồng ý ký hợp đồng:", err);
+    } finally {
+      setAgreeing(false);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -282,6 +351,52 @@ export default function RentalChatModal({
           </div>
         </div>
 
+        {/* Banner thỏa thuận điều khoản & Nút Đồng ý ký hợp đồng */}
+        {isApproved && !currentRental.contract?.agreedToSign && (
+          <div className="px-4 py-2.5 bg-gradient-to-r from-blue-950/90 via-indigo-950/90 to-blue-950/90 border-b border-blue-500/40 flex items-center justify-between gap-3 text-xs shadow-inner">
+            <div className="flex items-center gap-2 text-blue-200 min-w-0">
+              <span className="text-base shrink-0">🤝</span>
+              <span className="truncate">
+                {isOwnerCurrent
+                  ? "Đang trao đổi thỏa thuận với Khách thuê về điều khoản hợp đồng."
+                  : "Sau khi trao đổi thống nhất với Chủ máy, bấm Đồng ý để mở chức năng Ký HĐ."}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleAgreeToSign}
+              disabled={agreeing}
+              className="shrink-0 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              title="Xác nhận hai bên đã trao đổi thống nhất và đồng ý tiến hành ký hợp đồng"
+            >
+              <span>🤝</span>
+              <span>{agreeing ? "Đang gửi..." : "Đồng ý ký hợp đồng"}</span>
+            </button>
+          </div>
+        )}
+
+        {isApproved && currentRental.contract?.agreedToSign && !currentRental.contract?.termsAccepted && (
+          <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-950/90 via-teal-950/90 to-emerald-950/90 border-b border-emerald-500/40 flex items-center justify-between gap-3 text-xs shadow-inner">
+            <div className="flex items-center gap-2 text-emerald-200 min-w-0">
+              <span className="text-base shrink-0">✅</span>
+              <span className="truncate font-medium">
+                Hai bên đã xác nhận đồng ý thỏa thuận hợp đồng!
+              </span>
+            </div>
+            {!isOwnerCurrent && onAgreeToSign && (
+              <button
+                type="button"
+                onClick={() => onAgreeToSign(currentRental)}
+                className="shrink-0 px-3 py-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-xs transition-all shadow-md active:scale-95 flex items-center gap-1 cursor-pointer"
+              >
+                <span>✍️</span>
+                <span>Ký hợp đồng ngay</span>
+                <span>➔</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Messages Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0d1422]">
           {loading && messages.length === 0 ? (
@@ -369,6 +484,20 @@ export default function RentalChatModal({
                           <span>📄</span>
                           <span>Xem hợp đồng</span>
                         </button>
+
+                        {/* Nút Đồng ý ký HĐ cho Renter ngay trên thẻ HĐ nếu chưa đồng ý */}
+                        {!isOwnerCurrent && isApproved && !currentRental.contract?.agreedToSign && (
+                          <button
+                            type="button"
+                            onClick={handleAgreeToSign}
+                            disabled={agreeing}
+                            className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            title="Xác nhận đồng ý điều khoản trong hợp đồng"
+                          >
+                            <span>🤝</span>
+                            <span>{agreeing ? "Đang gửi..." : "Đồng ý ký HĐ"}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : msg.message_type === "image" || msg.file_url ? (
@@ -437,9 +566,23 @@ export default function RentalChatModal({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-[11px] text-sky-300">
-              <span>💬</span>
-              <span>Renter có quyền xem hợp đồng và gửi ảnh thiết bị / tin nhắn cho Owner.</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-[11px] text-sky-300">
+                <span>💬</span>
+                <span>Renter có quyền xem hợp đồng và gửi ảnh thiết bị / tin nhắn cho Owner.</span>
+              </div>
+              {isApproved && !currentRental.contract?.agreedToSign && (
+                <button
+                  type="button"
+                  onClick={handleAgreeToSign}
+                  disabled={agreeing}
+                  className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg text-xs transition-all shadow-sm active:scale-95 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                  title="Xác nhận hai bên đã trao đổi thống nhất và đồng ý tiến hành ký hợp đồng"
+                >
+                  <span>🤝</span>
+                  <span>{agreeing ? "Đang gửi..." : "Đồng ý ký hợp đồng"}</span>
+                </button>
+              )}
             </div>
           )}
           <span className="text-[10px] text-slate-400 shrink-0">Tự động đồng bộ tin nhắn</span>

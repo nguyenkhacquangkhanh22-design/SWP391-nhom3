@@ -146,6 +146,14 @@ export const smartEquipApi = {
       token,
     ),
 
+  // Đồng ý thỏa thuận điều khoản để mở quyền Ký hợp đồng & Thanh toán
+  agreeToSignContract: (token: string, rentalId: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/agree-contract`,
+      { method: "POST" },
+      token,
+    ),
+
   // UC_R08: Ký hợp đồng điện tử
   confirmContract: (
     token: string,

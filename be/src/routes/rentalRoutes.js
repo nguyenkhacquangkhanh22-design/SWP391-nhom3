@@ -25,6 +25,10 @@ router.get("/:id/contract-html", asyncHandler(rentalController.getContractHtml))
 
 // POST /api/rentals/:id/approve (Phê duyệt đơn thuê)
 router.post("/:id/approve", asyncHandler(rentalController.approveRental));
+
+// POST /api/rentals/:id/agree-contract (Đồng ý thỏa thuận điều khoản hợp đồng sau khi trao đổi qua chat)
+router.post("/:id/agree-contract", asyncHandler(rentalController.agreeContract));
+
 // UC_R08: POST /api/rentals/:id/confirm-contract (Ký hợp đồng điện tử)
 router.post("/:id/confirm-contract", requireObjectBody, asyncHandler(rentalController.confirmContract));
 

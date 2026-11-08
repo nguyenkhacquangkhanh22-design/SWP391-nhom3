@@ -2,6 +2,17 @@ const rentalService = require("../services/rentalService");
 
 class RentalController {
   /**
+   * POST /api/rentals/:id/agree-contract (Đồng ý thỏa thuận điều khoản hợp đồng)
+   */
+  async agreeContract(req, res) {
+    const rental = await rentalService.agreeContract(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: "Đã xác nhận thỏa thuận điều khoản hợp đồng! Bạn có thể tiến hành Ký hợp đồng & Thanh toán.",
+      data: rental,
+    });
+  }
+  /**
    * UC_R07: POST /api/rentals/request (Tạo yêu cầu thuê & check availability)
    */
   async createRentalRequest(req, res) {

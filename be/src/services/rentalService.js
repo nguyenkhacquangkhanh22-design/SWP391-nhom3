@@ -268,6 +268,58 @@ class RentalService {
   }
 
   /**
+   * Đồng ý thỏa thuận điều khoản hợp đồng sau khi trao đổi qua chat
+   * Cho phép mở nút Ký hợp đồng & Thanh toán
+   */
+  async agreeContract(rentalId, user) {
+    const rental = await Rental.findById(rentalId)
+      .populate("renter", "name email phone User_Id")
+      .populate("owner", "name email phone User_Id")
+      .populate("equipment", "title images dailyRate");
+
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const userIdStr = user._id.toString();
+    const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString();
+    const ownerIdStr = rental.owner?._id?.toString() || rental.owner?.toString();
+
+    if (
+      userIdStr !== renterIdStr &&
+      userIdStr !== ownerIdStr &&
+      user.role !== "admin" &&
+      user.role !== "rentalmoderator"
+    ) {
+      throw new AppError(403, "Bạn không có quyền xác nhận thỏa thuận cho đơn thuê này");
+    }
+
+    rental.contract = rental.contract || {};
+    rental.contract.agreedToSign = true;
+    rental.contract.agreedAt = new Date();
+    await rental.save();
+
+    // Phát Socket.IO để hai bên cập nhật giao diện thời gian thực
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const payload = {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        agreedBy: user.name,
+        agreedRole: userIdStr === renterIdStr ? "renter" : "owner",
+        renterId: renterIdStr,
+        ownerId: ownerIdStr,
+      };
+      io.emit("rental:agreed", payload);
+    } catch (socketErr) {
+      console.warn("Socket emit error on agreeContract:", socketErr?.message);
+    }
+
+    return rental;
+  }
+
+  /**
    * UC_R08: Confirm E-Contract
    * Renter xác nhận chữ ký điện tử vào hợp đồng, chuyển status sang 'CONTRACT_SIGNED'
    */

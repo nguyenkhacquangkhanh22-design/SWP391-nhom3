@@ -147,6 +147,8 @@ const rentalSchema = new mongoose.Schema(
       renterSignature: { type: String, trim: true },
       digitalSignature: { type: String, trim: true },
       contractUrl: { type: String, trim: true },
+      agreedToSign: { type: Boolean, default: false },
+      agreedAt: { type: Date },
     },
     payment: {
       isPaid: { type: Boolean, default: false },

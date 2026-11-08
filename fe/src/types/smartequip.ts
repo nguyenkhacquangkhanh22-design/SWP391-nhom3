@@ -99,6 +99,8 @@ export interface RentalContract {
   renterSignature?: string;
   digitalSignature?: string;
   contractUrl?: string;
+  agreedToSign?: boolean;
+  agreedAt?: string;
 }
 
 export interface RentalPayment {

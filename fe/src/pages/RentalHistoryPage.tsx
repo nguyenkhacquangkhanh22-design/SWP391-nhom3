@@ -137,6 +137,7 @@ export default function RentalHistoryPage() {
     };
 
     socket.on("rental:approved", handleRentalUpdate);
+    socket.on("rental:agreed", handleRentalUpdate);
     socket.on("payment:approved", handleRentalUpdate);
 
     // Tự động load lại sau mỗi 10 giây theo yêu cầu
@@ -146,6 +147,7 @@ export default function RentalHistoryPage() {
 
     return () => {
       socket.off("rental:approved", handleRentalUpdate);
+      socket.off("rental:agreed", handleRentalUpdate);
       socket.off("payment:approved", handleRentalUpdate);
       clearInterval(interval);
     };
@@ -510,7 +512,13 @@ export default function RentalHistoryPage() {
                   upperStatus === "ACTIVE" ||
                   upperStatus === "IN_PROGRESS");
 
-              const canSign = isApproved; // Chỉ ký khi đơn đã được duyệt!
+              const hasAgreedToSign = Boolean(
+                r.contract?.agreedToSign ||
+                r.contract?.termsAccepted ||
+                r.contract?.signedAt ||
+                upperStatus === "CONTRACT_SIGNED"
+              );
+              const canSign = isApproved && hasAgreedToSign; // Chỉ ký khi đã duyệt VÀ đã đồng ý thỏa thuận trong chat!
               const canPay = upperStatus === "CONTRACT_SIGNED" && !isWaitingPaymentApproval;
               const canReturn =
                 upperStatus === "PAID" ||
@@ -639,11 +647,19 @@ export default function RentalHistoryPage() {
                           </div>
                         </div>
                       )}
-                      {isApproved && (
+                      {isApproved && !hasAgreedToSign && (
+                        <div className="mt-2.5 p-2.5 bg-blue-950/40 border border-blue-500/40 rounded-xl text-xs text-blue-300 flex items-start gap-2 shadow-sm">
+                          <span className="text-base shrink-0">💬</span>
+                          <div>
+                            <b>Đơn thuê đã được duyệt:</b> Hãy bấm vào nút <b>"💬 Nhắn tin với Chủ máy"</b> bên dưới để trao đổi, thống nhất các điều khoản và bấm <b>"Đồng ý ký hợp đồng"</b> trong khung chat để mở chức năng Ký & Thanh toán.
+                          </div>
+                        </div>
+                      )}
+                      {isApproved && hasAgreedToSign && (
                         <div className="mt-2.5 p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 flex items-start gap-2 shadow-sm">
                           <span className="text-base shrink-0">🎉</span>
                           <div>
-                            <b>Đơn thuê đã được phê duyệt!</b> Vui lòng bấm vào nút <b>"Ký hợp đồng & Thanh toán"</b> bên dưới để hoàn tất nhận máy.
+                            <b>Hai bên đã thống nhất thỏa thuận!</b> Vui lòng bấm vào nút <b>"✍️ Ký hợp đồng & Thanh toán"</b> bên dưới để hoàn tất nhận máy.
                           </div>
                         </div>
                       )}
@@ -1264,6 +1280,11 @@ export default function RentalHistoryPage() {
           onClose={() => setChatRental(null)}
           onViewContract={(r) => {
             setViewingContractRental(r);
+          }}
+          onAgreeToSign={(updated) => {
+            fetchHistory(true);
+            setChatRental(null);
+            setSigningRental(updated);
           }}
         />
       )}
