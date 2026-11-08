@@ -4,7 +4,7 @@ import { useAuth } from "../app/AuthProvider";
 import { useToast } from "../context/ToastContext";
 import Navbar from "../components/Navbar";
 import { smartEquipApi } from "../services/smartEquipApi";
-import type { Equipment, Rental } from "../types/smartequip";
+import type { Equipment } from "../types/smartequip";
 import {
   DELIVERY_OPTIONS,
   RETURN_OPTIONS,
@@ -93,9 +93,6 @@ export default function EquipmentDetailPage() {
       setQuickVerifying(false);
     }
   };
-
-  // Modal ký hợp đồng sau khi tạo đơn thành công
-  const [submittedRental, setSubmittedRental] = useState<Rental | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -189,8 +186,7 @@ export default function EquipmentDetailPage() {
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });
-      // Đã gửi đơn thành công -> Không mở modal ký ngay mà chờ Chủ máy & Quản lý duyệt
-      setSubmittedRental(res.data);
+      // Đã gửi đơn thành công -> Thông báo toast nảy trực tiếp và chuyển đến trang lịch sử đơn thuê
       showToast({
         type: "rental_created",
         title: "📬 GỬI YÊU CẦU THUÊ THÀNH CÔNG!",
@@ -198,6 +194,7 @@ export default function EquipmentDetailPage() {
         link: "/rentals/history",
         rentalCode: res.data?.rentalCode,
       });
+      navigate("/rentals/history");
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Không thể tạo yêu cầu thuê thiết bị",
@@ -746,55 +743,6 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
       </main>
-
-      {/* Modal Ký hợp đồng điện tử sau khi đơn được tạo */}
-      {/* Modal thông báo gửi đơn thành công, chờ Chủ máy & Quản lý duyệt */}
-      {submittedRental && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121927] border border-[#23324d] rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
-            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto border border-emerald-500/40">
-              ✓
-            </div>
-            <h3 className="text-xl font-bold text-white">Yêu cầu thuê đã được gửi thành công!</h3>
-            <p className="text-xs text-slate-300">
-              Mã đơn: <span className="font-mono font-bold text-orange-400">#{submittedRental.rentalCode}</span>
-            </p>
-            <div className="bg-[#0b1019] p-3.5 rounded-xl border border-[#1e2a40] text-left text-xs text-slate-300 space-y-2.5">
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                <span>Đơn thuê đang được chuyển tới <b>Chủ máy</b> và <b>Quản lý</b> xét duyệt.</span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-300 font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                <span>Sau khi đơn được phê duyệt, hệ thống sẽ mở nút <b>"Ký hợp đồng & Thanh toán"</b> trong trang Lịch sử thuê.</span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                <span>Chính sách SmartEquip: <b>Miễn 100% tiền cọc (0 đ)</b>!</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => navigate("/rentals/history")}
-                className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-1.5"
-              >
-                <span>Đi đến Lịch sử thuê để theo dõi đơn ➔</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSubmittedRental(null);
-                  navigate("/equipment");
-                }}
-                className="w-full py-2.5 bg-[#1b2537] hover:bg-[#253550] text-slate-300 hover:text-white font-semibold rounded-xl text-xs transition-all border border-[#2b3c54]"
-              >
-                Tiếp tục xem các thiết bị khác
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
