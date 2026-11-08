@@ -28,6 +28,7 @@ export default function OwnerRequestsTab({
     if (statusFilter === "all") return true;
     if (statusFilter === "approved") return r.status === "approved" || r.status === "contract_created";
     if (statusFilter === "rejected") return r.status === "rejected" || r.status === "moderator_rejected";
+    if (statusFilter === "pending") return r.status === "pending" || r.status === "pending_moderator";
     return r.status === statusFilter;
   });
 
@@ -82,9 +83,8 @@ export default function OwnerRequestsTab({
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
             Quy trình:{" "}
-            <strong style={{ color: "#38bdf8" }}>1. Người thuê gửi yêu cầu</strong> ➔{" "}
-            <strong style={{ color: "#fb923c" }}>2. Quản lý web kiểm tra & chuyển tiếp</strong> ➔{" "}
-            <strong style={{ color: "#10b981" }}>3. Owner xem xét Phê duyệt hoặc Từ chối</strong>.
+            <strong style={{ color: "#38bdf8" }}>1. Người thuê gửi yêu cầu trực tiếp</strong> ➔{" "}
+            <strong style={{ color: "#10b981" }}>2. Owner xem xét Phê duyệt hoặc Từ chối</strong>.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export default function OwnerRequestsTab({
           >
             <option value="all">Tất cả ({requests.length})</option>
             <option value="pending">
-              📬 Chờ Owner duyệt ({requests.filter((r) => r.status === "pending").length})
+              📬 Chờ Owner duyệt ({requests.filter((r) => r.status === "pending" || r.status === "pending_moderator").length})
             </option>
             <option value="approved">
               ✅ Đã phê duyệt ({requests.filter((r) => r.status === "approved" || r.status === "contract_created").length})
@@ -108,7 +108,7 @@ export default function OwnerRequestsTab({
               ❌ Đã từ chối ({requests.filter((r) => r.status === "rejected" || r.status === "moderator_rejected").length})
             </option>
             <option value="pending_moderator">
-              ⏳ Chờ Quản lý web chuyển tiếp ({requests.filter((r) => r.status === "pending_moderator").length})
+              ⏳ Yêu cầu cũ chờ chuyển tiếp ({requests.filter((r) => r.status === "pending_moderator").length})
             </option>
           </select>
         </div>
@@ -132,7 +132,7 @@ export default function OwnerRequestsTab({
                   <th>Thời gian thuê</th>
                   <th>Tiền thuê</th>
                   <th>Tiền cọc</th>
-                  <th>Ghi chú Renter & Quản lý web</th>
+                  <th>Ghi chú yêu cầu thuê</th>
                   <th>Trạng thái</th>
                   <th style={{ textAlign: "right" }}>Thao tác</th>
                 </tr>
@@ -209,7 +209,7 @@ export default function OwnerRequestsTab({
                     <td>
                       <span className={`status-badge status-${req.status}`}>
                         {req.status === "pending_moderator"
-                          ? "⏳ Chờ Quản lý web"
+                          ? "📬 Chờ Owner duyệt"
                           : req.status === "pending"
                           ? "📬 Chờ Owner duyệt"
                           : (req.status === "approved" || req.status === "contract_created")
@@ -223,13 +223,7 @@ export default function OwnerRequestsTab({
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                        {req.status === "pending_moderator" && (
-                          <span style={{ fontSize: "0.78rem", color: "#fb923c", alignSelf: "center", marginRight: "4px" }}>
-                            ⏳ Chờ Quản lý web
-                          </span>
-                        )}
-
-                        {req.status === "pending" && (
+                        {["pending", "pending_moderator"].includes(req.status) && (
                           <>
                             <button
                               className="button button-primary"
@@ -302,7 +296,7 @@ export default function OwnerRequestsTab({
                 <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Trạng thái yêu cầu:</span>
                 <span className={`status-badge status-${viewingRequest.status}`}>
                   {viewingRequest.status === "pending_moderator"
-                    ? "⏳ Chờ Quản lý web"
+                    ? "📬 Chờ Owner duyệt"
                     : viewingRequest.status === "pending"
                     ? "📬 Chờ Owner duyệt"
                     : (viewingRequest.status === "approved" || viewingRequest.status === "contract_created")
@@ -428,7 +422,7 @@ export default function OwnerRequestsTab({
                 Đóng
               </button>
 
-              {viewingRequest.status === "pending" && (
+              {["pending", "pending_moderator"].includes(viewingRequest.status) && (
                 <>
                   <button
                     type="button"

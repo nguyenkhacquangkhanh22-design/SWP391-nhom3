@@ -4,7 +4,6 @@ const RentalRequest = require("../models/RentalRequest");
 const RentalContract = require("../models/RentalContract");
 const Settlement = require("../models/Settlement");
 const HandoverRecord = require("../models/HandoverRecord");
-const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
@@ -82,7 +81,7 @@ async function getEquipmentPublicDetail(req, res) {
   res.json({ equipment });
 }
 
-// Step 1: Authenticated Renter creates a rental request -> Sent to Web Manager (Moderator / Admin) first
+// Step 1: Authenticated Renter sends a rental request directly to the equipment Owner
 async function requestRental(req, res) {
   const { id } = req.params;
   const renter = req.user;
@@ -136,7 +135,7 @@ async function requestRental(req, res) {
     deposit_amount: depositAmount,
     total_estimated_amount: totalEstimatedAmount,
     renter_note: renter_note || "",
-    status: "pending_moderator", // Gửi tới Quản lý web đầu tiên
+    status: "pending",
   });
 
   try {
@@ -144,13 +143,13 @@ async function requestRental(req, res) {
       {
         user_id: renter._id,
         title: `✅ Đã tiếp nhận yêu cầu thuê #${rentalReq.request_code}`,
-        message: `Yêu cầu thuê "${equipment.title}" đã được ghi nhận và đang chờ Quản lý web kiểm tra.`,
+        message: `Yêu cầu thuê "${equipment.title}" đã được gửi trực tiếp tới Chủ thiết bị để xem xét.`,
         related_record_id: rentalReq._id,
       },
       {
         user_id: equipment.owner_id,
         title: `📬 Có yêu cầu thuê mới #${rentalReq.request_code}`,
-        message: `Khách ${renter.name} vừa đặt thuê "${equipment.title}". Yêu cầu đang chờ Quản lý web kiểm tra trước khi chuyển cho bạn.`,
+        message: `Khách ${renter.name} vừa gửi yêu cầu thuê "${equipment.title}". Vui lòng xem xét yêu cầu trong Cổng Owner.`,
         related_record_id: rentalReq._id,
       },
     ]);
@@ -158,30 +157,8 @@ async function requestRental(req, res) {
     console.error("Failed to notify users about new rental request:", err);
   }
 
-  // Notify Web Managers (Moderators & Admins)
-  try {
-    const managers = await User.find({
-      role: { $regex: /^(rental[_ -]?moderator|systemadmin|admin)$/i },
-    })
-      .select("_id")
-      .lean();
-    if (managers.length > 0) {
-      await UserNotification.insertMany(
-        managers.map((m) => ({
-          user_id: m._id,
-          title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} cần gửi cho Owner`,
-          message: `Người thuê ${renter.name} vừa gửi yêu cầu thuê "${equipment.title}". Vui lòng kiểm tra và chuyển tiếp cho Owner duyệt.`,
-          related_record_id: rentalReq._id,
-        }))
-      );
-    }
-  } catch (err) {
-    console.error("Failed to notify managers of rental request:", err);
-  }
-
   res.status(201).json({
-    message:
-      "Đã gửi yêu cầu thuê tới Quản lý web! Quản lý web sẽ kiểm tra và gửi yêu cầu cho Chủ thiết bị (Owner) duyệt.",
+    message: "Đã gửi yêu cầu thuê trực tiếp tới Chủ thiết bị (Owner).",
     request: rentalReq,
   });
 }
@@ -288,10 +265,17 @@ async function confirmReceipt(req, res) {
   });
 }
 
-// Step 5: Renter signs the contract after Web Manager approved & sent it to Renter
+// Renter signs the contract after the Owner sends it directly for signature
 async function signMyContract(req, res) {
   const { id } = req.params;
-  const { signature_note } = req.body;
+  const { signature_note, terms_accepted } = req.body;
+
+  if (!terms_accepted) {
+    throw new AppError(400, "Vui lòng xác nhận đã đọc và đồng ý với các điều khoản hợp đồng.");
+  }
+  if (typeof signature_note !== "string" || !signature_note.trim()) {
+    throw new AppError(400, "Vui lòng nhập chữ ký điện tử hoặc họ tên để ký hợp đồng.");
+  }
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -302,10 +286,10 @@ async function signMyContract(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng thuê của bạn.");
   }
 
-  if (contract.status !== "moderator_approved") {
+  if (!["pending_renter_signature", "moderator_approved"].includes(contract.status)) {
     throw new AppError(
       400,
-      "Hợp đồng này chưa ở trạng thái chờ Người thuê ký tên (cần được Owner lập và Quản lý web duyệt gửi cho bạn)."
+      "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
     );
   }
 

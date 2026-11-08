@@ -93,10 +93,10 @@ export default function ContractConfirmationModal({
 
         {/* Contract Text Body */}
         <div className="flex-1 overflow-y-auto my-4 p-5 rounded-xl bg-[#0f1624] border border-[#1e2a40] text-xs text-slate-300 space-y-4 leading-relaxed">
-          {/* Moderator Approval Badge */}
+          {/* Owner sent the contract to the renter for signature. */}
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-300">
             <span className="flex items-center gap-2 font-semibold">
-              <span>🛡️</span> Hợp đồng đã được Quản lý web (Moderator) kiểm tra & phê duyệt hợp lệ
+              <span>📨</span> Owner đã gửi hợp đồng trực tiếp cho bạn ký
             </span>
             <span className="text-[11px] font-mono text-emerald-400">
               {rental.contract?.contractNumber || `HD-${rental.rentalCode}`}
@@ -109,7 +109,7 @@ export default function ContractConfirmationModal({
             </h3>
             <p className="text-[11px] text-slate-400 italic">Độc lập - Tự do - Hạnh phúc</p>
             <h4 className="font-extrabold text-sm text-orange-400 mt-2 uppercase">
-              HỢP ĐỒNG THUÊ THIẾT BỊ CÔNG NGHỆ VÀ BẢO ĐẢM KÝ QUỸ
+              HỢP ĐỒNG THUÊ THIẾT BỊ
             </h4>
           </div>
 
@@ -168,25 +168,14 @@ export default function ContractConfirmationModal({
             </div>
           </div>
 
-          {/* Terms */}
-          <div className="space-y-1.5 pt-1">
+          <div className="space-y-1.5 rounded-xl border border-[#24334e] bg-[#172236] p-3.5">
             <h5 className="font-bold text-white text-xs uppercase tracking-wider">
-              ĐIỀU KHOẢN VÀ CAM KẾT CHÍNH:
+              ĐIỀU KHOẢN HỢP ĐỒNG:
             </h5>
-            <ol className="list-decimal pl-4 space-y-1.5 text-slate-400 text-[11px]">
-              <li>
-                <strong className="text-slate-300">Bảo quản thiết bị:</strong> Bên Thuê cam kết sử dụng thiết bị đúng chức năng kỹ thuật, bảo quản nguyên vẹn ngoại quan, linh kiện và phụ kiện đi kèm.
-              </li>
-              <li>
-                <strong className="text-slate-300">Chính sách đặt cọc:</strong> Giao dịch thuê áp dụng chính sách ưu đãi không cần đặt cọc tiền mặt.
-              </li>
-              <li>
-                <strong className="text-slate-300">Bồi thường hư tổn:</strong> Trường hợp rơi vỡ, vô nước hoặc hư hỏng linh kiện do lỗi chủ quan của Bên Thuê, chi phí sửa chữa hoặc thay thế sẽ được thanh toán theo biểu giá thỏa thuận.
-              </li>
-              <li>
-                <strong className="text-slate-300">Tính pháp lý:</strong> Chữ ký điện tử dưới đây có giá trị pháp lý ràng buộc nghĩa vụ thực hiện hợp đồng theo quy định pháp luật về giao dịch điện tử.
-              </li>
-            </ol>
+            <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-400">
+              {rental.contract?.contractTerms ||
+                "Người thuê cam kết bảo quản thiết bị, hoàn trả đúng hạn và chịu trách nhiệm đối với hư hỏng do lỗi chủ quan."}
+            </p>
           </div>
         </div>
 

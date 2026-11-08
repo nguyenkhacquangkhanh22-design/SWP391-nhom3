@@ -29,6 +29,10 @@ export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
+  const [signingMarketplaceContract, setSigningMarketplaceContract] = useState<RentalContract | null>(null);
+  const [marketplaceSignature, setMarketplaceSignature] = useState("");
+  const [marketplaceTermsAccepted, setMarketplaceTermsAccepted] = useState(false);
+  const [isSigningMarketplaceContract, setIsSigningMarketplaceContract] = useState(false);
   const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -136,6 +140,34 @@ export default function RentalHistoryPage() {
       setError(err instanceof Error ? err.message : "Không thể xác nhận đã nhận thiết bị");
     } finally {
       setConfirmingReceiptId(null);
+    }
+  };
+
+  const handleSignMarketplaceContract = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!signingMarketplaceContract || !marketplaceTermsAccepted || !marketplaceSignature.trim()) return;
+
+    setIsSigningMarketplaceContract(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await ownerApi.signMyContract(
+        token,
+        signingMarketplaceContract._id,
+        {
+          signature_note: marketplaceSignature.trim(),
+          terms_accepted: marketplaceTermsAccepted,
+        },
+      );
+      setNotice(result.message);
+      setSigningMarketplaceContract(null);
+      setMarketplaceSignature("");
+      setMarketplaceTermsAccepted(false);
+      fetchHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể ký hợp đồng.");
+    } finally {
+      setIsSigningMarketplaceContract(false);
     }
   };
   // Mở modal báo trả máy
@@ -248,7 +280,7 @@ export default function RentalHistoryPage() {
         const modStatus = rental.contract?.moderatorStatus;
         if (modStatus === "pending_approval") {
           return {
-            label: "🔍 HĐ đang gửi Quản lý web kiểm tra",
+            label: "🔍 Hợp đồng cũ đang chờ kiểm tra",
             className: "bg-sky-500/10 text-sky-400 border-sky-500/30",
           };
         }
@@ -258,9 +290,12 @@ export default function RentalHistoryPage() {
             className: "bg-rose-500/10 text-rose-400 border-rose-500/30",
           };
         }
-        if (rental.contract?.moderatorApproved || modStatus === "moderator_approved") {
+        if (
+          rental.contract?.moderatorApproved ||
+          ["pending_renter_signature", "moderator_approved"].includes(modStatus || "")
+        ) {
           return {
-            label: "📨 Quản lý web đã duyệt HĐ — Chờ bạn ký",
+            label: "📨 Owner đã gửi HĐ — Chờ bạn ký",
             className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
           };
         }
@@ -382,7 +417,13 @@ export default function RentalHistoryPage() {
                     <div>
                       <p className="font-semibold text-white">{contract.equipment_id?.title || contract.title}</p>
                       <p className="text-xs text-slate-400">
-                        Hợp đồng {contract.contract_code} · Owner {typeof contract.owner_id === "object" ? contract.owner_id?.name : "—"} · {contract.status}
+                        Hợp đồng {contract.contract_code} · Owner {typeof contract.owner_id === "object" ? contract.owner_id?.name : "—"} · {
+                          contract.status === "pending_renter_signature" || contract.status === "moderator_approved"
+                            ? "Chờ bạn ký"
+                            : contract.status === "signed"
+                            ? "Đã ký"
+                            : contract.status
+                        }
                       </p>
                     </div>
                     {isReceived ? (
@@ -396,6 +437,18 @@ export default function RentalHistoryPage() {
                       >
                         {confirmingReceiptId === contract._id ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
                       </button>
+                    ) : ["pending_renter_signature", "moderator_approved"].includes(contract.status) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSigningMarketplaceContract(contract);
+                          setMarketplaceTermsAccepted(false);
+                          setMarketplaceSignature("");
+                        }}
+                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500"
+                      >
+                        Ký hợp đồng
+                      </button>
                     ) : (
                       <span className="text-xs text-slate-500">Chờ Owner bàn giao thiết bị</span>
                     )}
@@ -404,6 +457,68 @@ export default function RentalHistoryPage() {
               })}
             </div>
           </section>
+        )}
+
+        {signingMarketplaceContract && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+            <form
+              onSubmit={(event) => void handleSignMarketplaceContract(event)}
+              className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-[#263550] bg-[#141d2d] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-center justify-between border-b border-[#263550] pb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Ký hợp đồng thuê</h2>
+                  <p className="text-xs text-orange-300">{signingMarketplaceContract.contract_code}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSigningMarketplaceContract(null)}
+                  className="text-slate-400 hover:text-white"
+                  aria-label="Đóng"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="mb-4 flex-1 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#263550] bg-[#0f1624] p-4 text-sm text-slate-300">
+                {signingMarketplaceContract.terms_content}
+              </div>
+              <label className="mb-3 flex items-start gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={marketplaceTermsAccepted}
+                  onChange={(event) => setMarketplaceTermsAccepted(event.target.checked)}
+                  required
+                />
+                Tôi đã đọc và đồng ý với toàn bộ điều khoản của hợp đồng.
+              </label>
+              <label className="mb-4 grid gap-2 text-sm text-slate-300">
+                Chữ ký điện tử / Họ và tên
+                <input
+                  className="input-field"
+                  value={marketplaceSignature}
+                  onChange={(event) => setMarketplaceSignature(event.target.value)}
+                  required
+                  autoComplete="name"
+                />
+              </label>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSigningMarketplaceContract(null)}
+                  className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-300"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSigningMarketplaceContract || !marketplaceTermsAccepted || !marketplaceSignature.trim()}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {isSigningMarketplaceContract ? "Đang ký..." : "Xác nhận ký"}
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
         {/* Filter Tabs */}
@@ -452,12 +567,17 @@ export default function RentalHistoryPage() {
               const statusBadge = getStatusBadge(r);
               const upperStatus = r.status.toUpperCase();
 
-              const isModeratorApproved = Boolean(
-                r.contract?.moderatorApproved || r.contract?.moderatorStatus === "moderator_approved"
+              const isContractSentToRenter = Boolean(
+                r.contract?.moderatorApproved ||
+                  ["pending_renter_signature", "moderator_approved"].includes(
+                    r.contract?.moderatorStatus || "",
+                  )
               );
               const isContractPendingReview = r.contract?.moderatorStatus === "pending_approval";
               const isContractRejected = r.contract?.moderatorStatus === "moderator_rejected";
-              const canSign = (upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING") && isModeratorApproved;
+              const canSign =
+                (upperStatus === "APPROVED" || upperStatus === "CONTRACT_PENDING") &&
+                isContractSentToRenter;
               const canPay =
                 upperStatus === "CONTRACT_SIGNED" ||
                 upperStatus === "PAYMENT_PENDING" ||
@@ -595,7 +715,7 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng (UC_R08) - Phải qua Moderator kiểm tra duyệt trước */}
+                    {/* Sign the contract after the Owner sends it directly. */}
                     {canSign ? (
                       <button
                         onClick={() => setSigningRental(r)}
@@ -609,7 +729,7 @@ export default function RentalHistoryPage() {
                         <span className="text-[11px] text-slate-300 flex items-center justify-center gap-1.5 font-medium">
                           <span>🔒</span>
                           {isContractPendingReview
-                            ? "Quản lý web đang kiểm tra HĐ"
+                            ? "Hợp đồng cũ đang chờ kiểm tra"
                             : isContractRejected
                             ? "HĐ đang được sửa lại"
                             : "Chờ Owner lập HĐ"}

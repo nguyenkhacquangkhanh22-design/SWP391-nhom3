@@ -153,8 +153,7 @@ async function sendRegistrationOtp(email) {
     return {
       message: hasSmtp
         ? "Mã xác minh đã được gửi đến email của bạn."
-        : `Mã xác minh (Dev Mode): ${otp}`,
-      devOtp: otp,
+        : "Mã xác minh đã được tạo. Vui lòng kiểm tra nhật ký máy chủ.",
     };
   }
 

@@ -121,7 +121,7 @@ const rentalSchema = new mongoose.Schema(
       moderatorApproved: { type: Boolean, default: false },
       moderatorStatus: {
         type: String,
-        enum: ["none", "draft", "pending_approval", "moderator_rejected", "moderator_approved", "signed"],
+        enum: ["none", "draft", "pending_renter_signature", "pending_approval", "moderator_rejected", "moderator_approved", "signed"],
         default: "none",
       },
       ownerSigned: { type: Boolean, default: false },
