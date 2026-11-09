@@ -98,7 +98,7 @@ async function seedData() {
   await Equipment.deleteMany({ owner_id: owner._id });
   await RentalRequest.deleteMany({ owner_id: owner._id });
   await RentalContract.deleteMany({ owner_id: owner._id });
-  await Rental.deleteMany({});
+  await Rental.deleteMany({ owner: owner._id });
   await HandoverRecord.deleteMany({ owner_id: owner._id });
   await Settlement.deleteMany({ owner_id: owner._id });
 
@@ -215,7 +215,7 @@ async function seedData() {
     visibility: "published",
     status: "available",
   });
-    const eq4 = await Equipment.create({
+  const eq4 = await Equipment.create({
     owner_id: owner._id,
     owner: owner._id,
     title: "Flycam DJI Mini 4 Pro Combo Plus (3 Pin)",

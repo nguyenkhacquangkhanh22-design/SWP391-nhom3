@@ -241,7 +241,7 @@ async function reviewContract(req, res) {
     const RentalRequest = require("../models/RentalRequest");
     const reqDoc = await RentalRequest.findById(updated.request_id);
     if (reqDoc) {
-      await Rental.updateMany(
+      const updateRes = await Rental.updateMany(
         {
           $or: [
             { rentalCode: reqDoc.request_code },
@@ -254,7 +254,7 @@ async function reviewContract(req, res) {
         },
         {
           $set: {
-            status: "CONTRACT_PENDING",
+            status: "APPROVED",
             "contract.contractNumber": updated.contract_code,
             "contract.contractTerms": updated.terms_content,
             "contract.moderatorApproved": action === "approve",
@@ -263,6 +263,31 @@ async function reviewContract(req, res) {
           },
         }
       );
+
+      if (updateRes.matchedCount === 0) {
+        await Rental.create({
+          rentalCode: reqDoc.request_code,
+          renter: reqDoc.renter_id,
+          equipment: reqDoc.equipment_id,
+          owner: reqDoc.owner_id,
+          startDate: reqDoc.start_date,
+          endDate: reqDoc.end_date,
+          totalDays: reqDoc.duration_days || 1,
+          dailyRate: Math.round((reqDoc.rental_fee || 0) / (reqDoc.duration_days || 1)) || 0,
+          rentalFee: reqDoc.rental_fee || 0,
+          depositAmount: 0,
+          totalAmount: reqDoc.rental_fee || 0,
+          status: "APPROVED",
+          contract: {
+            contractNumber: updated.contract_code,
+            termsAccepted: false,
+            contractTerms: updated.terms_content,
+            moderatorApproved: action === "approve",
+            moderatorStatus: action === "approve" ? "moderator_approved" : "moderator_rejected",
+            ownerSigned: true,
+          },
+        });
+      }
     }
   } catch (syncErr) {
     console.error("Failed to sync reviewed contract to Rental:", syncErr);

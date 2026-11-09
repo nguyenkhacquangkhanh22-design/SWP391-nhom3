@@ -15,6 +15,7 @@ export default function EquipmentDetailPage() {
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [requestSuccessData, setRequestSuccessData] = useState<{ message: string } | null>(null);
 
   // Form booking state
   const [startDate, setStartDate] = useState("");
@@ -192,11 +193,11 @@ export default function EquipmentDetailPage() {
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });
-      alert(
-        res.message ||
-          "Đã gửi yêu cầu thuê thành công! Vui lòng chờ Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng và thanh toán."
-      );
-      navigate("/rentals/history");
+      setRequestSuccessData({
+        message:
+          res.message ||
+          "Yêu cầu thuê đã được gửi thành công. Vui lòng chờ Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng và thanh toán.",
+      });
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Không thể tạo yêu cầu thuê thiết bị",
@@ -764,6 +765,65 @@ export default function EquipmentDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Custom Popup Modal: Yêu cầu thuê thành công */}
+      {requestSuccessData && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#141d2d] border border-[#273650] rounded-2xl max-w-md w-full p-6 text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
+            {/* Glowing Icon */}
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+              ✓
+            </div>
+
+            <h3 className="text-xl font-bold text-white mb-2">
+              Gửi Yêu Cầu Thuê Thành Công!
+            </h3>
+
+            <p className="text-sm text-slate-300 leading-relaxed mb-6">
+              {requestSuccessData.message}
+            </p>
+
+            <div className="bg-[#0b101b] border border-[#223049] rounded-xl p-3.5 mb-6 text-left space-y-1.5">
+              <div className="flex justify-between items-center text-xs text-slate-400">
+                <span>Thiết bị:</span>
+                <span className="text-white font-medium truncate max-w-[220px]">
+                  {equipment?.title}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-slate-400">
+                <span>Thời gian thuê:</span>
+                <span className="text-orange-400 font-semibold">
+                  {totalDays} ngày ({startDate} → {endDate})
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-slate-400">
+                <span>Tổng chi phí:</span>
+                <span className="text-emerald-400 font-bold">
+                  {totalAmount.toLocaleString("vi-VN")} đ
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/rentals")}
+                className="flex-1 py-3 px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm rounded-xl transition shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
+              >
+                <span>📋</span>
+                <span>Xem lịch sử đơn thuê</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRequestSuccessData(null)}
+                className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm rounded-xl transition border border-slate-700"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

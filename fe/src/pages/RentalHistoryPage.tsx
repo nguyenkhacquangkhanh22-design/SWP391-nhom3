@@ -30,6 +30,7 @@ export default function RentalHistoryPage() {
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
   const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
+  const [confirmingReceiptContract, setConfirmingReceiptContract] = useState<RentalContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -120,11 +121,8 @@ export default function RentalHistoryPage() {
   });
 
   // Confirm receipt before the owner can request the moderator to release payment.
-  const handleConfirmReceipt = async (contract: RentalContract) => {
-    if (!window.confirm("Xác nhận bạn đã nhận đúng thiết bị? Owner sẽ có thể gửi yêu cầu giải ngân lên Quản lý web.")) {
-      return;
-    }
-
+  const executeConfirmReceipt = async (contract: RentalContract) => {
+    setConfirmingReceiptContract(null);
     setConfirmingReceiptId(contract._id);
     setError("");
     setNotice("");
@@ -390,12 +388,16 @@ export default function RentalHistoryPage() {
                     ) : contract.status === "active" && handover ? (
                       <button
                         type="button"
-                        onClick={() => handleConfirmReceipt(contract)}
+                        onClick={() => setConfirmingReceiptContract(contract)}
                         disabled={confirmingReceiptId === contract._id}
                         className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-60"
                       >
                         {confirmingReceiptId === contract._id ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
                       </button>
+                    ) : contract.status === "moderator_approved" ? (
+                      <span className="text-xs font-semibold text-emerald-400">Quản lý web đã duyệt — Cuộn xuống để ký HĐ</span>
+                    ) : contract.status === "pending_approval" ? (
+                      <span className="text-xs text-sky-400">Quản lý web đang kiểm tra HĐ</span>
                     ) : (
                       <span className="text-xs text-slate-500">Chờ Owner bàn giao thiết bị</span>
                     )}
@@ -962,6 +964,47 @@ export default function RentalHistoryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Popup Modal: Xác nhận nhận thiết bị */}
+      {confirmingReceiptContract && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#141d2d] border border-[#273650] rounded-2xl max-w-md w-full p-6 text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+              📦
+            </div>
+
+            <h3 className="text-xl font-bold text-white mb-2">
+              Xác Nhận Đã Nhận Thiết Bị?
+            </h3>
+
+            <p className="text-sm text-slate-300 leading-relaxed mb-6">
+              Bạn xác nhận đã nhận đúng máy <strong className="text-white">{confirmingReceiptContract.equipment_id?.title || confirmingReceiptContract.title}</strong> từ Chủ thiết bị và máy hoạt động đúng như biên bản bàn giao?
+            </p>
+
+            <div className="bg-[#0b101b] border border-[#223049] rounded-xl p-3 mb-6 text-xs text-slate-400 text-left">
+              💡 Sau khi xác nhận, Chủ thiết bị (Owner) sẽ đủ điều kiện gửi yêu cầu giải ngân tiền thuê lên Quản lý web.
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => executeConfirmReceipt(confirmingReceiptContract)}
+                className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+              >
+                <span>✓</span>
+                <span>Xác nhận đã nhận máy</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingReceiptContract(null)}
+                className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm rounded-xl transition border border-slate-700"
+              >
+                Hủy bỏ
+              </button>
+            </div>
           </div>
         </div>
       )}

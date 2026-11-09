@@ -768,7 +768,7 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
   // Đồng bộ hợp đồng sang bảng Rental cho Người thuê theo dõi trạng thái kiểm duyệt của Moderator
   try {
     const Rental = require("../models/Rental");
-    await Rental.updateMany(
+    const updateRes = await Rental.updateMany(
       {
         $or: [
           { rentalCode: rentalReq.request_code },
@@ -786,6 +786,31 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
         },
       }
     );
+
+    if (updateRes.matchedCount === 0) {
+      await Rental.create({
+        rentalCode: rentalReq.request_code,
+        renter: rentalReq.renter_id,
+        equipment: rentalReq.equipment_id,
+        owner: ownerId,
+        startDate: rentalReq.start_date,
+        endDate: rentalReq.end_date,
+        totalDays: rentalReq.duration_days || 1,
+        dailyRate: Math.round((rentalReq.rental_fee || 0) / (rentalReq.duration_days || 1)) || 0,
+        rentalFee: rentalReq.rental_fee || 0,
+        depositAmount: 0,
+        totalAmount: rentalReq.rental_fee || 0,
+        status: "APPROVED",
+        contract: {
+          contractNumber: contract.contract_code,
+          termsAccepted: false,
+          contractTerms: contract.terms_content,
+          moderatorApproved: false,
+          moderatorStatus: submit_immediately ? "pending_approval" : "draft",
+          ownerSigned: true,
+        },
+      });
+    }
   } catch (syncErr) {
     console.error("Failed to sync created contract to Rental:", syncErr);
   }

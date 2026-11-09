@@ -580,6 +580,68 @@ class RentalService {
    */
   async getRentalHistory(renterId, query = {}) {
     const { status, page = 1, limit = 50 } = query;
+
+    // Tự động bảo đảm đồng bộ tất cả RentalRequest/RentalContract của renter sang bảng Rental
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      const RentalContract = require("../models/RentalContract");
+      const userRequests = await RentalRequest.find({ renter_id: renterId }).lean();
+      for (const rq of userRequests) {
+        const existingRental = await Rental.findOne({ rentalCode: rq.request_code });
+        const ct = await RentalContract.findOne({ request_id: rq._id }).lean();
+        const modApproved = ct ? ct.status === "moderator_approved" || ct.status === "signed" : false;
+        const modStatus = ct ? ct.status : "pending_approval";
+        const ownerSigned = ct ? Boolean(ct.owner_signature?.signed) : false;
+        const renterSigned = ct ? Boolean(ct.renter_signature?.signed) : false;
+
+        if (!existingRental) {
+          await Rental.create({
+            rentalCode: rq.request_code,
+            renter: rq.renter_id,
+            equipment: rq.equipment_id,
+            owner: rq.owner_id,
+            startDate: rq.start_date,
+            endDate: rq.end_date,
+            totalDays: rq.duration_days || 1,
+            dailyRate: Math.round((rq.rental_fee || 0) / (rq.duration_days || 1)) || 0,
+            rentalFee: rq.rental_fee || 0,
+            depositAmount: 0,
+            totalAmount: rq.rental_fee || 0,
+            status: renterSigned ? "CONTRACT_SIGNED" : "APPROVED",
+            contract: {
+              contractNumber: ct ? ct.contract_code : undefined,
+              termsAccepted: renterSigned,
+              contractTerms: ct ? ct.terms_content : "",
+              moderatorApproved: modApproved,
+              moderatorStatus: modStatus,
+              ownerSigned: ownerSigned,
+            },
+          });
+        } else {
+          // Cập nhật lại trạng thái hợp đồng mới nhất từ RentalContract
+          let needsSave = false;
+          if (!existingRental.contract) {
+            existingRental.contract = {};
+            needsSave = true;
+          }
+          if (ct && existingRental.contract.contractNumber !== ct.contract_code) {
+            existingRental.contract.contractNumber = ct.contract_code;
+            needsSave = true;
+          }
+          if (ct && existingRental.contract.moderatorStatus !== modStatus) {
+            existingRental.contract.moderatorStatus = modStatus;
+            existingRental.contract.moderatorApproved = modApproved;
+            needsSave = true;
+          }
+          if (needsSave) {
+            await existingRental.save();
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn("Auto-sync rental requests warning:", syncErr.message);
+    }
+
     const filter = { renter: renterId };
 
     if (status && typeof status === "string" && status.trim() && status !== "all") {
