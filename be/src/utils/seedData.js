@@ -24,12 +24,42 @@ async function seedData() {
       role: "owner",
       status: "active",
       trust_score: 98,
+      bankInfo: {
+        bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
+        accountNumber: "19039916819018",
+        accountHolder: "DO NGOC NHAN",
+        bankCode: "TCB",
+      },
+      bankAccounts: [
+        {
+          bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
+          accountNumber: "19039916819018",
+          accountHolderName: "DO NGOC NHAN",
+          status: "APPROVED",
+        },
+      ],
     });
     console.log("✓ Đã tạo tài khoản Owner: owner@example.com / Owner@123456");
   } else {
     owner.role = "owner";
     owner.password_hash = passwordHash;
     owner.status = "active";
+    owner.bankInfo = {
+      bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
+      accountNumber: "19039916819018",
+      accountHolder: "DO NGOC NHAN",
+      bankCode: "TCB",
+    };
+    if (!owner.bankAccounts || owner.bankAccounts.length === 0) {
+      owner.bankAccounts = [
+        {
+          bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
+          accountNumber: "19039916819018",
+          accountHolderName: "DO NGOC NHAN",
+          status: "APPROVED",
+        },
+      ];
+    }
     await owner.save();
     console.log("✓ Đã cập nhật tài khoản Owner: owner@example.com / Owner@123456");
   }

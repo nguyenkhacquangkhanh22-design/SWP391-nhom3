@@ -12,10 +12,10 @@ interface Props {
 }
 
 const BANK_INFO = {
-  bankName: "MB Bank (Ngân hàng Quân Đội)",
-  accountHolder: "NGUYEN KHAC QUANG KHANH",
-  accountNumber: "111105056666",
-  qrImageUrl: "/qr-payment.jpg",
+  bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
+  accountHolder: "DO NGOC NHAN",
+  accountNumber: "19039916819018",
+  qrImageUrl: "/techcombank-qr.jpg",
 };
 
 function compressImageToDataUrl(file: File, maxDimension = 900): Promise<string> {
@@ -174,7 +174,7 @@ export default function PaymentQRModal({
               <div className="w-full max-w-[250px] rounded-xl overflow-hidden border-2 border-white/15 shadow-lg bg-white">
                 <img
                   src={BANK_INFO.qrImageUrl}
-                  alt="Mã QR Thanh Toán MB Bank - NGUYEN KHAC QUANG KHANH"
+                  alt="Mã QR Thanh Toán Techcombank - DO NGOC NHAN"
                   className="w-full h-auto object-contain block"
                 />
               </div>

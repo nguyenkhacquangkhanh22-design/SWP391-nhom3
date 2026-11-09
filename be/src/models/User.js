@@ -55,10 +55,10 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
     bankInfo: {
-      bankName: { type: String, trim: true, default: "MB Bank (Ngân hàng Quân Đội)" },
-      accountNumber: { type: String, trim: true, default: "111105056666" },
-      accountHolder: { type: String, trim: true, default: "NGUYEN KHAC QUANG KHANH" },
-      bankCode: { type: String, trim: true, default: "MB" },
+      bankName: { type: String, trim: true, default: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)" },
+      accountNumber: { type: String, trim: true, default: "19039916819018" },
+      accountHolder: { type: String, trim: true, default: "DO NGOC NHAN" },
+      bankCode: { type: String, trim: true, default: "TCB" },
     },
     walletBalance: {
       type: Number,
