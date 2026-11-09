@@ -234,6 +234,10 @@ export default function OwnerPortal() {
                 onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
+                onCreateContract={(req) => {
+                  setRequestForContract(req);
+                  setActiveTab("contracts");
+                }}
               />
             )}
 

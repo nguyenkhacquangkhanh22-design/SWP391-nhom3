@@ -40,13 +40,14 @@ export default function OwnerRequestsTab({
   const [editingContractRental, setEditingContractRental] = useState<Rental | null>(null);
   const [previewBillUrl, setPreviewBillUrl] = useState<string | null>(null);
 
-  const fetchDirectRentals = async () => {
+  const fetchDirectRentals = async (): Promise<Rental[] | undefined> => {
     if (!token) return;
     setDirectLoading(true);
     try {
       const res = await ownerApi.getOwnerRentals(token);
       if (res && Array.isArray(res.data)) {
         setDirectRentals(res.data);
+        return res.data;
       }
     } catch (e: any) {
       console.warn("Không thể tải danh sách đơn thuê trực tiếp:", e?.message);
@@ -59,16 +60,19 @@ export default function OwnerRequestsTab({
     void fetchDirectRentals();
   }, [token]);
 
-  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Renter được phép ký & thanh toán)
-  async function handleApproveDirectRental(rentalId: string, rentalCode: string) {
+  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Tự động chuyển sang lập & điều chỉnh hợp đồng)
+  async function handleApproveDirectRental(rental: Rental) {
     setIsProcessing(true);
     onError("");
     onSuccess("");
     try {
-      await ownerApi.respondOwnerRental(token, rentalId, "approve");
-      onSuccess(`✅ Đã duyệt đơn thuê #${rentalCode}! Hệ thống đã gửi thông báo đến Khách thuê để tiến hành Ký hợp đồng & Chuyển khoản.`);
-      await fetchDirectRentals();
+      await ownerApi.respondOwnerRental(token, rental._id, "approve");
+      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang màn hình lập & điều chỉnh hợp đồng.`);
+      const updatedList = await fetchDirectRentals();
       onRefresh();
+      // Chuyển sang lập hợp đồng ngay sau khi duyệt!
+      const targetRental = updatedList?.find((item) => item._id === rental._id) || { ...rental, status: "approved" };
+      setEditingContractRental(targetRental);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Duyệt đơn thuê thất bại.");
     } finally {
@@ -376,16 +380,17 @@ export default function OwnerRequestsTab({
                           </td>
                           <td style={{ textAlign: "right" }}>
                             <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                              {/* NÚT DUYỆT ĐƠN KHI PENDING */}
+                              {/* NÚT DUYỆT ĐƠN KHI PENDING -> CHUYỂN SANG LẬP HỢP ĐỒNG */}
                               {isPendingOwner && (
                                 <button
                                   type="button"
-                                  onClick={() => handleApproveDirectRental(r._id, r.rentalCode)}
+                                  onClick={() => handleApproveDirectRental(r)}
                                   disabled={isProcessing}
                                   className="button button-primary"
                                   style={{ padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
+                                  title="Duyệt đơn và chuyển sang lập hợp đồng"
                                 >
-                                  ✅ Duyệt đơn thuê
+                                  ✅ Duyệt & Lập HĐ
                                 </button>
                               )}
 
