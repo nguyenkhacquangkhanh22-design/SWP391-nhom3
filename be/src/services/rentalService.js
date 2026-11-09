@@ -341,6 +341,9 @@ class RentalService {
     rental.contract = rental.contract || {};
     rental.contract.agreedToSign = true;
     rental.contract.agreedAt = new Date();
+    if (rental.contract.moderatorStatus === "approved") {
+      rental.contract.moderatorStatus = "moderator_approved";
+    }
     await rental.save();
 
     // Phát Socket.IO để hai bên cập nhật giao diện thời gian thực
@@ -514,6 +517,9 @@ class RentalService {
     }
     if (rental.status !== "PAYMENT_PENDING" && rental.status !== "PAID") {
       rental.status = "CONTRACT_SIGNED";
+    }
+    if (rental.contract?.moderatorStatus === "approved") {
+      rental.contract.moderatorStatus = "moderator_approved";
     }
 
     await rental.save();
@@ -1047,7 +1053,7 @@ class RentalService {
           if (!r.contract) r.contract = {};
           r.contract.contractNumber = contract.contract_code;
           r.contract.contractTerms = contract.terms_content;
-          r.contract.moderatorStatus = contract.status;
+          r.contract.moderatorStatus = contract.status === "approved" ? "moderator_approved" : contract.status;
           r.contract.moderatorApproved = contract.status === "moderator_approved" || contract.status === "signed";
           r.contract.ownerSigned = Boolean(contract.owner_signature?.signed);
         }
