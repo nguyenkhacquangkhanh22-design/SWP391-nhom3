@@ -16,10 +16,12 @@ interface Props {
 }
 
 export default function OwnerRequestsTab({
+  requests = [],
   token,
   onRefresh,
   onError,
   onSuccess,
+  onCreateContract,
 }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -52,19 +54,41 @@ export default function OwnerRequestsTab({
     void fetchDirectRentals();
   }, [token]);
 
-  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Tự động chuyển sang lập & điều chỉnh hợp đồng)
+  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Tự động chuyển sang tab Hợp đồng thuê để lập hợp đồng)
   async function handleApproveDirectRental(rental: Rental) {
     setIsProcessing(true);
     onError("");
     onSuccess("");
     try {
       await ownerApi.respondOwnerRental(token, rental._id, "approve");
-      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang màn hình lập & điều chỉnh hợp đồng.`);
-      const updatedList = await fetchDirectRentals();
+      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang mục Hợp đồng thuê để lập hợp đồng.`);
+      await fetchDirectRentals();
       onRefresh();
-      // Chuyển sang lập hợp đồng ngay sau khi duyệt!
-      const targetRental = updatedList?.find((item) => item._id === rental._id) || { ...rental, status: "approved" };
-      setEditingContractRental(targetRental);
+
+      // Chuyển sang tab Hợp đồng thuê ngay sau khi duyệt!
+      const matchingReq = (requests || []).find(
+        (rq) => rq.request_code === rental.rentalCode || String(rq._id) === String(rental._id)
+      );
+
+      const requestObj: RentalRequest = matchingReq || ({
+        _id: rental._id,
+        request_code: rental.rentalCode,
+        renter_name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
+        renter_email: typeof rental.renter === "object" ? rental.renter?.email : "",
+        renter_phone: typeof rental.renter === "object" ? rental.renter?.phone : "",
+        equipment_id: typeof rental.equipment === "object" ? rental.equipment : ({ _id: rental.equipment, title: "Thiết bị thuê" } as any),
+        start_date: rental.startDate,
+        end_date: rental.endDate,
+        rental_fee: rental.totalAmount || rental.rentalFee || 0,
+        deposit_amount: 0,
+        status: "approved",
+        delivery_address: rental.deliveryAddress,
+        duration_days: rental.totalDays || 1,
+      } as any);
+
+      if (onCreateContract) {
+        onCreateContract(requestObj);
+      }
     } catch (err) {
       onError(err instanceof Error ? err.message : "Duyệt đơn thuê thất bại.");
     } finally {
@@ -341,9 +365,42 @@ export default function OwnerRequestsTab({
                               disabled={isProcessing}
                               className="button button-primary"
                               style={{ padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
-                              title="Duyệt đơn và chuyển sang lập hợp đồng"
+                              title="Duyệt đơn và chuyển sang tab Hợp đồng thuê để lập hợp đồng"
                             >
                               ✅ Duyệt & Lập HĐ
+                            </button>
+                          )}
+
+                          {/* NÚT LẬP HỢP ĐỒNG KHI ĐÃ DUYỆT */}
+                          {isApproved && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matchingReq = (requests || []).find(
+                                  (rq) => rq.request_code === r.rentalCode || String(rq._id) === String(r._id)
+                                );
+                                const requestObj: RentalRequest = matchingReq || ({
+                                  _id: r._id,
+                                  request_code: r.rentalCode,
+                                  renter_name: typeof r.renter === "object" ? r.renter?.name : "Khách thuê",
+                                  renter_email: typeof r.renter === "object" ? r.renter?.email : "",
+                                  renter_phone: typeof r.renter === "object" ? r.renter?.phone : "",
+                                  equipment_id: typeof r.equipment === "object" ? r.equipment : ({ _id: r.equipment, title: "Thiết bị thuê" } as any),
+                                  start_date: r.startDate,
+                                  end_date: r.endDate,
+                                  rental_fee: r.totalAmount || r.rentalFee || 0,
+                                  deposit_amount: 0,
+                                  status: "approved",
+                                  delivery_address: r.deliveryAddress,
+                                  duration_days: r.totalDays || 1,
+                                } as any);
+                                onCreateContract?.(requestObj);
+                              }}
+                              className="button button-primary"
+                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto" }}
+                              title="Chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                            >
+                              📝 Lập HĐ
                             </button>
                           )}
 
