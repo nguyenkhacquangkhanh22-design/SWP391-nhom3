@@ -37,7 +37,38 @@ const paymentController = {
       throw new AppError(400, "Vui lòng cung cấp rentalId");
     }
 
-    const rental = await Rental.findById(rentalId).populate("equipment", "title");
+    const mongoose = require("mongoose");
+    let rental = null;
+    if (mongoose.isValidObjectId(rentalId)) {
+      rental = await Rental.findById(rentalId).populate("equipment", "title");
+    }
+    if (!rental) {
+      rental = await Rental.findOne({
+        $or: [
+          { rentalCode: rentalId },
+          { "contract.contractNumber": rentalId },
+        ],
+      }).populate("equipment", "title");
+    }
+    if (!rental) {
+      const RentalContract = require("../models/RentalContract");
+      let rc = null;
+      if (mongoose.isValidObjectId(rentalId)) {
+        rc = await RentalContract.findById(rentalId).lean();
+      }
+      if (!rc) {
+        rc = await RentalContract.findOne({ contract_code: rentalId }).lean();
+      }
+      if (rc) {
+        rental = await Rental.findOne({
+          $or: [
+            { "contract.contractNumber": rc.contract_code },
+            { renter: rc.renter_id, equipment: rc.equipment_id },
+          ],
+        }).populate("equipment", "title");
+      }
+    }
+
     if (!rental) {
       throw new AppError(404, "Không tìm thấy thông tin đơn thuê");
     }
@@ -110,6 +141,9 @@ const paymentController = {
       paymentLinkRes.paymentLinkId || paymentLinkRes.id;
     rental.payment.checkoutUrl = paymentLinkRes.checkoutUrl;
     rental.payment.paymentMethod = "payos_vietqr";
+    if (rental.contract?.moderatorStatus === "approved") {
+      rental.contract.moderatorStatus = "moderator_approved";
+    }
     await rental.save();
 
     return res.status(200).json({
