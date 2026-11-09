@@ -8,7 +8,8 @@ async function connectDB() {
     !uri ||
     uri.includes("YOUR_USER") ||
     uri.includes("YOUR_PASSWORD") ||
-    uri.includes("cluster.mongodb.net");
+    uri.includes("<password>") ||
+    uri.includes("placeholder");
 
   if (!isPlaceholder) {
     try {
