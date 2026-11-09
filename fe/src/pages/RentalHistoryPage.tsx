@@ -627,7 +627,7 @@ export default function RentalHistoryPage() {
                 r.contract?.signedAt ||
                 upperStatus === "CONTRACT_SIGNED"
               );
-              const canSign = isApproved && hasAgreedToSign; // Chỉ ký khi đã duyệt VÀ đã đồng ý thỏa thuận trong chat!
+              const canSign = isApproved && !isPaidConfirmed && !r.contract?.termsAccepted; // Cho phép Người thuê ký trực tiếp ngay khi đơn được duyệt!
               const canPay = (upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_REJECTED") && !isWaitingPaymentApproval && !isPaymentVerifying;
               const canReturn =
                 upperStatus === "PAID" ||

@@ -284,10 +284,10 @@ async function signMyContract(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng thuê của bạn.");
   }
 
-  if (contract.status !== "moderator_approved") {
+  if (!["moderator_approved", "draft", "pending_approval", "owner_signed"].includes(contract.status)) {
     throw new AppError(
       400,
-      "Hợp đồng này chưa ở trạng thái chờ Người thuê ký tên (cần được Owner lập và Quản lý web duyệt gửi cho bạn)."
+      "Hợp đồng này chưa ở trạng thái sẵn sàng để Người thuê ký tên."
     );
   }
 

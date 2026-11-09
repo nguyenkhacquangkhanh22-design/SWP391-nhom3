@@ -277,25 +277,64 @@ class RentalService {
    * Cho phép mở nút Ký hợp đồng & Thanh toán
    */
   async agreeContract(rentalId, user) {
-    const rental = await Rental.findById(rentalId)
-      .populate("renter", "name email phone User_Id")
-      .populate("owner", "name email phone User_Id")
-      .populate("equipment", "title images dailyRate");
+    let rental = null;
+    if (mongoose.isValidObjectId(rentalId)) {
+      rental = await Rental.findById(rentalId)
+        .populate("renter", "name email phone User_Id")
+        .populate("owner", "name email phone User_Id")
+        .populate("equipment", "title images dailyRate");
+    }
+
+    if (!rental) {
+      rental = await Rental.findOne({
+        $or: [
+          { rentalCode: rentalId },
+          { "contract.contractNumber": rentalId },
+        ],
+      })
+        .populate("renter", "name email phone User_Id")
+        .populate("owner", "name email phone User_Id")
+        .populate("equipment", "title images dailyRate");
+    }
+
+    if (!rental) {
+      const RentalContract = require("../models/RentalContract");
+      let rc = null;
+      if (mongoose.isValidObjectId(rentalId)) {
+        rc = await RentalContract.findById(rentalId).lean();
+      }
+      if (!rc) {
+        rc = await RentalContract.findOne({ contract_code: rentalId }).lean();
+      }
+      if (rc) {
+        rental = await Rental.findOne({
+          $or: [
+            { "contract.contractNumber": rc.contract_code },
+            { renter: rc.renter_id, equipment: rc.equipment_id },
+          ],
+        })
+          .populate("renter", "name email phone User_Id")
+          .populate("owner", "name email phone User_Id")
+          .populate("equipment", "title images dailyRate");
+      }
+    }
 
     if (!rental) {
       throw new AppError(404, "Không tìm thấy đơn thuê");
     }
 
-    const userIdStr = user._id.toString();
-    const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString();
-    const ownerIdStr = rental.owner?._id?.toString() || rental.owner?.toString();
+    const userIdStr = user._id ? user._id.toString() : String(user.User_Id || user.id || "");
+    const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString() || String(rental.renter?.User_Id || "");
+    const ownerIdStr = rental.owner?._id?.toString() || rental.owner?.toString() || String(rental.owner?.User_Id || "");
+    const userRole = String(user.role || "").toLowerCase();
 
-    if (
-      userIdStr !== renterIdStr &&
-      userIdStr !== ownerIdStr &&
-      user.role !== "admin" &&
-      user.role !== "rentalmoderator"
-    ) {
+    const isMatch =
+      userIdStr === renterIdStr ||
+      userIdStr === ownerIdStr ||
+      (user.User_Id && (String(user.User_Id) === String(rental.renter?.User_Id) || String(user.User_Id) === String(rental.owner?.User_Id))) ||
+      ["admin", "rentalmoderator"].includes(userRole);
+
+    if (!isMatch) {
       throw new AppError(403, "Bạn không có quyền xác nhận thỏa thuận cho đơn thuê này");
     }
 
@@ -335,7 +374,37 @@ class RentalService {
       throw new AppError(400, "Bạn cần đọc và chấp nhận các điều khoản trong hợp đồng thuê");
     }
 
-    const rental = await Rental.findById(rentalId);
+    let rental = null;
+    if (mongoose.isValidObjectId(rentalId)) {
+      rental = await Rental.findById(rentalId);
+    }
+    if (!rental) {
+      rental = await Rental.findOne({
+        $or: [
+          { rentalCode: rentalId },
+          { "contract.contractNumber": rentalId },
+        ],
+      });
+    }
+    if (!rental) {
+      const RentalContract = require("../models/RentalContract");
+      let rc = null;
+      if (mongoose.isValidObjectId(rentalId)) {
+        rc = await RentalContract.findById(rentalId).lean();
+      }
+      if (!rc) {
+        rc = await RentalContract.findOne({ contract_code: rentalId }).lean();
+      }
+      if (rc) {
+        rental = await Rental.findOne({
+          $or: [
+            { "contract.contractNumber": rc.contract_code },
+            { renter: rc.renter_id, equipment: rc.equipment_id },
+          ],
+        });
+      }
+    }
+
     if (!rental) {
       throw new AppError(404, "Không tìm thấy đơn thuê");
     }
@@ -351,7 +420,14 @@ class RentalService {
       throw new AppError(400, "Vui lòng vẽ chữ ký tay hoặc nhập họ tên để ký hợp đồng");
     }
 
-    if (rental.renter.toString() !== renterUser._id.toString()) {
+    const userIdStr = renterUser._id ? renterUser._id.toString() : String(renterUser.User_Id || renterUser.id || "");
+    const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString() || String(rental.renter?.User_Id || "");
+
+    if (
+      userIdStr !== renterIdStr &&
+      String(renterUser.User_Id || "") !== String(rental.renter?.User_Id || "") &&
+      renterUser.role !== "admin"
+    ) {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
@@ -382,7 +458,7 @@ class RentalService {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
-    // Bắt buộc hợp đồng phải được Quản lý web (Moderator) kiểm tra và phê duyệt trước khi gửi về cho Người thuê ký!
+    // Luồng trực tiếp: Không bắt buộc Quản lý web duyệt, Owner gửi trực tiếp cho Người thuê ký
     const RentalContract = require("../models/RentalContract");
     const RentalRequest = require("../models/RentalRequest");
     const matchingReq = await RentalRequest.findOne({
@@ -398,29 +474,20 @@ class RentalService {
 
     const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
     if (matchingContract) {
-      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
-        throw new AppError(
-          400,
-          "Hợp đồng thuê đang được Quản lý web (Moderator) kiểm tra. Vui lòng chờ Quản lý web phê duyệt hợp đồng trước khi ký tên."
-        );
-      }
       if (matchingContract.status === "moderator_rejected") {
         throw new AppError(
           400,
-          "Hợp đồng đang được Chủ máy (Owner) điều chỉnh theo yêu cầu của Quản lý web. Vui lòng chờ cập nhật trước khi ký tên."
+          "Hợp đồng đang được Chủ máy (Owner) điều chỉnh. Vui lòng chờ cập nhật trước khi ký tên."
         );
       }
-      if (matchingContract.status !== "moderator_approved" && matchingContract.status !== "signed") {
-        throw new AppError(
-          400,
-          "Hợp đồng này chưa được Quản lý web (Moderator) phê duyệt để chuyển cho bạn ký tên."
-        );
-      }
-    } else if (!rental.contract?.moderatorApproved) {
-      throw new AppError(
-        400,
-        "Hợp đồng thuê cần được Chủ thiết bị lập và Quản lý web (Moderator) kiểm tra phê duyệt trước khi bạn có thể ký tên."
-      );
+      matchingContract.status = "signed";
+      matchingContract.renter_signature = {
+        signed: true,
+        signed_at: new Date(),
+        signature_data: digitalSignature || renterSignature || renterUser.name,
+        signer_name: renterSignature || renterUser.name,
+      };
+      await matchingContract.save();
     }
 
     if (!rental.contract) {

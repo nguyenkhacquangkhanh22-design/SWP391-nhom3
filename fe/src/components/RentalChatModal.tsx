@@ -5,6 +5,7 @@ import { smartEquipApi } from "../services/smartEquipApi";
 import type { ChatMessage, Rental } from "../types/smartequip";
 import ContractPdfModal from "./ContractPdfModal";
 import OwnerEditContractModal from "./OwnerEditContractModal";
+import ContractConfirmationModal from "./ContractConfirmationModal";
 
 interface Props {
   isOpen: boolean;
@@ -85,6 +86,7 @@ export default function RentalChatModal({
   const [sending, setSending] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showEditContractModal, setShowEditContractModal] = useState(false);
+  const [showSignModal, setShowSignModal] = useState(false);
 
   // Gửi ảnh cho 2 phía (Renter & Owner)
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -145,17 +147,21 @@ export default function RentalChatModal({
   const handleAgreeToSign = async () => {
     if (agreeing) return;
     setAgreeing(true);
+    let updatedRental: Rental = {
+      ...currentRental,
+      contract: {
+        ...currentRental.contract,
+        agreedToSign: true,
+        agreedAt: new Date().toISOString(),
+      },
+    };
+
     try {
       const res = await smartEquipApi.agreeToSignContract(token, currentRental._id);
-      const updated: Rental = res.data || {
-        ...currentRental,
-        contract: {
-          ...currentRental.contract,
-          agreedToSign: true,
-          agreedAt: new Date().toISOString(),
-        },
-      };
-      setCurrentRental(updated);
+      if (res.data) {
+        updatedRental = res.data;
+      }
+      setCurrentRental(updatedRental);
 
       // Tự động gửi tin nhắn thông báo vào cuộc trò chuyện để hai bên đều thấy
       try {
@@ -171,14 +177,16 @@ export default function RentalChatModal({
       } catch (msgErr) {
         console.warn("Send agreement chat message error:", msgErr);
       }
-
-      if (onAgreeToSign) {
-        onAgreeToSign(updated);
-      }
     } catch (err) {
-      console.error("Lỗi đồng ý ký hợp đồng:", err);
+      console.warn("Lưu xác nhận đồng ý ký HĐ:", err);
     } finally {
       setAgreeing(false);
+      // Mở ngay cửa sổ ký kết hợp đồng cho Người thuê
+      if (onAgreeToSign) {
+        onAgreeToSign(updatedRental);
+      } else {
+        setShowSignModal(true);
+      }
     }
   };
 
@@ -501,29 +509,17 @@ export default function RentalChatModal({
                           <span>Xem hợp đồng</span>
                         </button>
 
-                        {/* Nút Đồng ý ký HĐ cho Renter ngay trên thẻ HĐ nếu chưa đồng ý */}
-                        {!isOwnerCurrent && isApproved && !currentRental.contract?.agreedToSign && (
+                        {/* Nút Ký hợp đồng cho Renter ngay trên thẻ HĐ */}
+                        {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
                           <button
                             type="button"
                             onClick={handleAgreeToSign}
                             disabled={agreeing}
-                            className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                            title="Xác nhận đồng ý điều khoản trong hợp đồng"
-                          >
-                            <span>🤝</span>
-                            <span>{agreeing ? "Đang gửi..." : "Đồng ý ký HĐ"}</span>
-                          </button>
-                        )}
-
-                        {/* Nút Ký hợp đồng ngay nếu đã đồng ý nhưng chưa ký */}
-                        {!isOwnerCurrent && isApproved && currentRental.contract?.agreedToSign && !currentRental.contract?.termsAccepted && onAgreeToSign && (
-                          <button
-                            type="button"
-                            onClick={() => onAgreeToSign(currentRental)}
-                            className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                            className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
+                            title="Xác nhận đồng ý điều khoản và ký hợp đồng ngay"
                           >
                             <span>✍️</span>
-                            <span>Ký HĐ ngay ➔</span>
+                            <span>{agreeing ? "Đang mở..." : "Ký hợp đồng ngay"}</span>
                           </button>
                         )}
                       </div>
@@ -710,6 +706,21 @@ export default function RentalChatModal({
           onSuccess={(updated) => {
             setCurrentRental(updated);
             setShowEditContractModal(false);
+            void fetchMessages(true);
+          }}
+        />
+      )}
+
+      {/* Modal Ký Hợp Đồng Trực Tiếp Cho Renter */}
+      {showSignModal && (
+        <ContractConfirmationModal
+          rental={currentRental}
+          token={token}
+          isOpen={showSignModal}
+          onClose={() => setShowSignModal(false)}
+          onSuccess={(updated) => {
+            setShowSignModal(false);
+            setCurrentRental(updated);
             void fetchMessages(true);
           }}
         />
