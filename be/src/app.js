@@ -77,6 +77,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/owner", ownerRoutes);
+app.use("/api/owners", ownerRoutes);
 app.use("/api/equipments", marketplaceRoutes);
 app.use("/api/owner-registration", ownerRegistrationRoutes);
 app.use("/api/moderator", moderatorRoutes);

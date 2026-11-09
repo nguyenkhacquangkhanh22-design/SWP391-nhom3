@@ -226,6 +226,7 @@ const paymentController = {
 
     if (rental) {
       // Cập nhật trạng thái đơn thành 'PAID' theo đúng yêu cầu
+      const wasAlreadyPaid = Boolean(rental.payment?.isPaid && rental.status === "PAID");
       rental.status = "PAID";
       rental.payment = rental.payment || {};
       rental.payment.isPaid = true;
@@ -239,6 +240,22 @@ const paymentController = {
         webhookData.paymentLinkId ||
         String(orderCode);
       await rental.save();
+
+      // Cộng tiền vào walletBalance của Owner (Ví trung gian)
+      if (!wasAlreadyPaid && rental.owner) {
+        try {
+          const User = require("../models/User");
+          const ownerId = rental.owner._id || rental.owner;
+          const paidAmount = Number(rental.payment.amountPaid) || Number(rental.totalAmount) || Number(rental.rentalFee) || 0;
+          if (paidAmount > 0) {
+            await User.findByIdAndUpdate(ownerId, {
+              $inc: { walletBalance: paidAmount },
+            });
+          }
+        } catch (walletErr) {
+          console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);
+        }
+      }
 
       // Bắn Socket.IO realtime để client Renter & Owner cập nhật giao diện
       try {
@@ -314,6 +331,7 @@ const paymentController = {
     }
 
     if (rental && paymentInfo.status === "PAID") {
+      const wasAlreadyPaid = Boolean(rental.payment?.isPaid && rental.status === "PAID");
       rental.status = "PAID";
       rental.payment = rental.payment || {};
       rental.payment.isPaid = true;
@@ -327,6 +345,22 @@ const paymentController = {
           paymentInfo.transactions[0].reference || paymentInfo.id;
       }
       await rental.save();
+
+      // Cộng tiền vào walletBalance của Owner (Ví trung gian)
+      if (!wasAlreadyPaid && rental.owner) {
+        try {
+          const User = require("../models/User");
+          const ownerId = rental.owner._id || rental.owner;
+          const paidAmount = Number(rental.payment.amountPaid) || Number(rental.totalAmount) || Number(rental.rentalFee) || 0;
+          if (paidAmount > 0) {
+            await User.findByIdAndUpdate(ownerId, {
+              $inc: { walletBalance: paidAmount },
+            });
+          }
+        } catch (walletErr) {
+          console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);
+        }
+      }
 
       try {
         const { getIO } = require("../config/socket");

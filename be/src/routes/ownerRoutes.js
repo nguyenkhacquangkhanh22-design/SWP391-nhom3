@@ -7,8 +7,8 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const router = express.Router();
 
-// Require authenticated user with 'owner' or 'systemadmin' role
-router.use(authenticate, authorize("owner", "systemadmin"));
+// Require authenticated user with 'owner', 'systemadmin', or 'admin' role
+router.use(authenticate, authorize("owner", "systemadmin", "admin"));
 
 // 1. Dashboard Overview (UC_O01)
 router.get("/overview", asyncHandler(ownerController.getOverview));
@@ -60,5 +60,13 @@ router.post("/disputes", asyncHandler(ownerController.submitRentalDispute));
 router.get("/support-tickets", asyncHandler(ownerController.getOwnerSupportTickets));
 router.post("/support-tickets", asyncHandler(ownerController.submitSupportTicket));
 router.post("/support-tickets/:id/reply", asyncHandler(ownerController.replySupportTicket));
+
+// 8. Ví trung gian & Rút tiền (Wallet & Withdrawals)
+const walletController = require("../controllers/walletController");
+router.post("/bank-accounts", asyncHandler(walletController.addBankAccount));
+router.get("/bank-accounts", asyncHandler(walletController.getOwnerBankAccountsAndBalance));
+router.delete("/bank-accounts/:accountId", asyncHandler(walletController.removeBankAccount));
+router.post("/withdraw", asyncHandler(walletController.createWithdrawal));
+router.get("/withdrawals", asyncHandler(walletController.getOwnerWithdrawals));
 
 module.exports = router;

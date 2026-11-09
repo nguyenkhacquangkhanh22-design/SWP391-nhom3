@@ -19,12 +19,14 @@ import OwnerHandoverTab from "./OwnerHandoverTab";
 import OwnerSettlementTab from "./OwnerSettlementTab";
 import OwnerDisputesTab from "./OwnerDisputesTab";
 import OwnerSupportTab from "./OwnerSupportTab";
+import OwnerWallet from "../../components/owner/OwnerWallet";
 
 export default function OwnerPortal() {
   const { user, token, signOut } = useAuth();
 
   const [activeTab, setActiveTab] = useState<
     | "overview"
+    | "wallet"
     | "equipments"
     | "requests"
     | "contracts"
@@ -129,6 +131,12 @@ export default function OwnerPortal() {
             📊 Tổng quan
           </button>
           <button
+            className={`owner-tab-btn ${activeTab === "wallet" ? "active" : ""}`}
+            onClick={() => handleTabChange("wallet")}
+          >
+            💳 Ví & Rút tiền
+          </button>
+          <button
             className={`owner-tab-btn ${activeTab === "equipments" ? "active" : ""}`}
             onClick={() => handleTabChange("equipments")}
           >
@@ -215,6 +223,10 @@ export default function OwnerPortal() {
                 onNavigateTab={(tab) => handleTabChange(tab as any)}
                 onSelectRequest={(req) => { setRequestForContract(req); handleTabChange("contracts"); }}
               />
+            )}
+
+            {activeTab === "wallet" && (
+              <OwnerWallet />
             )}
 
             {activeTab === "equipments" && (
