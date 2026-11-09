@@ -759,7 +759,8 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
     );
   }
 
-  const initialStatus = submit_immediately ? "pending_approval" : "draft";
+  // Luồng trực tiếp: Khi Owner bấm gửi ngay, hợp đồng chuyển thẳng tới Người thuê (moderator_approved) để ký & trao đổi qua Chat
+  const initialStatus = submit_immediately ? "moderator_approved" : "draft";
 
   const contract = await RentalContract.create({
     contract_code: contractCode,
@@ -778,12 +779,13 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
     template_id: selectedTemplate?._id,
     template_version: selectedTemplate?.version,
     version: 1,
+    moderator_approved_at: submit_immediately ? new Date() : undefined,
     version_history: [
       {
         version: 1,
         edited_at: new Date(),
         changes_summary: submit_immediately
-          ? "Owner lập hợp đồng chuẩn v1 và gửi Quản lý web duyệt để chuyển cho Người thuê ký"
+          ? "Owner lập hợp đồng chuẩn v1 và gửi trực tiếp cho Người thuê ký tên & trao đổi qua Chat"
           : "Owner khởi tạo bản nháp hợp đồng chuẩn v1",
         terms_content: standardTerms,
       },
@@ -812,10 +814,11 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
   rentalReq.status = "contract_created";
   await rentalReq.save();
 
-  // Đồng bộ hợp đồng sang bảng Rental cho Người thuê theo dõi trạng thái kiểm duyệt của Moderator
+  // Đồng bộ hợp đồng sang bảng Rental cho Người thuê xem và ký trực tiếp
+  let syncedRental = null;
   try {
     const Rental = require("../models/Rental");
-    await Rental.updateMany(
+    syncedRental = await Rental.findOneAndUpdate(
       {
         $or: [
           { rentalCode: rentalReq.request_code },
@@ -824,30 +827,61 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
       },
       {
         $set: {
-          status: "CONTRACT_PENDING",
+          status: "APPROVED",
           "contract.contractNumber": contract.contract_code,
           "contract.contractTerms": contract.terms_content,
-          "contract.moderatorApproved": false,
-          "contract.moderatorStatus": submit_immediately ? "pending_approval" : "draft",
+          "contract.moderatorApproved": submit_immediately ? true : false,
+          "contract.moderatorStatus": submit_immediately ? "approved" : "draft",
           "contract.ownerSigned": true,
         },
-      }
+      },
+      { new: true }
     );
   } catch (syncErr) {
     console.error("Failed to sync created contract to Rental:", syncErr);
   }
 
   if (submit_immediately) {
-    await notifyManagers(
-      `📜 Hợp đồng mới #${contract.contract_code} chờ Quản lý web duyệt`,
-      `Owner ${req.user.name} đã lập Hợp đồng ${contract.contract_code} cho khách ${rentalReq.renter_name}. Vui lòng duyệt để gửi cho Người thuê ký tên!`,
-      contract._id
-    );
+    // Tự động tạo tin nhắn Chat gửi Hợp đồng trực tiếp từ Owner sang Renter để trao đổi
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      await ChatMessage.create({
+        rental_id: syncedRental ? syncedRental._id : undefined,
+        sender: ownerId,
+        receiver: rentalReq.renter_id,
+        message: `📄 Tôi đã lập Hợp đồng thuê #${contract.contract_code} kèm Chữ ký số bên A và gửi trực tiếp cho bạn. Bạn vui lòng kiểm tra các điều khoản, trao đổi nếu cần sửa đổi hoặc tiến hành Ký hợp đồng nhé!`,
+        message_type: "contract",
+        contract_data: {
+          contract_number: contract.contract_code,
+          rental_code: rentalReq.request_code,
+          equipment_title: equipment.title,
+          rental_id: syncedRental ? syncedRental._id : undefined,
+          total_amount: rentalReq.rental_fee,
+          status: "APPROVED",
+          is_signed: false,
+        },
+      });
+    } catch (chatErr) {
+      console.warn("Failed to create auto chat message for contract:", chatErr.message);
+    }
+
+    // Thông báo cho Người thuê (Renter)
+    try {
+      const UserNotification = require("../models/UserNotification");
+      await UserNotification.create({
+        user_id: rentalReq.renter_id,
+        title: `📜 Chủ thiết bị đã gửi Hợp đồng #${contract.contract_code}`,
+        message: `Chủ thiết bị (${req.user.name}) đã lập Hợp đồng #${contract.contract_code} và gửi trực tiếp cho bạn qua Chat. Vui lòng vào phòng Chat để trao đổi và ký tên điện tử!`,
+        related_record_id: contract._id,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to notify renter:", notifErr.message);
+    }
   }
 
   res.status(201).json({
     message: submit_immediately
-      ? "Đã lập hợp đồng chuẩn và gửi Quản lý web duyệt! Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên."
+      ? "Đã lập hợp đồng chuẩn và gửi trực tiếp tới Người thuê! Hệ thống đã gửi hợp đồng vào khung Chat để hai bên trao đổi & ký kết."
       : "Tạo bản nháp hợp đồng thuê chuẩn thành công",
     contract,
   });
@@ -921,7 +955,8 @@ async function updateDraftContract(req, res) {
   }
 
   if (submit_immediately) {
-    contract.status = "pending_approval";
+    contract.status = "moderator_approved"; // Trực tiếp tới Người thuê để ký tên
+    contract.moderator_approved_at = new Date();
     contract.moderator_feedback = "";
   } else if (contract.status === "moderator_rejected") {
     contract.status = "draft";
@@ -930,22 +965,77 @@ async function updateDraftContract(req, res) {
   await contract.save();
 
   if (submit_immediately) {
-    await notifyManagers(
-      `📜 Hợp đồng #${contract.contract_code} (v${nextVersion}) gửi duyệt lại`,
-      `Owner ${req.user.name} đã cập nhật Hợp đồng ${contract.contract_code} (v${nextVersion}) và gửi Quản lý web duyệt.`,
-      contract._id
-    );
+    // Đồng bộ sang Rental
+    let syncedRental = null;
+    try {
+      const Rental = require("../models/Rental");
+      syncedRental = await Rental.findOneAndUpdate(
+        {
+          $or: [
+            { "contract.contractNumber": contract.contract_code },
+            { renter: contract.renter_id, equipment: contract.equipment_id },
+          ],
+        },
+        {
+          $set: {
+            status: "APPROVED",
+            "contract.contractTerms": contract.terms_content,
+            "contract.moderatorApproved": true,
+            "contract.moderatorStatus": "approved",
+            "contract.ownerSigned": true,
+          },
+        },
+        { new: true }
+      );
+    } catch (syncErr) {
+      console.error("Failed to sync updated contract to Rental:", syncErr);
+    }
+
+    // Tự động gửi tin nhắn Chat thông báo cập nhật điều khoản
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      await ChatMessage.create({
+        rental_id: syncedRental ? syncedRental._id : undefined,
+        sender: req.user._id,
+        receiver: contract.renter_id,
+        message: `📝 Chủ thiết bị đã cập nhật lại điều khoản Hợp đồng #${contract.contract_code} (Phiên bản v${nextVersion}). Vui lòng vào kiểm tra lại và tiến hành ký điện tử nhé!`,
+        message_type: "contract",
+        contract_data: {
+          contract_number: contract.contract_code,
+          equipment_title: contract.title,
+          rental_id: syncedRental ? syncedRental._id : undefined,
+          total_amount: contract.rental_price,
+          status: "APPROVED",
+          is_signed: false,
+        },
+      });
+    } catch (chatErr) {
+      console.warn("Failed to create auto chat update message:", chatErr.message);
+    }
+
+    // Thông báo cho Người thuê
+    try {
+      const UserNotification = require("../models/UserNotification");
+      await UserNotification.create({
+        user_id: contract.renter_id,
+        title: `📜 Hợp đồng #${contract.contract_code} đã được cập nhật v${nextVersion}`,
+        message: `Chủ thiết bị (${req.user.name}) đã cập nhật điều khoản Hợp đồng v${nextVersion} và gửi trực tiếp cho bạn qua Chat.`,
+        related_record_id: contract._id,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to notify renter:", notifErr.message);
+    }
   }
 
   res.json({
     message: submit_immediately
-      ? `Đã cập nhật phiên bản v${nextVersion} và gửi Quản lý web phê duyệt!`
+      ? `Đã cập nhật phiên bản v${nextVersion} và gửi trực tiếp cho Người thuê qua Chat!`
       : `Cập nhật hợp đồng thành công (phiên bản v${nextVersion})`,
     contract,
   });
 }
 
-// UC_O14: Submit Rental Contract for Approval to Web Manager (Rental Moderator)
+// UC_O14: Submit Rental Contract directly to Renter via Chat (bypassing Web Manager)
 async function submitRentalContractForApproval(req, res) {
   const { id } = req.params;
   const { digital_signature } = req.body;
@@ -992,47 +1082,77 @@ async function submitRentalContractForApproval(req, res) {
     };
   }
 
-  contract.status = "pending_approval";
+  contract.status = "moderator_approved";
+  contract.moderator_approved_at = new Date();
   contract.moderator_feedback = "";
   await contract.save();
 
-  // Đồng bộ chuyển trạng thái Rental sang chờ Quản lý web duyệt hợp đồng
+  // Đồng bộ sang Rental
+  let syncedRental = null;
   try {
     const Rental = require("../models/Rental");
     const RentalRequest = require("../models/RentalRequest");
     const rReq = await RentalRequest.findById(contract.request_id);
-    if (rReq) {
-      await Rental.updateMany(
-        {
-          $or: [
-            { rentalCode: rReq.request_code },
-            { renter: rReq.renter_id, equipment: rReq.equipment_id, status: { $in: ["APPROVED", "approved", "PENDING", "CONTRACT_PENDING", "contract_pending"] } },
-          ],
+    syncedRental = await Rental.findOneAndUpdate(
+      {
+        $or: [
+          { rentalCode: rReq ? rReq.request_code : contract.contract_code },
+          { renter: contract.renter_id, equipment: contract.equipment_id },
+        ],
+      },
+      {
+        $set: {
+          status: "APPROVED",
+          "contract.contractNumber": contract.contract_code,
+          "contract.contractTerms": contract.terms_content,
+          "contract.moderatorApproved": true,
+          "contract.moderatorStatus": "approved",
+          "contract.ownerSigned": true,
         },
-        {
-          $set: {
-            status: "CONTRACT_PENDING",
-            "contract.contractNumber": contract.contract_code,
-            "contract.contractTerms": contract.terms_content,
-            "contract.moderatorApproved": false,
-            "contract.moderatorStatus": "pending_approval",
-            "contract.ownerSigned": true,
-          },
-        }
-      );
-    }
+      },
+      { new: true }
+    );
   } catch (syncErr) {
     console.error("Failed to sync submitted contract to Rental:", syncErr);
   }
 
-  await notifyManagers(
-    `📜 Hợp đồng #${contract.contract_code} chờ Quản lý web duyệt`,
-    `Owner ${req.user.name} đã gửi Hợp đồng ${contract.contract_code} lên Quản lý web duyệt để chuyển cho Người thuê ký tên.`,
-    contract._id
-  );
+  // Tự động tạo tin nhắn Chat gửi Hợp đồng trực tiếp sang Renter
+  try {
+    const ChatMessage = require("../models/ChatMessage");
+    await ChatMessage.create({
+      rental_id: syncedRental ? syncedRental._id : undefined,
+      sender: req.user._id,
+      receiver: contract.renter_id,
+      message: `📄 Chủ thiết bị đã gửi Hợp đồng thuê #${contract.contract_code} cho bạn. Bạn vui lòng kiểm tra và ký hợp đồng nhé!`,
+      message_type: "contract",
+      contract_data: {
+        contract_number: contract.contract_code,
+        equipment_title: contract.title,
+        rental_id: syncedRental ? syncedRental._id : undefined,
+        total_amount: contract.rental_price,
+        status: "APPROVED",
+        is_signed: false,
+      },
+    });
+  } catch (chatErr) {
+    console.warn("Failed to create auto chat message:", chatErr.message);
+  }
+
+  // Thông báo cho Người thuê
+  try {
+    const UserNotification = require("../models/UserNotification");
+    await UserNotification.create({
+      user_id: contract.renter_id,
+      title: `📜 Hợp đồng #${contract.contract_code} đã được gửi trực tiếp cho bạn`,
+      message: `Chủ thiết bị (${req.user.name}) đã gửi Hợp đồng #${contract.contract_code} qua Chat. Vui lòng vào xem và ký tên điện tử!`,
+      related_record_id: contract._id,
+    });
+  } catch (notifErr) {
+    console.warn("Failed to notify renter:", notifErr.message);
+  }
 
   res.json({
-    message: "Đã gửi hợp đồng đến Quản lý web kiểm duyệt! Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên.",
+    message: "Đã gửi hợp đồng trực tiếp tới Người thuê! Hai bên có thể trao đổi trong phòng Chat để thống nhất và ký kết.",
     contract,
   });
 }
