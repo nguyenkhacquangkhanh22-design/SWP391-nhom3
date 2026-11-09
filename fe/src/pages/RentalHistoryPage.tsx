@@ -1459,6 +1459,8 @@ setNotice(
         <RentalChatModal
           rental={chatRental}
           isOpen={Boolean(chatRental)}
+          token={token}
+          currentUserId={(user as any)?._id || (user as any)?.User_Id}
           onClose={() => setChatRental(null)}
           onViewContract={(r) => {
             setViewingContractRental(r);

@@ -34,7 +34,12 @@ export default function RentalChatModal({
 }: Props) {
   const auth = useAuth();
   const token = propToken || auth.token || "";
-  const currentUserId = propCurrentUserId || (auth.user as any)?._id || (auth.user as any)?.id || "";
+  const currentUserId =
+    propCurrentUserId ||
+    (auth.user as any)?._id ||
+    (auth.user as any)?.User_Id ||
+    (auth.user as any)?.id ||
+    "";
 
   // Quản lý trạng thái đơn thuê cục bộ để cập nhật tức thời khi Owner chỉnh sửa điều khoản
   const [currentRental, setCurrentRental] = useState<Rental>(rental);
@@ -44,21 +49,33 @@ export default function RentalChatModal({
   }, [rental]);
 
   // Kiểm tra vai trò Owner
+  const ownerId = typeof currentRental.owner === "object"
+    ? (currentRental.owner as any)?._id || (currentRental.owner as any)?.User_Id || (currentRental.owner as any)?.id
+    : currentRental.owner;
+
   const isOwnerCurrent =
-    String(currentUserId) === String(typeof currentRental.owner === "object" ? currentRental.owner?._id : currentRental.owner) ||
+    (currentUserId && String(currentUserId) === String(ownerId)) ||
     String(auth.user?.role).toLowerCase() === "owner";
 
   const partnerUser = propPartnerUser || (isOwnerCurrent
     ? {
-        _id: typeof currentRental.renter === "object" ? currentRental.renter?._id : (currentRental.renter as any),
-        name: typeof currentRental.renter === "object" ? currentRental.renter?.name : "Khách thuê",
-        avatarUrl: typeof currentRental.renter === "object" ? currentRental.renter?.avatarUrl : undefined,
+        _id: String(
+          (typeof currentRental.renter === "object"
+            ? (currentRental.renter as any)?._id || (currentRental.renter as any)?.User_Id || (currentRental.renter as any)?.id
+            : currentRental.renter) || ""
+        ),
+        name: typeof currentRental.renter === "object" ? (currentRental.renter as any)?.name || "Khách thuê" : "Khách thuê",
+        avatarUrl: typeof currentRental.renter === "object" ? (currentRental.renter as any)?.avatarUrl : undefined,
         role: "renter",
       }
     : {
-        _id: typeof currentRental.owner === "object" ? currentRental.owner?._id : (currentRental.owner as any),
-        name: typeof currentRental.owner === "object" ? currentRental.owner?.name : "Chủ máy",
-        avatarUrl: typeof currentRental.owner === "object" ? currentRental.owner?.avatarUrl : undefined,
+        _id: String(
+          (typeof currentRental.owner === "object"
+            ? (currentRental.owner as any)?._id || (currentRental.owner as any)?.User_Id || (currentRental.owner as any)?.id
+            : currentRental.owner) || ""
+        ),
+        name: typeof currentRental.owner === "object" ? (currentRental.owner as any)?.name || "Chủ máy" : "Chủ máy",
+        avatarUrl: typeof currentRental.owner === "object" ? (currentRental.owner as any)?.avatarUrl : undefined,
         role: "owner",
       });
 
@@ -80,7 +97,7 @@ export default function RentalChatModal({
     String(currentRental.status).toUpperCase() === "APPROVED" ||
     String(currentRental.status).toLowerCase() === "approved";
 
-  // Lắng nghe realtime khi đối tác đồng ý ký hợp đồng
+  // Lắng nghe realtime qua Socket.IO: tin nhắn mới và trạng thái thỏa thuận
   useEffect(() => {
     const socket = getSocket();
     const handleRentalAgreed = (payload: { rentalId: string }) => {
@@ -95,11 +112,35 @@ export default function RentalChatModal({
         }));
       }
     };
+
+    const handleNewChatMessage = (newMsg: ChatMessage) => {
+      const msgSenderId = String(typeof newMsg.sender === "object" ? (newMsg.sender as any)?._id : newMsg.sender);
+      const msgReceiverId = String(typeof newMsg.receiver === "object" ? (newMsg.receiver as any)?._id : newMsg.receiver);
+
+      const isForThisPair =
+        (msgSenderId === String(currentUserId) && msgReceiverId === String(partnerUser._id)) ||
+        (msgSenderId === String(partnerUser._id) && msgReceiverId === String(currentUserId));
+
+      const isForThisRental =
+        newMsg.rental_id &&
+        String(typeof newMsg.rental_id === "object" ? (newMsg.rental_id as any)?._id : newMsg.rental_id) === String(currentRental._id);
+
+      if (isForThisPair || isForThisRental) {
+        setMessages((prev) => {
+          if (prev.some((m) => String(m._id) === String(newMsg._id))) return prev;
+          return [...prev, newMsg];
+        });
+      }
+    };
+
     socket.on("rental:agreed", handleRentalAgreed);
+    socket.on("chat:new_message", handleNewChatMessage);
+
     return () => {
       socket.off("rental:agreed", handleRentalAgreed);
+      socket.off("chat:new_message", handleNewChatMessage);
     };
-  }, [currentRental._id]);
+  }, [currentRental._id, currentUserId, partnerUser._id]);
 
   const handleAgreeToSign = async () => {
     if (agreeing) return;
@@ -152,10 +193,12 @@ export default function RentalChatModal({
       });
       setMessages(res.data || []);
       // Mark as read
-      smartEquipApi.markChatAsRead(token, {
-        senderId: partnerUser._id,
-        rentalId: currentRental._id,
-      }).catch(() => {});
+      if (partnerUser._id) {
+        smartEquipApi.markChatAsRead(token, {
+          senderId: partnerUser._id,
+          rentalId: currentRental._id,
+        }).catch(() => {});
+      }
     } catch (err) {
       console.warn("Fetch chat error:", err);
     } finally {
@@ -168,7 +211,7 @@ export default function RentalChatModal({
       fetchMessages();
       const interval = setInterval(() => {
         fetchMessages(true);
-      }, 3500);
+      }, 2500);
       return () => clearInterval(interval);
     }
   }, [isOpen, currentRental._id, partnerUser._id]);
@@ -223,6 +266,11 @@ export default function RentalChatModal({
     e.preventDefault();
     if ((!inputText.trim() && !selectedImageFile) || sending) return;
 
+    if (!partnerUser._id) {
+      alert("Chưa xác định được đối tác nhận tin nhắn. Vui lòng tải lại hoặc chọn đơn thuê khác.");
+      return;
+    }
+
     const textToSend = inputText.trim();
     const imageFileToSend = selectedImageFile;
 
@@ -256,10 +304,14 @@ export default function RentalChatModal({
       });
 
       if (res.data) {
-        setMessages((prev) => [...prev, res.data]);
+        setMessages((prev) => {
+          if (prev.some((m) => String(m._id) === String(res.data._id))) return prev;
+          return [...prev, res.data];
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Send message error:", err);
+      alert(err instanceof Error ? err.message : "Không thể gửi tin nhắn. Vui lòng thử lại!");
     } finally {
       setSending(false);
     }
@@ -267,6 +319,10 @@ export default function RentalChatModal({
 
   const handleSendContract = async () => {
     if (sending) return;
+    if (!partnerUser._id) {
+      alert("Chưa xác định được người nhận hợp đồng.");
+      return;
+    }
     setSending(true);
 
     const contractNumber = currentRental.contract?.contractNumber || `HD-${currentRental.rentalCode}`;
@@ -291,10 +347,14 @@ export default function RentalChatModal({
         },
       });
       if (res.data) {
-        setMessages((prev) => [...prev, res.data]);
+        setMessages((prev) => {
+          if (prev.some((m) => String(m._id) === String(res.data._id))) return prev;
+          return [...prev, res.data];
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Send contract error:", err);
+      alert(err instanceof Error ? err.message : "Không thể gửi hợp đồng vào chat.");
     } finally {
       setSending(false);
     }

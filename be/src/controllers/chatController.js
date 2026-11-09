@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const ChatMessage = require("../models/ChatMessage");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
@@ -8,21 +9,109 @@ async function getConversation(req, res) {
   const currentUserId = req.user._id;
   const { otherUserId, rentalId } = req.query;
 
-  const query = {};
-
+  // Thu thập tất cả các ID liên quan (Rental._id, RentalContract._id, RentalRequest._id)
+  let allRentalIds = [];
   if (rentalId) {
-    query.rental_id = rentalId;
+    allRentalIds.push(rentalId);
+    try {
+      const Rental = require("../models/Rental");
+      const RentalContract = require("../models/RentalContract");
+      const RentalRequest = require("../models/RentalRequest");
 
-    // Tự động kiểm tra: Nếu đơn thuê đã APPROVED mà chưa có hợp đồng trong chat, tự động tạo ngay để khách coi
+      if (mongoose.isValidObjectId(rentalId)) {
+        const rentalDoc = await Rental.findById(rentalId).lean();
+        if (rentalDoc) {
+          allRentalIds.push(rentalDoc._id.toString());
+          if (rentalDoc.contract?.contractNumber) {
+            const rc = await RentalContract.findOne({ contract_code: rentalDoc.contract.contractNumber }).lean();
+            if (rc) allRentalIds.push(rc._id.toString());
+          }
+          if (rentalDoc.rentalCode) {
+            const rq = await RentalRequest.findOne({ request_code: rentalDoc.rentalCode }).lean();
+            if (rq) allRentalIds.push(rq._id.toString());
+          }
+        } else {
+          // rentalId có thể là RentalContract ID
+          const rc = await RentalContract.findById(rentalId).lean();
+          if (rc) {
+            allRentalIds.push(rc._id.toString());
+            const [rDoc, rq] = await Promise.all([
+              Rental.findOne({
+                $or: [
+                  { "contract.contractNumber": rc.contract_code },
+                  { renter: rc.renter_id, equipment: rc.equipment_id },
+                ],
+              }).lean(),
+              rc.request_id ? RentalRequest.findById(rc.request_id).lean() : null,
+            ]);
+            if (rDoc) allRentalIds.push(rDoc._id.toString());
+            if (rq) allRentalIds.push(rq._id.toString());
+          } else {
+            // rentalId có thể là RentalRequest ID
+            const rq = await RentalRequest.findById(rentalId).lean();
+            if (rq) {
+              allRentalIds.push(rq._id.toString());
+              const [rDoc, rcDoc] = await Promise.all([
+                Rental.findOne({
+                  $or: [
+                    { rentalCode: rq.request_code },
+                    { renter: rq.renter_id, equipment: rq.equipment_id },
+                  ],
+                }).lean(),
+                RentalContract.findOne({ request_id: rq._id }).lean(),
+              ]);
+              if (rDoc) allRentalIds.push(rDoc._id.toString());
+              if (rcDoc) allRentalIds.push(rcDoc._id.toString());
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Resolve rental IDs error:", e.message);
+    }
+  }
+
+  // Lọc trùng ID
+  allRentalIds = Array.from(new Set(allRentalIds.filter(Boolean)));
+
+  let query = {};
+  if (otherUserId) {
+    const userPairFilter = {
+      $or: [
+        { sender: currentUserId, receiver: otherUserId },
+        { sender: otherUserId, receiver: currentUserId },
+      ],
+    };
+
+    if (allRentalIds.length > 0) {
+      query = {
+        $or: [
+          userPairFilter,
+          { rental_id: { $in: allRentalIds } },
+        ],
+      };
+    } else {
+      query = userPairFilter;
+    }
+  } else if (allRentalIds.length > 0) {
+    query = { rental_id: { $in: allRentalIds } };
+  } else {
+    query = {
+      $or: [{ sender: currentUserId }, { receiver: currentUserId }],
+    };
+  }
+
+  // Tự động kiểm tra: Nếu đơn thuê đã APPROVED mà chưa có hợp đồng trong chat, tự động tạo ngay để khách coi
+  if (allRentalIds.length > 0) {
     try {
       const hasContract = await ChatMessage.exists({
-        rental_id: rentalId,
+        rental_id: { $in: allRentalIds },
         message_type: "contract",
       });
 
       if (!hasContract) {
         const Rental = require("../models/Rental");
-        const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+        const rental = await Rental.findOne({ _id: { $in: allRentalIds } }).populate("equipment owner renter");
         const upperStatus = String(rental?.status || "").toUpperCase();
         if (
           rental &&
@@ -60,27 +149,11 @@ async function getConversation(req, res) {
               ),
             },
           });
-
-          await ChatMessage.create({
-            sender: ownerId,
-            receiver: renterId,
-            rental_id: rental._id,
-            message: `Chào bạn! Tôi đã kiểm tra và phê duyệt yêu cầu thuê #${rental.rentalCode}. Hợp đồng dự thảo đã được gửi ở trên, bạn hãy xem qua điều khoản và bấm "Đồng ý ký HĐ" khi thống nhất nhé!`,
-            message_type: "text",
-          });
         }
       }
     } catch (autoErr) {
       console.warn("Auto populate contract in getConversation error:", autoErr.message);
     }
-  } else if (otherUserId) {
-    query.$or = [
-      { sender: currentUserId, receiver: otherUserId },
-      { sender: otherUserId, receiver: currentUserId },
-    ];
-  } else {
-    // If neither is passed, find all conversations where user is sender or receiver
-    query.$or = [{ sender: currentUserId }, { receiver: currentUserId }];
   }
 
   const messages = await ChatMessage.find(query)
@@ -127,15 +200,52 @@ async function sendMessage(req, res) {
     throw new AppError(400, "Vui lòng đính kèm hình ảnh để gửi");
   }
 
-  const receiver = await User.findById(receiverId);
+  let receiver = null;
+  if (mongoose.isValidObjectId(receiverId)) {
+    receiver = await User.findById(receiverId);
+  }
   if (!receiver) {
-    throw new AppError(404, "Receiver not found");
+    receiver = await User.findOne({ $or: [{ User_Id: receiverId }, { email: receiverId }] });
+  }
+  if (!receiver) {
+    throw new AppError(404, "Không tìm thấy người nhận tin nhắn");
+  }
+
+  const targetReceiverId = receiver._id;
+
+  // Giải quyết rentalId về Rental document ID nếu có thể
+  let effectiveRentalId = undefined;
+  if (rentalId && mongoose.isValidObjectId(rentalId)) {
+    try {
+      const Rental = require("../models/Rental");
+      const exists = await Rental.exists({ _id: rentalId });
+      if (exists) {
+        effectiveRentalId = rentalId;
+      } else {
+        const RentalContract = require("../models/RentalContract");
+        const rc = await RentalContract.findById(rentalId).lean();
+        if (rc) {
+          const matchingRental = await Rental.findOne({
+            $or: [
+              { "contract.contractNumber": rc.contract_code },
+              { renter: rc.renter_id, equipment: rc.equipment_id },
+            ],
+          }).lean();
+          if (matchingRental) effectiveRentalId = matchingRental._id;
+          else effectiveRentalId = rentalId;
+        } else {
+          effectiveRentalId = rentalId;
+        }
+      }
+    } catch (e) {
+      effectiveRentalId = rentalId;
+    }
   }
 
   const newChat = new ChatMessage({
     sender: currentUserId,
-    receiver: receiverId,
-    rental_id: rentalId || undefined,
+    receiver: targetReceiverId,
+    rental_id: effectiveRentalId,
     message: message ? message.trim() : (messageType === "image" ? "[Hình ảnh]" : ""),
     message_type: messageType,
     file_url: effectiveFileUrl || (message && (message.startsWith("/uploads/") || message.startsWith("data:image")) ? message : ""),
@@ -154,9 +264,13 @@ async function sendMessage(req, res) {
   try {
     const io = getIO();
     if (io) {
-      io.to(`user:${receiverId}`).emit("chat:new_message", populated);
+      io.to(`user:${targetReceiverId}`).emit("chat:new_message", populated);
+      io.to(`user:${currentUserId}`).emit("chat:new_message", populated);
       if (rentalId) {
         io.to(`rental:${rentalId}`).emit("chat:new_message", populated);
+      }
+      if (effectiveRentalId && String(effectiveRentalId) !== String(rentalId)) {
+        io.to(`rental:${effectiveRentalId}`).emit("chat:new_message", populated);
       }
     }
   } catch (socketErr) {
@@ -174,10 +288,10 @@ async function sendMessage(req, res) {
         : message.slice(0, 80);
 
       await UserNotification.create({
-        user_id: receiverId,
+        user_id: targetReceiverId,
         title: `💬 Tin nhắn mới từ ${senderName}`,
         message: `${previewText}`,
-        related_record_id: rentalId || newChat._id,
+        related_record_id: effectiveRentalId || newChat._id,
       });
     }
   } catch (notifyErr) {

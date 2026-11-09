@@ -438,6 +438,7 @@ export default function OwnerRequestsTab({
         <RentalChatModal
           rental={chatRental}
           isOpen={Boolean(chatRental)}
+          token={token}
           onClose={() => setChatRental(null)}
           onViewContract={(r) => {
             setViewingContractRental(r);

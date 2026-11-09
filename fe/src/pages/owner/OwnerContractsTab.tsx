@@ -219,17 +219,20 @@ export default function OwnerContractsTab({
   function handleOpenChatForContract(c: RentalContract) {
     const reqObj = typeof c.request_id === "object" ? (c.request_id as any) : null;
     const requestCode = reqObj?.request_code || "";
+    const renterObj = typeof c.renter_id === "object" ? (c.renter_id as any) : null;
+    const renterIdStr = renterObj?._id || renterObj?.User_Id || String(c.renter_id || "");
 
     let rental = directRentals.find(
       (r) =>
         (r.contract?.contractNumber && r.contract.contractNumber === c.contract_code) ||
         (requestCode && r.rentalCode === requestCode) ||
-        (r.rentalCode === c.contract_code.replace("HD-", ""))
+        (typeof r.renter === "object" && ((r.renter as any)?._id === renterIdStr || (r.renter as any)?.User_Id === renterIdStr)) ||
+        String(r.renter) === renterIdStr
     );
 
     if (!rental) {
       rental = {
-        _id: (c.request_id as any)?._id || String(c._id),
+        _id: String(c._id),
         rentalCode: requestCode || c.contract_code.replace("HD-", ""),
         equipment: c.equipment_id as any,
         renter: c.renter_id as any,
@@ -1472,6 +1475,18 @@ export default function OwnerContractsTab({
         <RentalChatModal
           rental={chatRental}
           isOpen={Boolean(chatRental)}
+          token={token}
+          currentUserId={(user as any)?._id || (user as any)?.User_Id}
+          partnerUser={
+            typeof chatRental.renter === "object"
+              ? {
+                  _id: String((chatRental.renter as any)?._id || (chatRental.renter as any)?.User_Id || ""),
+                  name: (chatRental.renter as any)?.name || "Khách thuê",
+                  avatarUrl: (chatRental.renter as any)?.avatarUrl,
+                  role: "renter",
+                }
+              : undefined
+          }
           onClose={() => setChatRental(null)}
           onViewContract={(r) => {
             const match = contracts.find((c) => c.contract_code === r.contract?.contractNumber);
