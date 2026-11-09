@@ -32,56 +32,11 @@ export default function ContractConfirmationModal({
   const [error, setError] = useState("");
   const [step, setStep] = useState<"contract" | "payment">("contract");
   const [showPdfModal, setShowPdfModal] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<"techcombank" | "payos">("techcombank");
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [directPaidSuccess, setDirectPaidSuccess] = useState(false);
 
   if (!isOpen) return null;
 
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const totalAmountToPay = rental.totalAmount || (rental.rentalFee + (rental.shippingFee || 0)); // KHÔNG CẦN TIỀN CỌC! (Tiền thuê + phí vận chuyển)
-  const transferContent = `TT don ${rental.rentalCode}`;
-
-  const copyToClipboard = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  const handleConfirmDirectTransfer = async () => {
-    if (loading) return;
-    setLoading(true);
-    setError("");
-    try {
-      if (handwrittenSignature || signerName.trim()) {
-        try {
-          await smartEquipApi.confirmContract(token, rental._id, {
-            termsAccepted: true,
-            renterSignature: signerName.trim() || renterName,
-            digitalSignature: handwrittenSignature || rental.contract?.digitalSignature || "",
-          });
-        } catch (signErr: any) {
-          console.warn("Lưu chữ ký hợp đồng notice:", signErr?.message);
-        }
-      }
-
-      await smartEquipApi.payRental(token, rental._id, {
-        paymentMethod: "qr_transfer",
-        transactionId: `TCB_${Date.now()}`,
-        transferNote: transferContent,
-      });
-
-      setDirectPaidSuccess(true);
-      setTimeout(() => {
-        if (onSuccess) onSuccess(rental);
-        onClose();
-      }, 1500);
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || "Lỗi khi xác nhận thanh toán");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleGoToPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +70,7 @@ export default function ContractConfirmationModal({
         }
       }
 
-      // 2. Gọi thẳng API POST /api/payments/create-payment-link (chuyền vào rentalId, amount, description)
+      // 2. Gọi API POST /api/payments/create-payment-link (truyền vào rentalId, amount, description)
       const response = await axios.post("/api/payments/create-payment-link", {
         rentalId: rental._id,
         amount: totalAmountToPay,
@@ -385,7 +340,7 @@ export default function ContractConfirmationModal({
           </div>
         )}
 
-        {/* STEP 2: LỰA CHỌN PHƯƠNG THỨC THANH TOÁN */}
+        {/* STEP 2: THANH TOÁN TỰ ĐỘNG QUA CỔNG PAYOS */}
         {step === "payment" && (
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 py-1">
             {/* Khối hiển thị Số tiền thanh toán */}
@@ -425,174 +380,32 @@ export default function ContractConfirmationModal({
               </div>
             </div>
 
-            {/* Bộ chọn phương thức thanh toán */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-[#0b111c] rounded-xl border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setPaymentMode("techcombank")}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  paymentMode === "techcombank"
-                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-900/30"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
+            {/* Thông tin Cổng thanh toán tự động PayOS */}
+            <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                <span className="text-lg">⚡</span>
+                <span>Cổng thanh toán bảo mật PayOS (VietQR Chuẩn Quốc Gia)</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Nhấn nút bên dưới để chuyển hướng sang cổng thanh toán <strong>PayOS</strong>. Cổng sẽ tự động tạo mã <strong>VietQR động</strong> đúng số tiền và cú pháp đơn hàng để bạn quét từ ứng dụng ngân hàng. Hệ thống tự động xác nhận thành công tức thì!
+              </p>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1 border-t border-[#1d2d42]">
                 <span>🏦</span>
-                <span>Techcombank (Khuyên dùng)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentMode("payos")}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  paymentMode === "payos"
-                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-900/30"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <span>⚡</span>
-                <span>Cổng PayOS</span>
-              </button>
+                <span>Hỗ trợ tất cả ứng dụng ngân hàng: MB, Vietcombank, Techcombank, ACB, BIDV, VPBank, MoMo...</span>
+              </div>
             </div>
 
-            {/* NỘI DUNG 1: QUÉT VIETQR TECHCOMBANK TRỰC TIẾP */}
-            {paymentMode === "techcombank" && (
-              <div className="p-4 bg-[#111a29] border border-red-500/30 rounded-2xl space-y-4 animate-fadeIn">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
-                      Quét mã VietQR Techcombank (DO NGOC NHAN)
-                    </span>
-                  </div>
-                  <span className="text-[10px] bg-red-950/80 text-red-300 border border-red-500/40 px-2 py-0.5 rounded-full font-bold">
-                    Napas 24/7
-                  </span>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  {/* Mã QR Techcombank */}
-                  <div className="bg-white p-2 rounded-2xl shadow-lg border-2 border-slate-200 shrink-0 flex flex-col items-center">
-                    <img
-                      src={`https://img.vietqr.io/image/TCB-19039916819018-compact2.png?amount=${totalAmountToPay}&addInfo=${encodeURIComponent(
-                        transferContent
-                      )}&accountName=DO%20NGOC%20NHAN`}
-                      alt="VietQR Techcombank DO NGOC NHAN"
-                      className="w-44 h-44 object-contain rounded-lg"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/techcombank-qr.jpg";
-                      }}
-                    />
-                    <span className="text-[10px] text-slate-600 font-bold mt-1">Techcombank Napas 24/7</span>
-                  </div>
-
-                  {/* Thông tin chuyển khoản chi tiết kèm nút sao chép */}
-                  <div className="flex-1 w-full space-y-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-[#0b101b] border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Ngân hàng thụ hưởng</span>
-                        <span className="font-bold text-white">Techcombank (Kỹ Thương Việt Nam)</span>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-[#0b101b] border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Số tài khoản</span>
-                        <span className="font-mono font-bold text-base text-red-400">19039916819018</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard("19039916819018", "acc")}
-                        className="px-2.5 py-1 bg-[#1e2a3f] hover:bg-[#283854] text-slate-200 rounded-lg text-[11px] font-semibold border border-slate-700"
-                      >
-                        {copiedField === "acc" ? "✓ Đã chép" : "Sao chép"}
-                      </button>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-[#0b101b] border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Chủ tài khoản</span>
-                        <span className="font-bold text-white uppercase">DO NGOC NHAN</span>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-[#0b101b] border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Số tiền cần chuyển</span>
-                        <span className="font-bold text-emerald-400 font-mono">
-                          {totalAmountToPay.toLocaleString("vi-VN")} đ
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(String(totalAmountToPay), "amt")}
-                        className="px-2.5 py-1 bg-[#1e2a3f] hover:bg-[#283854] text-slate-200 rounded-lg text-[11px] font-semibold border border-slate-700"
-                      >
-                        {copiedField === "amt" ? "✓ Đã chép" : "Sao chép"}
-                      </button>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-[#0b101b] border border-red-500/30 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Nội dung chuyển khoản (Bắt buộc)</span>
-                        <span className="font-mono font-bold text-amber-300">{transferContent}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(transferContent, "memo")}
-                        className="px-2.5 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-200 rounded-lg text-[11px] font-bold border border-red-500/40"
-                      >
-                        {copiedField === "memo" ? "✓ Đã chép" : "Sao chép"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {directPaidSuccess ? (
-                  <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-center text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 animate-fadeIn">
-                    <span>✅</span>
-                    <span>Đã ghi nhận chuyển khoản thành công! Đang chuyển hướng...</span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleConfirmDirectTransfer}
-                    disabled={loading}
-                    className="w-full py-3.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-red-900/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
-                  >
-                    <span>{loading ? "⏳" : "✓"}</span>
-                    <span>{loading ? "Đang lưu xác nhận..." : "Tôi đã chuyển tiền vào Techcombank"}</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* NỘI DUNG 2: CỔNG THANH TOÁN TỰ ĐỘNG PAYOS */}
-            {paymentMode === "payos" && (
-              <div className="space-y-4 animate-fadeIn">
-                <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
-                    <span className="text-base">⚡</span>
-                    <span>Thanh toán tự động qua cổng PayOS (Chuẩn VietQR)</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Nhấn nút bên dưới để chuyển hướng sang cổng thanh toán <strong>PayOS</strong>. Hệ thống sẽ tạo sẵn <strong>mã VietQR động</strong> đúng số tiền và tự động duyệt đơn ngay khi bạn chuyển tiền thành công!
-                  </p>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1">
-                    <span>🏦</span>
-                    <span>Hỗ trợ tất cả ứng dụng ngân hàng: MB, Vietcombank, Techcombank, ACB, BIDV, VPBank, MoMo...</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handlePayOSPayment}
-                  disabled={loading}
-                  className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-base rounded-2xl transition-all shadow-xl shadow-emerald-950/60 flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 cursor-pointer animate-pulse hover:animate-none"
-                >
-                  <span>{loading ? "⏳" : "💳"}</span>
-                  <span>{loading ? "Đang kết nối cổng PayOS..." : "Chuyển Sang Cổng Thanh Toán PayOS"}</span>
-                  <span>➔</span>
-                </button>
-              </div>
-            )}
+            {/* Nút Chuyển Sang PayOS */}
+            <button
+              type="button"
+              onClick={handlePayOSPayment}
+              disabled={loading}
+              className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-base rounded-2xl transition-all shadow-xl shadow-emerald-950/60 flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <span>{loading ? "⏳" : "💳"}</span>
+              <span>{loading ? "Đang kết nối cổng PayOS..." : "Mở Cổng Thanh Toán PayOS (VietQR)"}</span>
+              <span>➔</span>
+            </button>
 
             {/* Xem trước chữ ký đã vẽ */}
             {handwrittenSignature && (
