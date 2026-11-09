@@ -12,7 +12,7 @@ interface Props {
   onRefresh: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
-  onCreateContract: (req: RentalRequest) => void;
+  onCreateContract?: (req: RentalRequest) => void;
 }
 
 export default function OwnerRequestsTab({
@@ -105,7 +105,7 @@ export default function OwnerRequestsTab({
     try {
       await ownerApi.respondRentalRequest(token, req._id, "approve");
       onRefresh();
-      onCreateContract({ ...req, status: "approved" });
+      if (onCreateContract) onCreateContract({ ...req, status: "approved" });
       onSuccess(
         `Đã duyệt yêu cầu thuê "${req.request_code}"! Hệ thống đã chuyển sang màn hình lập Hợp đồng cho thuê để gửi Quản lý web duyệt.`
       );
@@ -641,7 +641,7 @@ export default function OwnerRequestsTab({
                               <button
                                 className="button button-primary"
                                 style={{ padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
-                                onClick={() => onCreateContract(req)}
+                                onClick={() => onCreateContract?.(req)}
                               >
                                 + Lập HĐ gửi Quản lý web 📜
                               </button>
@@ -786,4 +786,4 @@ export default function OwnerRequestsTab({
       )}
     </div>
   );
-}
+}

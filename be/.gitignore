@@ -6,3 +6,5 @@ yarn-debug.log*
 pnpm-debug.log*
 coverage/
 dist/
+uploads/*
+!uploads/.gitkeep

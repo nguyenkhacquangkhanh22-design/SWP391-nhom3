@@ -11,6 +11,9 @@ export interface User {
   kycStatus?: "unverified" | "pending" | "verified" | "rejected";
   kycDocument?: {
     idNumber?: string;
+    idCardFront?: string;
+    idCardBack?: string;
+    selfiePhoto?: string;
     submittedAt?: string;
     verifiedAt?: string;
     rejectionReason?: string;

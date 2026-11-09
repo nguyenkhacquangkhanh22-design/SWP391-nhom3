@@ -51,6 +51,7 @@ router.put("/handover-records/:id", asyncHandler(ownerController.updateHandoverR
 router.get("/settlements", asyncHandler(ownerController.getSettlements));
 router.get("/settlements/:contractId", asyncHandler(ownerController.getSettlementByContract));
 router.post("/settlements/:contractId/confirm", asyncHandler(ownerController.confirmSettlementPayout));
+router.post("/settlements/:contractId/request-payout", asyncHandler(ownerController.confirmSettlementPayout));
 router.get("/revenue-history", asyncHandler(ownerController.getRevenueAndRentalHistory));
 
 // 7. Disputes & Support Tickets (UC_O17, UC_O18)

@@ -4,7 +4,7 @@ interface Props {
   stats: OwnerStats | null;
   recentRequests: RentalRequest[];
   onNavigateTab: (tab: string) => void;
-  onSelectRequest: (req: RentalRequest) => void;
+  onSelectRequest?: (req: RentalRequest) => void;
 }
 
 export default function OwnerOverviewTab({
@@ -203,7 +203,7 @@ export default function OwnerOverviewTab({
                     <td style={{ color: "var(--orange)", fontWeight: 600 }}>
                       {req.rental_fee.toLocaleString("vi-VN")} đ
                     </td>
-                    <td>{req.deposit_amount.toLocaleString("vi-VN")} đ</td>
+                    <td style={{ color: "#10b981" }}>0 đ (Miễn cọc)</td>
                     <td>
                       <span className={`status-badge status-${req.status}`}>
                         {req.status === "pending"
@@ -219,12 +219,9 @@ export default function OwnerOverviewTab({
                       <button
                         className="button button-secondary"
                         style={{ padding: "6px 12px", fontSize: "0.8rem" }}
-                        onClick={() => {
-                          onSelectRequest(req);
-                          onNavigateTab("requests");
-                        }}
+                        onClick={() => { if (req.status === "approved" && onSelectRequest) { onSelectRequest(req); } else { onNavigateTab("requests"); } }}
                       >
-                        Chi tiết
+                        {req.status === "approved" ? "Lập hợp đồng →" : "Xem yêu cầu →"}
                       </button>
                     </td>
                   </tr>

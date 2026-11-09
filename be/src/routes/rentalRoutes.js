@@ -19,12 +19,14 @@ router.use(verifyToken);
 // UC_R07: POST /api/rentals/request (Tạo yêu cầu thuê thiết bị kèm Check Availability)
 router.post("/request", requireObjectBody, asyncHandler(rentalController.createRentalRequest));
 
-
 // GET /api/rentals/:id/contract-html (Xem & In hợp đồng PDF trực tiếp)
 router.get("/:id/contract-html", asyncHandler(rentalController.getContractHtml));
 
-// POST /api/rentals/:id/approve (Phê duyệt đơn thuê)
+// Owner phê duyệt / từ chối yêu cầu thuê
 router.post("/:id/approve", asyncHandler(rentalController.approveRental));
+router.patch("/:id/approve", asyncHandler(rentalController.approveRental));
+router.post("/:id/reject", requireObjectBody, asyncHandler(rentalController.rejectRental));
+router.patch("/:id/reject", requireObjectBody, asyncHandler(rentalController.rejectRental));
 
 // POST /api/rentals/:id/agree-contract (Đồng ý thỏa thuận điều khoản hợp đồng sau khi trao đổi qua chat)
 router.post("/:id/agree-contract", asyncHandler(rentalController.agreeContract));
@@ -32,7 +34,7 @@ router.post("/:id/agree-contract", asyncHandler(rentalController.agreeContract))
 // UC_R08: POST /api/rentals/:id/confirm-contract (Ký hợp đồng điện tử)
 router.post("/:id/confirm-contract", requireObjectBody, asyncHandler(rentalController.confirmContract));
 
-// UC_R09: POST /api/rentals/:id/pay (Thanh toán tiền thuê & tiền cọc)
+// UC_R09: POST /api/rentals/:id/pay (Gửi xác nhận thanh toán QR chờ Rental Moderator duyệt)
 router.post("/:id/pay", requireObjectBody, asyncHandler(rentalController.payRental));
 
 // UC_R10: POST /api/rentals/:id/return (Yêu cầu trả thiết bị)

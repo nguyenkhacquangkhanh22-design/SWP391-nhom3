@@ -1,4 +1,5 @@
 import { ApiError } from "./authApi";
+import type { Settlement } from "../types/owner";
 
 async function request<T>(
   path: string,
@@ -56,8 +57,11 @@ export interface ModeratorPaymentRental {
   startDate: string;
   endDate: string;
   totalDays: number;
-  totalAmount: number;
+  dailyRate?: number;
   rentalFee: number;
+  depositAmount?: number;
+  discountAmount?: number;
+  totalAmount: number;
   status: string;
   deliveryAddress?: string;
   deliveryTime?: string;
@@ -65,20 +69,45 @@ export interface ModeratorPaymentRental {
   deliveryMethod?: string;
   returnMethod?: string;
   shippingFee?: number;
+  renterNote?: string;
   renter?: { _id: string; name: string; email: string; phone?: string };
   owner?: { _id: string; name: string; email: string; phone?: string };
-  equipment?: { _id: string; title: string; brand?: string; modelNumber?: string; images?: string[] };
-  contract?: { contractNumber?: string; termsAccepted?: boolean; renterSignature?: string };
+  equipment?: {
+    _id: string;
+    title: string;
+    category?: string;
+    brand?: string;
+    model_name?: string;
+    modelNumber?: string;
+    serial_number?: string;
+    images?: string[];
+    dailyRate?: number;
+    depositAmount?: number;
+  };
+  contract?: {
+    contractNumber?: string;
+    termsAccepted?: boolean;
+    renterSignature?: string;
+    digitalSignature?: string;
+    signedAt?: string;
+  };
   payment?: {
-    isPaid: boolean;
-    paymentMethod: string;
-    paymentStatus: string;
-    amountPaid: number;
+    isPaid?: boolean;
+    paymentMethod?: string;
+    paymentStatus?: "unpaid" | "verifying" | "paid" | "rejected" | "refunded" | string;
+    amountPaid?: number;
     transactionId?: string;
     transferNotifiedAt?: string;
-    rejectionReason?: string;
-    paidAt?: string;
+    transferNote?: string;
+    senderName?: string;
+    proofImage?: string;
     receiptImage?: string;
+    submittedAt?: string;
+    paidAt?: string;
+    rejectionReason?: string;
+    verifiedBy?: { _id: string; name: string; email: string };
+    verifiedAt?: string;
+    moderatorNote?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -103,11 +132,19 @@ export interface ModeratorContract {
     signed: boolean;
     signed_at?: string;
     signer_name?: string;
+    signature_image?: string;
+    signature_type?: string;
+    certificate_code?: string;
+    signature_data?: string;
   };
   renter_signature?: {
     signed: boolean;
     signed_at?: string;
     signer_name?: string;
+    signature_image?: string;
+    signature_type?: string;
+    certificate_code?: string;
+    signature_data?: string;
   };
   moderation_history?: {
     action: string;
@@ -233,8 +270,17 @@ export const moderatorApi = {
       token
     ),
   reviewPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
-    request<{ message: string; rental: ModeratorPaymentRental }>(
+    request<{ message: string; rental?: ModeratorPaymentRental; paymentRental?: ModeratorPaymentRental }>(
       `/payments/${id}/review`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      }
+    ),
+  verifyPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
+    request<{ message: string; notificationWarning?: string; paymentRental: ModeratorPaymentRental }>(
+      `/payments/${id}/verify`,
       token,
       {
         method: "PATCH",
@@ -287,5 +333,44 @@ export const moderatorApi = {
     request<{ message: string; ticket: ModeratorTicket }>("/support-tickets", token, {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  getKycSubmissions: (
+    token: string,
+    params?: { status?: string; search?: string; page?: number; limit?: number }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.search) qs.set("search", params.search);
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return request<{
+      submissions: import("../types/admin").AdminKycSubmission[];
+      pagination: { currentPage: number; totalPages: number; totalCount: number; limit: number };
+      stats: { pending: number; verified: number; rejected: number; unverified: number; total_active: number };
+    }>(`/kyc-submissions${query}`, token);
+  },
+  reviewKycSubmission: (
+    token: string,
+    userId: string,
+    body: { status: "verified" | "rejected"; rejectionReason?: string; trustScoreBonus?: number }
+  ) =>
+    request<{
+      message: string;
+      user: import("../types/admin").AdminKycSubmission;
+    }>(`/kyc-submissions/${userId}/review`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getPayoutRequests: (token: string) =>
+    request<{ payouts: Settlement[] }>("/payouts", token),
+  reviewPayoutRequest: (
+    token: string,
+    id: string,
+    body: { action: "approve" | "reject"; note?: string; transaction_code?: string; receipt_image?: string }
+  ) =>
+    request<{ message: string; settlement: Settlement }>(`/payouts/${id}/review`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 };

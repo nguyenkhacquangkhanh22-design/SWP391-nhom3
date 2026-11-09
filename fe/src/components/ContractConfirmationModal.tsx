@@ -10,7 +10,7 @@ interface Props {
   token: string;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (updatedRental: Rental) => void;
 }
 
 export default function ContractConfirmationModal({
@@ -79,7 +79,7 @@ export default function ContractConfirmationModal({
 
       const { checkoutUrl } = response.data;
       if (checkoutUrl) {
-        if (onSuccess) onSuccess();
+        if (onSuccess) onSuccess(rental);
         // Chuyển hướng người dùng sang cổng thanh toán PayOS
         window.location.href = checkoutUrl;
       } else {
@@ -90,6 +90,7 @@ export default function ContractConfirmationModal({
       const errorMsg =
         err.response?.data?.message || err.message || "Không thể kết nối đến cổng thanh toán PayOS";
       setError(errorMsg);
+    } finally {
       setLoading(false);
     }
   };

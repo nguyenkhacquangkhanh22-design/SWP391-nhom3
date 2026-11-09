@@ -101,19 +101,29 @@ export interface RentalContract {
   contractUrl?: string;
   agreedToSign?: boolean;
   agreedAt?: string;
+  moderatorApproved?: boolean;
+  moderatorStatus?: "none" | "draft" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
+  ownerSigned?: boolean;
 }
 
 export interface RentalPayment {
   isPaid?: boolean;
-  paymentStatus: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded";
-  paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | "payos_vietqr" | string;
+  paymentStatus: "unpaid" | "pending_confirmation" | "verifying" | "paid" | "rejected" | "refunded";
+  paymentMethod?: "qr_transfer" | "bank_transfer" | "vnpay" | "momo" | "wallet" | "payos_vietqr" | string;
   transactionId?: string;
+  transferNote?: string;
+  senderName?: string;
+  proofImage?: string;
+  submittedAt?: string;
   paidAt?: string;
   amountPaid: number;
   receiptImage?: string;
   orderCode?: number;
   paymentLinkId?: string;
   checkoutUrl?: string;
+  verifiedBy?: { _id?: string; name: string; email: string } | string;
+  verifiedAt?: string;
+  moderatorNote?: string;
 }
 
 export interface RentalReturnRequest {
@@ -166,6 +176,8 @@ export interface Rental {
     | "PENDING"
     | "APPROVED"
     | "CONTRACT_SIGNED"
+    | "PAYMENT_VERIFYING"
+    | "PAYMENT_REJECTED"
     | "PAID"
     | "ACTIVE"
     | "RETURNED"
@@ -173,8 +185,11 @@ export interface Rental {
     | "CANCELLED"
     | "DISPUTED"
     | "pending"
+    | "approved"
     | "contract_pending"
     | "payment_pending"
+    | "payment_verifying"
+    | "payment_rejected"
     | "confirmed"
     | "in_progress"
     | "return_requested"

@@ -31,6 +31,95 @@ export default function EquipmentDetailPage() {
   const [endDate, setEndDate] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || "");
   const [renterNote, setRenterNote] = useState("");
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  // Zoom & Lightbox states (khi nào người dùng bấm vào ảnh mới kích hoạt phóng to)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [lightboxScale, setLightboxScale] = useState(1);
+  const [lightboxPos, setLightboxPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const imagesList = equipment?.images && equipment.images.length > 0 ? equipment.images : [];
+  const currentImgUrl = imagesList.length > 0 ? imagesList[selectedImageIndex % imagesList.length] : "";
+
+  const handleOpenZoom = () => {
+    setIsLightboxOpen(true);
+    setLightboxScale(1.6);
+    setLightboxPos({ x: 0, y: 0 });
+  };
+
+  const handlePrevLightboxImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (imagesList.length === 0) return;
+    setSelectedImageIndex((prev) => (prev - 1 + imagesList.length) % imagesList.length);
+    setLightboxScale(1);
+    setLightboxPos({ x: 0, y: 0 });
+  };
+
+  const handleNextLightboxImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (imagesList.length === 0) return;
+    setSelectedImageIndex((prev) => (prev + 1) % imagesList.length);
+    setLightboxScale(1);
+    setLightboxPos({ x: 0, y: 0 });
+  };
+
+  const handleLightboxWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setLightboxScale((prev) => {
+      const next = prev + (e.deltaY < 0 ? 0.25 : -0.25);
+      const clamped = Math.max(1, Math.min(4.5, Number(next.toFixed(2))));
+      if (clamped === 1) setLightboxPos({ x: 0, y: 0 });
+      return clamped;
+    });
+  };
+
+  const handleMouseDownLightbox = (e: React.MouseEvent) => {
+    if (lightboxScale > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - lightboxPos.x, y: e.clientY - lightboxPos.y });
+    }
+  };
+
+  const handleMouseMoveLightbox = (e: React.MouseEvent) => {
+    if (isDragging && lightboxScale > 1) {
+      setLightboxPos({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleMouseUpLightbox = () => {
+    setIsDragging(false);
+  };
+
+  const handleDoubleClickLightbox = () => {
+    if (lightboxScale > 1) {
+      setLightboxScale(1);
+      setLightboxPos({ x: 0, y: 0 });
+    } else {
+      setLightboxScale(2.5);
+    }
+  };
+
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsLightboxOpen(false);
+        setLightboxScale(1);
+        setLightboxPos({ x: 0, y: 0 });
+      } else if (e.key === "ArrowRight") {
+        handleNextLightboxImage();
+      } else if (e.key === "ArrowLeft") {
+        handlePrevLightboxImage();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isLightboxOpen, imagesList.length]);
 
   // Delivery & Return state (Yêu cầu 3)
   const [deliveryTime, setDeliveryTime] = useState("09:00");
@@ -122,7 +211,7 @@ export default function EquipmentDetailPage() {
     }
   }
 
-  const dailyRate = equipment?.dailyRate || 0;
+  const dailyRate = equipment?.dailyRate || (equipment as any)?.pricing?.price_per_day || 0;
 
   // Giảm giá thuê dài ngày (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -138,7 +227,6 @@ export default function EquipmentDetailPage() {
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
-
   // Tính phí giao nhận theo phương thức đã chọn (Yêu cầu 3)
   const receiveOption = getDeliveryOption(deliveryMethod);
   const returnOption = getReturnOption(returnMethod);
@@ -259,18 +347,78 @@ export default function EquipmentDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Images, Specs & Description */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Main Image */}
-            <div className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg">
-              {equipment.images && equipment.images.length > 0 ? (
-                <img
-                  src={equipment.images[0]}
-                  alt={equipment.title}
-                  className="w-full h-full object-cover"
-                />
+            {/* Main Image (Bấm vào để kích hoạt phóng to) */}
+            <div
+              className="aspect-video w-full bg-[#141d2d] border border-[#223049] hover:border-orange-500/50 rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg select-none cursor-pointer transition-colors group"
+              onClick={handleOpenZoom}
+              title="Bấm vào để phóng to xem chi tiết ảnh sản phẩm"
+            >
+              {currentImgUrl ? (
+                <>
+                  <img
+                    src={currentImgUrl}
+                    alt={equipment.title}
+                    draggable={false}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                  />
+
+                  {imagesList.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        title="Ảnh trước"
+                        aria-label="Ảnh trước"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((prev) => (prev - 1 + imagesList.length) % imagesList.length);
+                        }}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20 cursor-pointer"
+                      >
+                        ‹
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Ảnh tiếp theo"
+                        aria-label="Ảnh tiếp theo"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((prev) => (prev + 1) % imagesList.length);
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/75 hover:bg-orange-600 text-white font-bold text-2xl flex items-center justify-center transition-all border border-white/25 shadow-xl z-20 cursor-pointer"
+                      >
+                        ›
+                      </button>
+
+                      <div className="absolute bottom-3 right-3 px-3 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs font-semibold text-white border border-white/20 z-20 pointer-events-none">
+                        📷 {(selectedImageIndex % imagesList.length) + 1} / {imagesList.length}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Click to Zoom Hint Pill */}
+                  <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-medium text-slate-200 border border-white/15 flex items-center gap-1.5 transition-all duration-200 z-20 shadow-md group-hover:bg-orange-600 group-hover:text-white">
+                    <span>🔍</span>
+                    <span>Bấm vào ảnh để phóng to & soi chi tiết</span>
+                  </div>
+
+                  {/* Expand button top right */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenZoom();
+                    }}
+                    className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-black/75 hover:bg-orange-600 text-white flex items-center justify-center text-sm font-bold border border-white/20 transition-all z-20 shadow-lg cursor-pointer"
+                    title="Phóng to ảnh toàn màn hình"
+                  >
+                    ⛶
+                  </button>
+                </>
               ) : (
                 <div className="text-6xl text-slate-600">📷</div>
               )}
-              <div className="absolute top-4 left-4 flex gap-2">
+              <div className="absolute top-4 left-4 flex gap-2 z-10 pointer-events-none">
                 <span className="px-3 py-1 rounded-lg text-xs font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c]">
                   {equipment.category}
                 </span>
@@ -281,6 +429,26 @@ export default function EquipmentDetailPage() {
                 </span>
               </div>
             </div>
+
+            {/* Thumbnail Gallery Strip */}
+            {equipment.images && equipment.images.length > 1 && (
+              <div className="flex gap-2.5 overflow-x-auto pb-2">
+                {equipment.images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={`w-20 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${
+                      idx === (selectedImageIndex % equipment.images.length)
+                        ? "border-orange-500 scale-105 shadow-md shadow-orange-500/30"
+                        : "border-[#223049] opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <img src={img} alt={`Ảnh ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Title & Brand header */}
             <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-6 space-y-3">
@@ -743,6 +911,171 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* Fullscreen Interactive Lightbox Modal with Mouse Wheel Zoom & Drag to Pan */}
+      {isLightboxOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6 select-none"
+          onClick={() => {
+            setIsLightboxOpen(false);
+            setLightboxScale(1);
+            setLightboxPos({ x: 0, y: 0 });
+          }}
+        >
+          {/* Top Header Bar */}
+          <div
+            className="flex items-center justify-between text-white z-20 pb-3 border-b border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-sm sm:text-base text-orange-400">
+                {equipment.title}
+              </span>
+              {imagesList.length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-slate-300 font-medium">
+                  Ảnh {(selectedImageIndex % imagesList.length) + 1} / {imagesList.length}
+                </span>
+              )}
+            </div>
+
+            {/* Zoom Controls & Close */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLightboxScale((s) => {
+                    const next = Math.max(1, Number((s - 0.3).toFixed(2)));
+                    if (next <= 1) setLightboxPos({ x: 0, y: 0 });
+                    return next;
+                  });
+                }}
+                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-lg flex items-center justify-center transition-all"
+                title="Thu nhỏ"
+              >
+                −
+              </button>
+              <span className="text-xs font-mono font-semibold px-2 text-slate-200 min-w-[55px] text-center">
+                {Math.round(lightboxScale * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setLightboxScale((s) => Math.min(4.5, Number((s + 0.3).toFixed(2))))}
+                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-lg flex items-center justify-center transition-all"
+                title="Phóng to"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLightboxScale(1);
+                  setLightboxPos({ x: 0, y: 0 });
+                }}
+                className="px-3 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-slate-200 flex items-center justify-center transition-all ml-1"
+                title="Đặt lại kích thước ban đầu"
+              >
+                ↺ 100%
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLightboxOpen(false);
+                  setLightboxScale(1);
+                  setLightboxPos({ x: 0, y: 0 });
+                }}
+                className="px-3.5 h-9 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-sm flex items-center justify-center transition-all ml-2"
+                title="Đóng (Phím Esc)"
+              >
+                ✕ Đóng
+              </button>
+            </div>
+          </div>
+
+          {/* Main Lightbox Viewport with Wheel Zoom & Drag to Pan */}
+          <div
+            className="flex-1 flex items-center justify-center overflow-hidden relative my-2"
+            onWheel={handleLightboxWheel}
+            onMouseDown={handleMouseDownLightbox}
+            onMouseMove={handleMouseMoveLightbox}
+            onMouseUp={handleMouseUpLightbox}
+            onDoubleClick={handleDoubleClickLightbox}
+            style={{
+              cursor: lightboxScale > 1 ? (isDragging ? "grabbing" : "grab") : "zoom-in",
+            }}
+          >
+            {currentImgUrl ? (
+              <img
+                src={currentImgUrl}
+                alt={equipment.title}
+                draggable={false}
+                className="max-h-[78vh] max-w-[88vw] object-contain transition-transform duration-75 select-none"
+                style={{
+                  transform: `translate(${lightboxPos.x}px, ${lightboxPos.y}px) scale(${lightboxScale})`,
+                }}
+              />
+            ) : null}
+
+            {/* Nav Prev / Next in Lightbox */}
+            {imagesList.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handlePrevLightboxImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 hover:bg-orange-600 text-white font-bold text-3xl flex items-center justify-center transition-all border border-white/20 shadow-2xl z-20"
+                  title="Ảnh trước (Phím mũi tên trái)"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextLightboxImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 hover:bg-orange-600 text-white font-bold text-3xl flex items-center justify-center transition-all border border-white/20 shadow-2xl z-20"
+                  title="Ảnh tiếp theo (Phím mũi tên phải)"
+                >
+                  ›
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Bottom Hint & Thumbnails */}
+          <div
+            className="text-center pt-2 text-xs text-slate-400 z-20 flex flex-col items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="flex flex-wrap items-center justify-center gap-2 bg-black/60 px-4 py-1.5 rounded-full border border-white/10 text-[11px] sm:text-xs">
+              <span>💡 <b>Cuộn chuột</b> để phóng to / thu nhỏ</span>
+              <span>•</span>
+              <span><b>Kéo giữ chuột</b> để di chuyển khi đang phóng to</span>
+              <span>•</span>
+              <span><b>Nháy đúp</b> để đổi 100% ↔ 250%</span>
+            </p>
+            {imagesList.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto max-w-xl pb-1">
+                {imagesList.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setSelectedImageIndex(idx);
+                      setLightboxScale(1);
+                      setLightboxPos({ x: 0, y: 0 });
+                    }}
+                    className={`w-16 h-12 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0 ${
+                      idx === (selectedImageIndex % imagesList.length)
+                        ? "border-orange-500 scale-105 shadow-md shadow-orange-500/40"
+                        : "border-white/20 opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    <img src={img} alt={`Ảnh ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

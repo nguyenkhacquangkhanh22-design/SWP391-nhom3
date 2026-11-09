@@ -38,9 +38,9 @@ async function request<T>(
   if (!response.ok) {
     const errorData = data as ApiErrorResponse;
     const message =
-      typeof errorData.message === "string"
+      typeof errorData.message === "string" && errorData.message.trim()
         ? errorData.message
-        : "Đã xảy ra lỗi. Vui lòng thử lại.";
+        : `Đã xảy ra lỗi (HTTP ${response.status}). Vui lòng thử lại hoặc khởi động lại backend.`;
     throw new ApiError(message, response.status);
   }
   return data as T;
@@ -138,11 +138,19 @@ export const smartEquipApi = {
       token,
     ),
 
-  // Phê duyệt đơn thuê (Chủ máy / Quản lý / Test)
+  // Phê duyệt đơn thuê (Chủ máy / Quản lý)
   approveRental: (token: string, rentalId: string, note?: string) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/approve`,
       { method: "POST", body: JSON.stringify({ note }) },
+      token,
+    ),
+
+  // Owner từ chối yêu cầu thuê
+  rejectRental: (token: string, rentalId: string, reason: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
       token,
     ),
 
@@ -166,7 +174,7 @@ export const smartEquipApi = {
       token,
     ),
 
-  // UC_R09: Thanh toán đơn thuê
+  // UC_R09: Thanh toán đơn thuê qua QR (chờ Rental Moderator xác nhận)
   payRental: (
     token: string,
     rentalId: string,
@@ -175,6 +183,10 @@ export const smartEquipApi = {
       receiptImage?: string;
       digitalSignature?: string;
       renterSignature?: string;
+      transactionId?: string;
+      transferNote?: string;
+      senderName?: string;
+      proofImage?: string;
     } = {},
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(

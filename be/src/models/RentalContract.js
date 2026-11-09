@@ -47,7 +47,7 @@ const rentalContractSchema = new mongoose.Schema(
     },
     deposit_amount: {
       type: Number,
-      required: true,
+      default: 0,
       min: 0,
     },
     start_date: {
@@ -184,12 +184,18 @@ const rentalContractSchema = new mongoose.Schema(
       signed_at: { type: Date },
       signature_data: { type: String, default: "" },
       signer_name: { type: String, default: "" },
+      signature_image: { type: String, default: "" },
+      signature_type: { type: String, enum: ["drawn", "typed"], default: "typed" },
+      certificate_code: { type: String, default: "" },
     },
     renter_signature: {
       signed: { type: Boolean, default: false },
       signed_at: { type: Date },
       signature_data: { type: String, default: "" },
       signer_name: { type: String, default: "" },
+      signature_image: { type: String, default: "" },
+      signature_type: { type: String, enum: ["drawn", "typed"], default: "typed" },
+      certificate_code: { type: String, default: "" },
     },
   },
   {

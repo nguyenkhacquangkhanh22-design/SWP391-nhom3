@@ -969,7 +969,7 @@ export default function EquipmentDetailPage() {
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.88rem", marginBottom: "6px" }}>
                       <span style={{ color: "var(--muted)" }}>Tiền đặt cọc cam kết:</span>
-                      <strong style={{ color: "#fff" }}>{calculation.deposit.toLocaleString("vi-VN")} đ</strong>
+                      <strong style={{ color: "#10b981" }}>Miễn phí (0 đ)</strong>
                     </div>
                     <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "6px 0" }} />
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.95rem" }}>

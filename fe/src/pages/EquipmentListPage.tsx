@@ -6,11 +6,16 @@ import type { Equipment } from "../types/smartequip";
 
 const CATEGORIES = [
   "Tất cả danh mục",
+  "Máy ảnh & Ống kính",
   "Máy ảnh & Quay phim",
   "Laptop & Công nghệ",
-  "Âm thanh & Ánh sáng",
-  "Thiết bị đo lường & Cơ khí",
+  "Laptop & Thiết bị dựng",
   "Flycam & Drone",
+  "Âm thanh & Micro",
+  "Ánh sáng & Studio",
+  "Gimbal & Chân máy",
+  "Thiết bị đo lường & Cơ khí",
+  "Phụ kiện khác",
 ];
 
 const PRICE_PRESETS = [
@@ -42,6 +47,25 @@ export default function EquipmentListPage() {
   const [category, setCategory] = useState(categoryParam);
   const [minPrice, setMinPrice] = useState(minPriceParam);
   const [maxPrice, setMaxPrice] = useState(maxPriceParam);
+  const [cardImageIndices, setCardImageIndices] = useState<Record<string, number>>({});
+
+  const handlePrevImage = (itemId: string, total: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCardImageIndices((prev) => {
+      const cur = prev[itemId] || 0;
+      return { ...prev, [itemId]: (cur - 1 + total) % total };
+    });
+  };
+
+  const handleNextImage = (itemId: string, total: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCardImageIndices((prev) => {
+      const cur = prev[itemId] || 0;
+      return { ...prev, [itemId]: (cur + 1) % total };
+    });
+  };
 
   const fetchEquipments = () => {
     setLoading(true);
@@ -416,22 +440,47 @@ export default function EquipmentListPage() {
                     className="group bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden hover:border-orange-500/60 hover:shadow-xl hover:shadow-orange-500/10 transition-all flex flex-col justify-between"
                   >
                     <div>
-                      {/* Image Thumbnail */}
-                      <div className="aspect-video w-full bg-[#1b273d] relative overflow-hidden flex items-center justify-center">
+                      {/* Image Thumbnail with Carousel Controls */}
+                      <div className="aspect-video w-full bg-[#1b273d] relative overflow-hidden flex items-center justify-center select-none">
                         {item.images && item.images.length > 0 ? (
-                          <img
-                            src={item.images[0]}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
+                          <>
+                            <img
+                              src={item.images[cardImageIndices[item._id] || 0] || item.images[0]}
+                              alt={item.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                            {item.images.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handlePrevImage(item._id, item.images.length, e)}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-orange-600 text-white font-bold flex items-center justify-center text-sm shadow-md transition-all opacity-80 hover:opacity-100 z-10"
+                                  title="Ảnh trước"
+                                >
+                                  ‹
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleNextImage(item._id, item.images.length, e)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-orange-600 text-white font-bold flex items-center justify-center text-sm shadow-md transition-all opacity-80 hover:opacity-100 z-10"
+                                  title="Ảnh tiếp theo"
+                                >
+                                  ›
+                                </button>
+                                <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-950/70 backdrop-blur-sm text-slate-200 border border-slate-700/50 z-10">
+                                  📷 {((cardImageIndices[item._id] || 0) + 1)}/{item.images.length}
+                                </span>
+                              </>
+                            )}
+                          </>
                         ) : (
                           <div className="text-4xl text-slate-600">📷</div>
                         )}
-                        <span className="absolute top-3 left-3 px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c]">
+                        <span className="absolute top-3 left-3 px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c] z-10">
                           {item.category}
                         </span>
                         {item.brand && (
-                          <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-900/80 backdrop-blur-sm text-slate-300 border border-slate-700">
+                          <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-900/80 backdrop-blur-sm text-slate-300 border border-slate-700 z-10">
                             {item.brand}
                           </span>
                         )}
@@ -470,7 +519,7 @@ export default function EquipmentListPage() {
                             Giá thuê
                           </span>
                           <span className="text-orange-400 font-extrabold text-base">
-                            {item.dailyRate.toLocaleString("vi-VN")} đ
+                            {(item.dailyRate || (item as any).pricing?.price_per_day || 0).toLocaleString("vi-VN")} đ
                           </span>
                           <span className="text-[11px] text-slate-500"> /ngày</span>
                         </div>
@@ -478,8 +527,8 @@ export default function EquipmentListPage() {
                           <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
                             Tiền cọc
                           </span>
-                          <span className="text-slate-300 font-semibold text-xs">
-                            {item.depositAmount.toLocaleString("vi-VN")} đ
+                          <span className="text-emerald-400 font-semibold text-xs">
+                            Miễn phí (0 đ)
                           </span>
                         </div>
                       </div>

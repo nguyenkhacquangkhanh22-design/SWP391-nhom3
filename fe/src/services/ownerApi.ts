@@ -10,6 +10,7 @@ import type {
   SupportTicket,
   OwnerStats,
   OwnerContractTemplate,
+  DigitalSignaturePayload,
 } from "../types/owner";
 
 async function request<T>(
@@ -37,6 +38,12 @@ async function request<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new ApiError(
+        "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+        401
+      );
+    }
     throw new ApiError(data.message || "Yêu cầu thất bại.", response.status);
   }
 
@@ -75,6 +82,12 @@ export const ownerApi = {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiError(
+          "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+          401
+        );
+      }
       throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
     }
 
@@ -103,6 +116,12 @@ export const ownerApi = {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiError(
+          "Phiên đăng nhập đã hết hạn (do máy chủ vừa khởi động lại). Vui lòng bấm Đăng xuất ở góc trên và Đăng nhập lại tài khoản Owner.",
+          401
+        );
+      }
       throw new ApiError(data.message || "Tải ảnh lên thất bại.", response.status);
     }
 
@@ -258,6 +277,7 @@ export const ownerApi = {
       template_id?: string;
       template_values?: Record<string, string>;
       submit_immediately?: boolean;
+      digital_signature?: DigitalSignaturePayload;
     }
   ) =>
     request<{ message: string; contract: RentalContract }>(
@@ -274,6 +294,7 @@ export const ownerApi = {
       special_conditions?: string;
       changes_summary?: string;
       submit_immediately?: boolean;
+      digital_signature?: DigitalSignaturePayload;
     }
   ) =>
     request<{ message: string; contract: RentalContract }>(
@@ -282,17 +303,34 @@ export const ownerApi = {
       token
     ),
 
-  submitContractApproval: (token: string, id: string) =>
+  submitContractApproval: (token: string, id: string, digital_signature?: DigitalSignaturePayload) =>
     request<{ message: string; contract: RentalContract }>(
       `/api/owner/contracts/${id}/submit-approval`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ digital_signature }) },
       token
     ),
 
-  confirmEContract: (token: string, id: string, signature_note?: string) =>
+  confirmEContract: (
+    token: string,
+    id: string,
+    data?:
+      | string
+      | {
+          signature_note?: string;
+          signer_name?: string;
+          signature_image?: string;
+          signature_type?: "drawn" | "typed";
+          digital_signature?: DigitalSignaturePayload;
+        }
+  ) =>
     request<{ message: string; contract: RentalContract }>(
       `/api/owner/contracts/${id}/confirm-e-contract`,
-      { method: "POST", body: JSON.stringify({ signature_note }) },
+      {
+        method: "POST",
+        body: JSON.stringify(
+          typeof data === "string" ? { signature_note: data } : data || {}
+        ),
+      },
       token
     ),
 
@@ -339,11 +377,15 @@ export const ownerApi = {
   confirmSettlement: (
     token: string,
     contractId: string,
-    bank_info?: { bank_name: string; account_number: string; account_holder: string }
+    payload: {
+      bank_info: { bank_name: string; bank_code?: string; account_number: string; account_holder: string };
+      qr_code_url?: string;
+      request_note?: string;
+    }
   ) =>
     request<{ message: string; settlement: Settlement }>(
       `/api/owner/settlements/${contractId}/confirm`,
-      { method: "POST", body: JSON.stringify({ bank_info }) },
+      { method: "POST", body: JSON.stringify(payload) },
       token
     ),
 
@@ -439,6 +481,13 @@ export const ownerApi = {
       token
     );
   },
+
+  confirmMyReceipt: (token: string, contractId: string) =>
+    request<{ message: string; contract: RentalContract }>(
+      `/api/equipments/my/contracts/${contractId}/confirm-receipt`,
+      { method: "POST", body: JSON.stringify({}) },
+      token
+    ),
 
   // 9. Owner Registration (UC_O02)
   submitOwnerRegistration: (token: string, data: Partial<OwnerApplication>) =>

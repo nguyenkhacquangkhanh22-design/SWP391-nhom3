@@ -22,6 +22,10 @@ router.get("/payments", asyncHandler(moderatorController.listPayments));
 router.patch("/payments/:id/review", asyncHandler(moderatorController.reviewPayment));
 router.patch("/contracts/:id/review", asyncHandler(moderatorController.reviewContract));
 
+// Bước 5: Rental Moderator đối chiếu & xác nhận thanh toán QR của Renter
+router.get("/payments", asyncHandler(moderatorController.listPayments));
+router.patch("/payments/:id/verify", asyncHandler(moderatorController.verifyPayment));
+
 router.get("/equipments", asyncHandler(moderatorController.listEquipments));
 router.get("/handover-records", asyncHandler(moderatorController.listHandoverRecords));
 router.patch("/handover-records/:id/review", asyncHandler(moderatorController.reviewHandoverRecord));
@@ -33,5 +37,13 @@ router.post("/contract-templates/:id/versions", asyncHandler(moderatorController
 router.patch("/contract-templates/:id/publish", asyncHandler(moderatorController.publishTemplate));
 router.patch("/contract-templates/:id/retire", asyncHandler(moderatorController.retireTemplate));
 router.post("/support-tickets", asyncHandler(moderatorController.submitSupportTicket));
+
+// Quản lý web (Moderator) xác nhận danh tính (KYC) của Owner & Renter
+// Yêu cầu giải ngân / thanh toán tiền cho Owner khi khách nhận hàng
+router.get("/payouts", asyncHandler(moderatorController.listPayoutRequests));
+router.patch("/payouts/:id/review", asyncHandler(moderatorController.reviewPayoutRequest));
+
+router.get("/kyc-submissions", asyncHandler(moderatorController.listKycSubmissions));
+router.patch("/kyc-submissions/:userId/review", asyncHandler(moderatorController.reviewKycSubmission));
 
 module.exports = router;

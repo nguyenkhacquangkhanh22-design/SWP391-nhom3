@@ -85,18 +85,6 @@ export default function OwnerPortal() {
     setSuccess("");
   }
 
-  function handleCreateContractFromRequest(req: RentalRequest) {
-    const approvedReq: RentalRequest = { ...req, status: "approved" };
-    setRequests((prev) =>
-      prev.some((item) => item._id === approvedReq._id)
-        ? prev.map((item) => (item._id === approvedReq._id ? approvedReq : item))
-        : [approvedReq, ...prev]
-    );
-    setRequestForContract(approvedReq);
-    setError("");
-    setActiveTab("contracts");
-  }
-
   function handleOpenHandover(con: RentalContract) {
     setContractForHandover(con);
     handleTabChange("handover");
@@ -225,7 +213,7 @@ export default function OwnerPortal() {
                 stats={stats}
                 recentRequests={recentRequests}
                 onNavigateTab={(tab) => handleTabChange(tab as any)}
-                onSelectRequest={handleCreateContractFromRequest}
+                onSelectRequest={(req) => { setRequestForContract(req); handleTabChange("contracts"); }}
               />
             )}
 
@@ -246,7 +234,6 @@ export default function OwnerPortal() {
                 onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}
-                onCreateContract={handleCreateContractFromRequest}
               />
             )}
 

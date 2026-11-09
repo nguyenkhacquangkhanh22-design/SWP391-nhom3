@@ -3,6 +3,7 @@ const Equipment = require("../models/Equipment");
 const RentalRequest = require("../models/RentalRequest");
 const RentalContract = require("../models/RentalContract");
 const Settlement = require("../models/Settlement");
+const HandoverRecord = require("../models/HandoverRecord");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -18,8 +19,8 @@ async function browseEquipments(req, res) {
   const { search, category, minPrice, maxPrice, status, sortBy } = req.query;
 
   const query = {
-    visibility: "published",
-    approval_status: { $in: ["approved", undefined] },
+    visibility: { $in: ["published", "PUBLISHED", undefined] },
+    approval_status: { $ne: "rejected" },
   };
 
   if (status) {
@@ -140,16 +141,24 @@ async function requestRental(req, res) {
     status: "pending", // Gửi trực tiếp tới Owner theo sơ đồ luồng
   });
 
-  // Gửi thông báo trực tiếp đến Chủ máy (Owner)
+  // Gửi thông báo trực tiếp đến Người thuê và Chủ máy (Owner)
   try {
-    await UserNotification.create({
-      user_id: equipment.owner_id,
-      title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} từ ${renter.name}`,
-      message: `Khách thuê ${renter.name} vừa gửi yêu cầu thuê thiết bị "${equipment.title}". Vui lòng kiểm tra thiết bị và soạn hợp đồng thuê.`,
-      related_record_id: rentalReq._id,
-    });
+    await UserNotification.insertMany([
+      {
+        user_id: renter._id,
+        title: `✅ Đã gửi yêu cầu thuê #${rentalReq.request_code}`,
+        message: `Yêu cầu thuê "${equipment.title}" đã được gửi trực tiếp đến Chủ máy để kiểm tra & duyệt.`,
+        related_record_id: rentalReq._id,
+      },
+      {
+        user_id: equipment.owner_id,
+        title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} từ ${renter.name}`,
+        message: `Khách thuê ${renter.name} vừa gửi yêu cầu thuê thiết bị "${equipment.title}". Vui lòng kiểm tra thiết bị và duyệt đơn.`,
+        related_record_id: rentalReq._id,
+      },
+    ]);
   } catch (err) {
-    console.error("Failed to notify owner of rental request:", err);
+    console.error("Failed to notify users of rental request:", err);
   }
 
   res.status(201).json({
@@ -178,7 +187,87 @@ async function getMyRentals(req, res) {
       .lean(),
   ]);
 
-  res.json({ requests, contracts });
+  const handoverRecords = contracts.length > 0
+    ? await HandoverRecord.find({
+        contract_id: { $in: contracts.map((contract) => contract._id) },
+      }).lean()
+    : [];
+  const recordsByContract = new Map();
+  for (const record of handoverRecords) {
+    const key = record.contract_id.toString();
+    recordsByContract.set(key, [...(recordsByContract.get(key) || []), record]);
+  }
+  const contractsWithHandover = contracts.map((contract) => ({
+    ...contract,
+    handover_records: recordsByContract.get(contract._id.toString()) || [],
+  }));
+
+  res.json({ requests, contracts: contractsWithHandover });
+}
+
+async function confirmReceipt(req, res) {
+  const contract = await RentalContract.findOne({
+    _id: req.params.id,
+    renter_id: req.user._id,
+  });
+
+  if (!contract) {
+    throw new AppError(404, "Không tìm thấy hợp đồng thuê của bạn.");
+  }
+  if (contract.status !== "active") {
+    throw new AppError(400, "Chỉ có thể xác nhận nhận thiết bị sau khi Owner đã bàn giao.");
+  }
+
+  const handover = await HandoverRecord.findOne({
+    contract_id: contract._id,
+    renter_id: req.user._id,
+    record_type: "handover",
+  });
+  if (!handover) {
+    throw new AppError(400, "Owner chưa lập biên bản bàn giao thiết bị.");
+  }
+  if (handover.renter_confirmed) {
+    throw new AppError(400, "Bạn đã xác nhận nhận thiết bị cho hợp đồng này.");
+  }
+
+  const settlement = await Settlement.findOne({ contract_id: contract._id });
+  if (!settlement) {
+    throw new AppError(409, "Chưa có dữ liệu thanh toán cho hợp đồng này.");
+  }
+
+  const confirmedHandover = await HandoverRecord.findOneAndUpdate(
+    { _id: handover._id, renter_confirmed: false },
+    { $set: { renter_confirmed: true } },
+    { new: true },
+  );
+  if (!confirmedHandover) {
+    throw new AppError(409, "Bạn đã xác nhận nhận thiết bị cho hợp đồng này.");
+  }
+
+  try {
+    await Promise.all([
+      UserNotification.create({
+        user_id: contract.owner_id,
+        title: `✅ Khách đã xác nhận nhận thiết bị #${contract.contract_code}`,
+        message: `Người thuê ${req.user.name} đã xác nhận nhận thiết bị thành công. Bạn có thể gửi yêu cầu giải ngân ${settlement.owner_payout_amount.toLocaleString("vi-VN")} đ lên Quản lý web.`,
+        related_record_id: contract._id,
+      }),
+      UserNotification.create({
+        user_id: req.user._id,
+        title: `✅ Đã xác nhận nhận thiết bị #${contract.contract_code}`,
+        message: `Bạn đã xác nhận nhận thiết bị. Owner có thể gửi yêu cầu giải ngân lên Quản lý web; việc chuyển tiền sẽ hoàn tất sau khi được duyệt.`,
+        related_record_id: contract._id,
+      }),
+    ]);
+  } catch (err) {
+    console.error("Failed to notify users after renter confirmed receipt:", err);
+  }
+
+  res.json({
+    message: "Đã xác nhận nhận thiết bị thành công. Owner có thể gửi yêu cầu giải ngân lên Quản lý web.",
+    contract,
+    settlement,
+  });
 }
 
 // Step 5: Renter signs the contract after Web Manager approved & sent it to Renter
@@ -239,11 +328,11 @@ async function signMyContract(req, res) {
       owner_id: contract.owner_id,
       renter_id: contract.renter_id,
       total_rental_fee: contract.rental_price,
-      deposit_paid: contract.deposit_amount,
-      deposit_refund_to_renter: contract.deposit_amount,
+      deposit_paid: 0,
+      deposit_refund_to_renter: 0,
       platform_fee: platformFee,
       owner_payout_amount: contract.rental_price - platformFee,
-      payout_status: "pending_owner_confirmation",
+      payout_status: "processing",
     });
   }
 
@@ -282,4 +371,5 @@ module.exports = {
   requestRental,
   getMyRentals,
   signMyContract,
+  confirmReceipt,
 };

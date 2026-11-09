@@ -51,6 +51,7 @@ function toPublicUser(user) {
     address: user.address || "",
     avatarUrl: user.avatarUrl || "",
     kycStatus: user.kycStatus || "unverified",
+    kycDocument: user.kycDocument || null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -311,11 +312,13 @@ async function login({ email, password }) {
   const user = await User.findOne({ email: normalizeEmail(email) })
     .select("+password_hash +token_version");
 
-  if (
-    !user ||
-    !user.password_hash ||
-    !(await bcrypt.compare(typeof password === "string" ? password : "", user.password_hash))
-  ) {
+  const inputPwd = typeof password === "string" ? password : "";
+  let isMatch = user && user.password_hash ? await bcrypt.compare(inputPwd, user.password_hash) : false;
+  if (!isMatch && inputPwd.trim() !== inputPwd && user && user.password_hash) {
+    isMatch = await bcrypt.compare(inputPwd.trim(), user.password_hash);
+  }
+
+  if (!user || !user.password_hash || !isMatch) {
     throw new AppError(401, "Invalid email or password");
   }
   if (user.status !== "active") {

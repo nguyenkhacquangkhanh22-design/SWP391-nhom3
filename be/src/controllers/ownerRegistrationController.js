@@ -86,6 +86,18 @@ async function submitOwnerApplication(req, res) {
     status: "pending",
   });
 
+  // Đồng bộ KYC của User sang pending để Moderator/Admin xác thực danh tính
+  const applicantUser = await User.findById(userId);
+  if (applicantUser && applicantUser.kycStatus !== "verified") {
+    applicantUser.kycStatus = "pending";
+    if (!applicantUser.kycDocument) applicantUser.kycDocument = {};
+    applicantUser.kycDocument.idNumber = identity_card.trim();
+    applicantUser.kycDocument.idCardFront = identity_card_front || "";
+    applicantUser.kycDocument.idCardBack = identity_card_back || "";
+    applicantUser.kycDocument.submittedAt = new Date();
+    await applicantUser.save();
+  }
+
   res.status(201).json({
     message: "Nộp hồ sơ đăng ký trở thành Owner thành công. Vui lòng chờ System Admin phê duyệt.",
     application,
@@ -135,6 +147,13 @@ async function adminReviewApplication(req, res) {
     const user = await User.findById(application.user_id);
     if (user) {
       user.role = "owner";
+      user.kycStatus = "verified";
+      if (!user.kycDocument) user.kycDocument = {};
+      user.kycDocument.idNumber = application.identity_card;
+      user.kycDocument.idCardFront = application.identity_card_front;
+      user.kycDocument.idCardBack = application.identity_card_back;
+      user.kycDocument.verifiedAt = new Date();
+      user.kycDocument.verifiedBy = req.user._id;
       await user.save();
     }
   } else {

@@ -12,8 +12,7 @@ const crypto = require("crypto");
 const Rental = require("../models/Rental");
 const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
-let UserNotification = null;
-try { UserNotification = require("../models/UserNotification"); } catch (e) { }
+const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
 class RentalService {
@@ -43,11 +42,17 @@ class RentalService {
       status: {
         $in: [
           "PENDING",
+          "APPROVED",
           "CONTRACT_SIGNED",
+          "PAYMENT_VERIFYING",
+          "PAYMENT_REJECTED",
           "PAID",
           "ACTIVE",
+          "approved",
           "contract_pending",
           "payment_pending",
+          "payment_verifying",
+          "payment_rejected",
           "confirmed",
           "in_progress",
         ],
@@ -146,15 +151,15 @@ class RentalService {
     const rentalFee = subtotalRentalFee - discountAmount;
 
     // Tính phí vận chuyển theo từng phương thức nhận và trả
-    const receiveFee = DELIVERY_FEE_MAP[deliveryMethod] ?? 30000;
-    const returnFee = DELIVERY_FEE_MAP[returnMethod] ?? 30000;
+    const receiveFee = (typeof DELIVERY_FEE_MAP !== "undefined" && DELIVERY_FEE_MAP[deliveryMethod]) ?? 30000;
+    const returnFee = (typeof DELIVERY_FEE_MAP !== "undefined" && DELIVERY_FEE_MAP[returnMethod]) ?? 30000;
     const shippingFee = receiveFee + returnFee;
 
     const totalAmount = rentalFee + shippingFee;
 
     const rentalCode = `REQ-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const contractNumber = `HD-${Date.now().toString().slice(-6)}`;
-    const standardContractTerms = `Hợp đồng thuê thiết bị công nghệ SmartEquip số ${contractNumber}. Người thuê cam kết sử dụng đúng quy chuẩn kỹ thuật, bảo quản nguyên vẹn linh kiện và hoàn trả đúng hẹn. Tiền đặt cọc ${depositAmount.toLocaleString("vi-VN")} đ sẽ được hoàn trả đầy đủ sau khi kiểm tra thiết bị nguyên vẹn.`;
+    const standardContractTerms = `Hợp đồng thuê thiết bị công nghệ SmartEquip số ${contractNumber} (Không yêu cầu tiền cọc). Người thuê cam kết sử dụng đúng quy chuẩn kỹ thuật, bảo quản nguyên vẹn linh kiện và hoàn trả đúng hẹn. Trường hợp hư hỏng hoặc mất mát linh kiện do lỗi chủ quan, người thuê chịu trách nhiệm bồi thường chi phí khắc phục thực tế.`;
 
     const rental = new Rental({
       rentalCode,
@@ -350,27 +355,77 @@ class RentalService {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
+    if (rental.status === "CONTRACT_SIGNED" && rental.contract?.signedAt) {
+      return await Rental.findById(rental._id)
+        .populate("equipment", "title images dailyRate depositAmount category")
+        .populate("owner", "name email phone trust_score bankInfo")
+        .populate("renter", "name email phone");
+    }
+
     const normStatus = String(rental.status).toUpperCase();
     if (normStatus === "PENDING") {
-      throw new AppError(
-        400,
-        "Đơn thuê đang chờ Chủ máy và Quản lý phê duyệt. Sau khi đơn được duyệt, bạn mới có thể ký hợp đồng và thanh toán."
-      );
+      throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng.");
     }
 
     const signableStatuses = [
       "APPROVED",
+      "approved",
       "CONFIRMED",
+      "confirmed",
       "CONTRACT_PENDING",
+      "contract_pending",
       "CONTRACT_SIGNED",
       "PAYMENT_PENDING",
-      "PAID",
       "ACTIVE",
     ];
-    if (!signableStatuses.includes(normStatus)) {
+    if (!signableStatuses.includes(rental.status) && !signableStatuses.includes(normStatus)) {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
+    // Bắt buộc hợp đồng phải được Quản lý web (Moderator) kiểm tra và phê duyệt trước khi gửi về cho Người thuê ký!
+    const RentalContract = require("../models/RentalContract");
+    const RentalRequest = require("../models/RentalRequest");
+    const matchingReq = await RentalRequest.findOne({
+      $or: [
+        { request_code: rental.rentalCode },
+        { renter_id: rental.renter, equipment_id: rental.equipment },
+      ],
+    }).sort({ createdAt: -1 });
+
+    const contractQuery = matchingReq
+      ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
+      : { contract_code: rental.contract?.contractNumber };
+
+    const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
+    if (matchingContract) {
+      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
+        throw new AppError(
+          400,
+          "Hợp đồng thuê đang được Quản lý web (Moderator) kiểm tra. Vui lòng chờ Quản lý web phê duyệt hợp đồng trước khi ký tên."
+        );
+      }
+      if (matchingContract.status === "moderator_rejected") {
+        throw new AppError(
+          400,
+          "Hợp đồng đang được Chủ máy (Owner) điều chỉnh theo yêu cầu của Quản lý web. Vui lòng chờ cập nhật trước khi ký tên."
+        );
+      }
+      if (matchingContract.status !== "moderator_approved" && matchingContract.status !== "signed") {
+        throw new AppError(
+          400,
+          "Hợp đồng này chưa được Quản lý web (Moderator) phê duyệt để chuyển cho bạn ký tên."
+        );
+      }
+    } else if (!rental.contract?.moderatorApproved) {
+      throw new AppError(
+        400,
+        "Hợp đồng thuê cần được Chủ thiết bị lập và Quản lý web (Moderator) kiểm tra phê duyệt trước khi bạn có thể ký tên."
+      );
+    }
+
+    if (!rental.contract) {
+      rental.contract = {};
+    }
     rental.contract.termsAccepted = true;
 
     // Lưu riêng họ tên người ký (renterSignature) và ảnh chữ ký tay base64 (digitalSignature)
@@ -396,26 +451,32 @@ class RentalService {
 
     await rental.save();
 
-    // Đồng bộ sang RentalContract
+    // Đồng bộ chữ ký sang RentalContract & RentalRequest nếu có
     try {
+      const RentalRequest = require("../models/RentalRequest");
       const RentalContract = require("../models/RentalContract");
-      await RentalContract.findOneAndUpdate(
-        {
-          $or: [
-            { contract_code: rental.contract?.contractNumber },
-            { renter_id: rental.renter, equipment_id: rental.equipment },
-          ],
+      const matchingReq = await RentalRequest.findOne({
+        $or: [
+          { request_code: rental.rentalCode },
+          { renter_id: rental.renter, equipment_id: rental.equipment, status: { $in: ["approved", "contract_created"] } },
+        ],
+      });
+      const contractQuery = matchingReq
+        ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
+        : { contract_code: rental.contract?.contractNumber };
+
+      await RentalContract.updateMany(contractQuery, {
+        $set: {
+          status: "signed",
+          "renter_signature.signed": true,
+          "renter_signature.signed_at": rental.contract.signedAt || new Date(),
+          "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
+          "renter_signature.signer_name": signature || renterUser.name,
         },
-        {
-          $set: {
-            "renter_signature.signed": true,
-            "renter_signature.signed_at": rental.contract.signedAt,
-            "renter_signature.signature_data": rental.contract.digitalSignature,
-            status: "pending_payment",
-          },
-        }
-      );
-    } catch (e) { }
+      });
+    } catch (syncErr) {
+      console.warn("Đồng bộ chữ ký sang RentalContract:", syncErr.message);
+    }
 
     return await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category")
@@ -424,13 +485,18 @@ class RentalService {
   }
 
   /**
-   * UC_R09: Pay Rental & Deposit
-   * Mô phỏng thanh toán tiền cọc + phí thuê, chuyển status sang 'PAID'
+   * UC_R09: Pay Rental & Deposit via QR -> Chờ Rental Moderator xác nhận
    */
   async payRental(rentalId, renterUser, paymentData = {}) {
-    const { paymentMethod = "vnpay" } = paymentData;
+    const {
+      paymentMethod = "qr_transfer",
+      transactionId: inputTxnId = "",
+      transferNote = "",
+      senderName = "",
+      proofImage = "",
+    } = paymentData;
 
-    const validMethods = ["vnpay", "momo", "bank_transfer", "wallet"];
+    const validMethods = ["qr_transfer", "bank_transfer", "vnpay", "momo", "wallet"];
     if (!validMethods.includes(paymentMethod)) {
       throw new AppError(400, `Phương thức thanh toán không hợp lệ. Hỗ trợ: ${validMethods.join(", ")}`);
     }
@@ -446,34 +512,58 @@ class RentalService {
 
     const normStatus = String(rental.status).toUpperCase();
     const payableStatuses = [
-      "APPROVED",
       "CONTRACT_SIGNED",
       "PAYMENT_PENDING",
-      "PENDING",
-      "CONTRACT_PENDING",
+      "payment_pending",
+      "PAYMENT_REJECTED",
+      "payment_rejected",
+      "contract_signed",
       "CONFIRMED",
+      "confirmed",
     ];
-    if (!payableStatuses.includes(normStatus)) {
+    if (!payableStatuses.includes(rental.status) && !payableStatuses.includes(normStatus)) {
+      if (normStatus === "PENDING") {
+        throw new AppError(400, "Đơn thuê đang chờ Chủ thiết bị (Owner) phê duyệt, chưa thể thanh toán");
+      }
+      if (normStatus === "APPROVED" || normStatus === "CONTRACT_PENDING") {
+        throw new AppError(400, "Bạn cần ký hợp đồng điện tử trước khi thanh toán phí thuê thiết bị");
+      }
+      if (normStatus === "PAYMENT_VERIFYING") {
+        throw new AppError(400, "Giao dịch thanh toán của bạn đang chờ xác nhận");
+      }
       throw new AppError(
         400,
-        `Không thể thanh toán đơn thuê ở trạng thái: ${rental.status}`,
+        `Không thể thanh toán đơn thuê ở trạng thái: ${rental.status}`
       );
     }
 
-    const transactionId = `TXN-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const generatedTxnId = `QR-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+    const finalTxnId = typeof inputTxnId === "string" && inputTxnId.trim() ? inputTxnId.trim() : (transactionId || generatedTxnId);
+    const proofImg = typeof proofImage === "string" && proofImage.trim() ? proofImage : (paymentData.receiptImage || paymentData.proofImage || "");
 
     rental.payment = {
-      isPaid: false, // Chờ Moderator kiểm tra và duyệt
-      paymentStatus: "pending_confirmation",
+      isPaid: false,
+      paymentStatus: "verifying",
       paymentMethod,
-      transactionId: rental.payment?.transactionId || transactionId,
-      receiptImage: paymentData.receiptImage || paymentData.proofImage || rental.payment?.receiptImage || "",
+      transactionId: finalTxnId,
+      transferNote:
+        typeof transferNote === "string" && transferNote.trim()
+          ? transferNote.trim()
+          : `${rental.rentalCode} THANH TOAN`,
+      senderName:
+        typeof senderName === "string" && senderName.trim()
+          ? senderName.trim()
+          : renterUser.name || "Người thuê",
+      proofImage: proofImg,
+      receiptImage: proofImg,
+      submittedAt: new Date(),
       transferNotifiedAt: new Date(),
       amountPaid: rental.totalAmount || rental.rentalFee,
+      moderatorNote: "",
     };
-    rental.status = "PAYMENT_PENDING";
+    rental.status = "PAYMENT_VERIFYING";
 
-    // Cập nhật hoặc bảo tồn chữ ký tay điện tử nếu có gửi kèm trong payload thanh toán
+    // Cập nhật chữ ký tay điện tử nếu có gửi kèm trong payload thanh toán
     if (paymentData.digitalSignature || paymentData.handwrittenSignature) {
       const sig = (paymentData.digitalSignature || paymentData.handwrittenSignature).trim();
       if (sig) {
@@ -489,32 +579,31 @@ class RentalService {
 
     await rental.save();
 
-    // Gửi thông báo cho Quản lý web (Moderator) và Chủ máy
+    // Thông báo cho Owner và Quản lý web
     try {
       const User = require("../models/User");
-      const managers = await User.find({
-        role: { $regex: /^(rental[_ -]?moderator|systemadmin|admin)$/i },
-      }).select("_id").lean();
-
-      const notifyIds = managers.map(m => m._id);
+      const notifyIds = [];
       if (rental.owner) notifyIds.push(rental.owner);
+
+      const moderators = await User.find({
+        role: { $in: ["rentalmoderator", "rental_moderator", "rental moderator", "systemadmin", "admin"] },
+      })
+        .select("_id")
+        .lean();
+      moderators.forEach((m) => notifyIds.push(m._id));
 
       if (UserNotification && notifyIds.length > 0) {
         await UserNotification.insertMany(
-          notifyIds.map(uid => ({
+          notifyIds.map((uid) => ({
             user_id: uid,
             title: `💳 Khách thuê đã chuyển khoản đơn #${rental.rentalCode}`,
-            message: `Khách thuê ${renterUser.name} đã gửi ảnh biên lai chuyển khoản ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ. Vui lòng kiểm tra và xác nhận thanh toán!`,
+            message: `Khách thuê ${renterUser.name || ""} vừa gửi xác nhận thanh toán ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode}. Vui lòng đối chiếu và xác nhận.`,
             related_record_id: rental._id,
           }))
         );
       }
-    } catch (e) {
-      console.error("Error notifying managers of payment:", e);
-    }
 
-    // Đồng bộ sang RentalContract và phát Socket.IO
-    try {
+      // Đồng bộ sang RentalContract và phát Socket.IO
       const RentalContract = require("../models/RentalContract");
       await RentalContract.findOneAndUpdate(
         {
@@ -526,31 +615,29 @@ class RentalService {
         {
           $set: {
             payment_status: "pending_confirmation",
-            receipt_image: rental.payment?.receiptImage || "",
+            receipt_image: proofImg,
           },
         }
       );
+
       const { getIO } = require("../config/socket");
       const io = getIO();
-      const toastData = {
-        type: "payment_submitted",
-        rentalId: rental._id,
-        rentalCode: rental.rentalCode,
-        renterId: String(renterUser._id),
-        renterName: renterUser.name,
-        ownerId: String(rental.owner),
-        amount: rental.payment?.amountPaid,
-        receiptImage: rental.payment?.receiptImage,
-        title: `💳 Khách đã chuyển tiền đơn #${rental.rentalCode}!`,
-        message: `Khách thuê ${renterUser.name} đã gửi ảnh biên lai chuyển khoản ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ. Vui lòng kiểm tra và duyệt tiền!`,
-        link: "/owner",
-        createdAt: new Date(),
-      };
-      io.emit("payment:submitted", toastData);
-    } catch (e) { }
+      if (io) {
+        io.emit("payment:submitted", {
+          rentalId: rental._id.toString(),
+          rentalCode: rental.rentalCode,
+          amount: rental.totalAmount,
+          renterName: renterUser.name,
+          proofImage: proofImg,
+        });
+      }
+    } catch (notifyErr) {
+      console.warn("Thông báo thanh toán:", notifyErr.message);
+    }
 
     return {
-      message: "Đã gửi thông báo chuyển khoản thành công kèm biên lai. Đơn hàng đang chờ Quản lý xác nhận để bàn giao máy.",
+      message:
+        "Đã gửi xác nhận chuyển khoản QR thành công! Vui lòng chờ kiểm tra và xác nhận thanh toán.",
       rental: await Rental.findById(rental._id)
         .populate("equipment", "title images dailyRate depositAmount category")
         .populate("owner", "name email phone"),
@@ -823,14 +910,14 @@ class RentalService {
   }
 
   async getRentalHistory(renterId, query = {}) {
-    const { status, page = 1, limit = 10 } = query;
+    const { status, page = 1, limit = 50 } = query;
     const filter = { renter: renterId };
 
     if (status && typeof status === "string" && status.trim() && status !== "all") {
       const s = status.trim().toUpperCase();
       const statusMap = {
-        PENDING: ["PENDING", "pending", "contract_pending"],
-        CONTRACT_SIGNED: ["CONTRACT_SIGNED", "payment_pending"],
+        PENDING: ["PENDING", "APPROVED", "pending", "approved", "contract_pending"],
+        CONTRACT_SIGNED: ["CONTRACT_SIGNED", "PAYMENT_VERIFYING", "PAYMENT_REJECTED", "payment_pending", "payment_verifying", "payment_rejected"],
         PAID: ["PAID", "confirmed"],
         ACTIVE: ["ACTIVE", "in_progress"],
         RETURNED: ["RETURNED", "return_requested"],
@@ -855,6 +942,7 @@ class RentalService {
         .populate("equipment", "title category images dailyRate depositAmount")
         .populate("owner", "name email phone avatarUrl trust_score bankInfo")
         .populate("renter", "name email phone avatarUrl")
+        .populate("payment.verifiedBy", "name email")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -867,6 +955,38 @@ class RentalService {
       await this.checkDeadlineRemindersForUser(renterId);
     } catch (notifyErr) {
       // Non-blocking
+    }
+
+    // Đồng bộ trạng thái kiểm duyệt của Moderator từ RentalContract vào từng Rental
+    try {
+      const RentalContract = require("../models/RentalContract");
+      const RentalRequest = require("../models/RentalRequest");
+      const codes = rentals.map((r) => r.rentalCode).filter(Boolean);
+      const reqs = await RentalRequest.find({ request_code: { $in: codes } }).select("_id request_code").lean();
+      const reqMap = new Map(reqs.map((rq) => [rq.request_code, rq._id]));
+      const reqIds = reqs.map((rq) => rq._id);
+      const contracts = await RentalContract.find({ request_id: { $in: reqIds } }).sort({ version: -1, createdAt: -1 }).lean();
+      const contractMap = new Map();
+      for (const c of contracts) {
+        if (!contractMap.has(c.request_id.toString())) {
+          contractMap.set(c.request_id.toString(), c);
+        }
+      }
+
+      for (const r of rentals) {
+        const rqId = reqMap.get(r.rentalCode);
+        const contract = rqId ? contractMap.get(rqId.toString()) : null;
+        if (contract) {
+          if (!r.contract) r.contract = {};
+          r.contract.contractNumber = contract.contract_code;
+          r.contract.contractTerms = contract.terms_content;
+          r.contract.moderatorStatus = contract.status;
+          r.contract.moderatorApproved = contract.status === "moderator_approved" || contract.status === "signed";
+          r.contract.ownerSigned = Boolean(contract.owner_signature?.signed);
+        }
+      }
+    } catch (enrichErr) {
+      console.error("Failed to enrich contracts in getRentalHistory:", enrichErr);
     }
 
     return {
@@ -995,16 +1115,23 @@ class RentalService {
       "CONTRACT_PENDING",
       "CONTRACT_SIGNED",
       "PAYMENT_PENDING",
+      "PAYMENT_REJECTED",
       "CONFIRMED",
+      "pending",
+      "approved",
+      "contract_pending",
+      "payment_pending",
+      "payment_rejected",
+      "confirmed",
     ];
-    if (!cancellableStatuses.includes(normStatus)) {
+    if (!cancellableStatuses.includes(rental.status) && !cancellableStatuses.includes(normStatus)) {
       throw new AppError(
         400,
         `Không thể hủy đơn thuê ở trạng thái hiện tại: ${rental.status}. Chỉ có thể hủy đơn khi đang chờ duyệt, đã duyệt, hoặc đã ký.`
       );
     }
 
-    rental.status = "cancelled";
+    rental.status = "CANCELLED";
     rental.cancellation = {
       cancelledBy: renterUser._id,
       reason: reason,
@@ -1128,6 +1255,73 @@ class RentalService {
     }
 
     return buildContractHtmlServer(rental);
+  }
+
+  /**
+   * Owner duyệt yêu cầu thuê
+   */
+  async approveRental(rentalId, ownerUser) {
+    const rental = await Rental.findById(rentalId);
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+    if (rental.owner.toString() !== ownerUser._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền duyệt đơn thuê này");
+    }
+    if (rental.status !== "PENDING" && rental.status !== "pending") {
+      throw new AppError(400, `Đơn thuê đã ở trạng thái: ${rental.status}`);
+    }
+    rental.status = "APPROVED";
+    await rental.save();
+
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment, status: "pending" },
+          ],
+        },
+        { status: "approved", responded_at: new Date() }
+      );
+    } catch (err) {}
+
+    return await Rental.findById(rental._id)
+      .populate("equipment", "title images dailyRate depositAmount category")
+      .populate("owner", "name email phone trust_score")
+      .populate("renter", "name email phone");
+  }
+
+  /**
+   * Owner từ chối yêu cầu thuê
+   */
+  async rejectRental(rentalId, ownerUser, reason = "") {
+    const rental = await Rental.findById(rentalId);
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+    if (rental.owner.toString() !== ownerUser._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền từ chối đơn thuê này");
+    }
+    rental.status = "CANCELLED";
+    rental.cancelReason = reason;
+    await rental.save();
+
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment, status: "pending" },
+          ],
+        },
+        { status: "rejected", rejection_reason: reason, responded_at: new Date() }
+      );
+    } catch (err) {}
+
+    return rental;
   }
 }
 

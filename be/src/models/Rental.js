@@ -51,7 +51,7 @@ const rentalSchema = new mongoose.Schema(
     },
     depositAmount: {
       type: Number,
-      required: true,
+      default: 0,
       min: 0,
     },
     discountAmount: {
@@ -72,6 +72,8 @@ const rentalSchema = new mongoose.Schema(
         "CONTRACT_PENDING",
         "CONTRACT_SIGNED",
         "PAYMENT_PENDING",
+        "PAYMENT_VERIFYING",
+        "PAYMENT_REJECTED",
         "PAID",
         "CONFIRMED",
         "ACTIVE",
@@ -87,9 +89,12 @@ const rentalSchema = new mongoose.Schema(
         "MODERATOR_APPROVED",
         // Hỗ trợ thêm cho tương thích ngược chữ thường
         "pending",
+        "approved",
         "contract_pending",
         "contract_signed",
         "payment_pending",
+        "payment_verifying",
+        "payment_rejected",
         "paid",
         "confirmed",
         "active",
@@ -149,16 +154,27 @@ const rentalSchema = new mongoose.Schema(
       contractUrl: { type: String, trim: true },
       agreedToSign: { type: Boolean, default: false },
       agreedAt: { type: Date },
+      moderatorApproved: { type: Boolean, default: false },
+      moderatorStatus: {
+        type: String,
+        enum: ["none", "draft", "sent_to_renter", "renter_rejected", "pending_approval", "moderator_rejected", "moderator_approved", "signed"],
+        default: "none",
+      },
+      ownerSigned: { type: Boolean, default: false },
     },
     payment: {
       isPaid: { type: Boolean, default: false },
+      submittedAt: { type: Date },
       paidAt: { type: Date },
       paymentMethod: { type: String, trim: true },
       transactionId: { type: String, trim: true },
+      transferNote: { type: String, trim: true, default: "" },
+      senderName: { type: String, trim: true, default: "" },
+      proofImage: { type: String, default: "" },
       amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
-        enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded"],
+        enum: ["unpaid", "pending_confirmation", "verifying", "paid", "rejected", "refunded"],
         default: "unpaid",
       },
       orderCode: { type: Number },
@@ -168,6 +184,9 @@ const rentalSchema = new mongoose.Schema(
       confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       rejectionReason: { type: String, default: "" },
       receiptImage: { type: String, default: "" },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      verifiedAt: { type: Date },
+      moderatorNote: { type: String, trim: true, default: "" },
     },
     returnInfo: {
       requestedAt: { type: Date },
@@ -232,6 +251,8 @@ rentalSchema.pre("save", function (next) {
       this.payment.paymentStatus = "paid";
     } else if (this.payment.paymentStatus === "paid" && !this.payment.isPaid) {
       this.payment.isPaid = true;
+    } else if (this.payment.paymentStatus === "verifying" || this.payment.paymentStatus === "rejected") {
+      this.payment.isPaid = false;
     }
   }
 

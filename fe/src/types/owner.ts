@@ -121,19 +121,28 @@ export interface RentalContract {
     version: number;
     created_at: string;
   }[];
-  owner_signature?: {
-    signed: boolean;
-    signed_at?: string;
-    signature_data?: string;
-    signer_name?: string;
-  };
-  renter_signature?: {
-    signed: boolean;
-    signed_at?: string;
-    signature_data?: string;
-    signer_name?: string;
-  };
+  owner_signature?: ContractSignature;
+  renter_signature?: ContractSignature;
+  handover_records?: HandoverRecord[];
   createdAt: string;
+}
+
+export interface ContractSignature {
+  signed: boolean;
+  signed_at?: string;
+  signature_data?: string;
+  signer_name?: string;
+  signature_image?: string;
+  signature_type?: "drawn" | "typed";
+  certificate_code?: string;
+}
+
+export interface DigitalSignaturePayload {
+  signer_name: string;
+  signature_type: "drawn" | "typed";
+  signature_image?: string;
+  signature_note?: string;
+  declaration_accepted?: boolean;
 }
 
 export interface OwnerContractTemplate {
@@ -175,8 +184,8 @@ export interface Settlement {
   _id: string;
   settlement_code: string;
   contract_id: RentalContract;
-  owner_id: string;
-  renter_id: { _id: string; name: string; email: string };
+  owner_id: string | { _id: string; name: string; email: string; phone?: string };
+  renter_id: { _id: string; name: string; email: string; phone?: string };
   total_rental_fee: number;
   overtime_fee: number;
   damage_deduction: number;
@@ -187,12 +196,23 @@ export interface Settlement {
   owner_payout_amount: number;
   owner_confirmed: boolean;
   owner_confirmed_at?: string;
-  payout_status: "pending_owner_confirmation" | "confirmed" | "processing" | "paid";
+  requested_at?: string;
+  request_note?: string;
+  qr_code_url?: string;
+  payout_status: "pending_owner_confirmation" | "pending_moderator_approval" | "confirmed" | "processing" | "paid" | "rejected";
   paid_at?: string;
   bank_info?: {
     bank_name: string;
+    bank_code?: string;
     account_number: string;
     account_holder: string;
+  };
+  moderator_review?: {
+    moderator_id?: { _id: string; name: string; email: string };
+    reviewed_at?: string;
+    note?: string;
+    transaction_code?: string;
+    receipt_image?: string;
   };
   createdAt: string;
 }

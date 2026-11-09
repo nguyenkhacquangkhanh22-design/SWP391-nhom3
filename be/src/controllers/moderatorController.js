@@ -1,12 +1,14 @@
+const adminController = require("./adminController");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const ContractTemplate = require("../models/ContractTemplate");
 const Equipment = require("../models/Equipment");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const HandoverRecord = require("../models/HandoverRecord");
-const RentalContract = require("../models/RentalContract");
 const Rental = require("../models/Rental");
+const RentalContract = require("../models/RentalContract");
 const RentalRequest = require("../models/RentalRequest");
+const Settlement = require("../models/Settlement");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -195,8 +197,7 @@ async function reviewContract(req, res) {
     !contract.equipment_id ||
     !Number.isFinite(contract.rental_price) ||
     contract.rental_price < 0 ||
-    !Number.isFinite(contract.deposit_amount) ||
-    contract.deposit_amount < 0 ||
+    (contract.deposit_amount !== undefined && contract.deposit_amount < 0) ||
     !contract.start_date ||
     !contract.end_date ||
     new Date(contract.end_date) <= new Date(contract.start_date)
@@ -231,6 +232,40 @@ async function reviewContract(req, res) {
   ).populate(contractPopulate);
   if (!updated) {
     throw new AppError(409, "Hồ sơ đã thay đổi hoặc được xử lý. Vui lòng tải lại dữ liệu.");
+  }
+
+  // Đồng bộ trạng thái kiểm duyệt Hợp đồng của Quản lý web sang bảng Rental
+  // Chỉ khi Quản lý web duyệt (approve) thì hợp đồng mới được chuyển về cho Người thuê ký tên!
+  try {
+    const Rental = require("../models/Rental");
+    const RentalRequest = require("../models/RentalRequest");
+    const reqDoc = await RentalRequest.findById(updated.request_id);
+    if (reqDoc) {
+      await Rental.updateMany(
+        {
+          $or: [
+            { rentalCode: reqDoc.request_code },
+            {
+              renter: reqDoc.renter_id,
+              equipment: reqDoc.equipment_id,
+              status: { $in: ["APPROVED", "approved", "PENDING", "CONTRACT_PENDING", "contract_pending"] },
+            },
+          ],
+        },
+        {
+          $set: {
+            status: "CONTRACT_PENDING",
+            "contract.contractNumber": updated.contract_code,
+            "contract.contractTerms": updated.terms_content,
+            "contract.moderatorApproved": action === "approve",
+            "contract.moderatorStatus": action === "approve" ? "moderator_approved" : "moderator_rejected",
+            "contract.ownerSigned": true,
+          },
+        }
+      );
+    }
+  } catch (syncErr) {
+    console.error("Failed to sync reviewed contract to Rental:", syncErr);
   }
 
   let notificationWarning = "";
@@ -598,162 +633,281 @@ async function submitSupportTicket(req, res) {
 }
 
 // -----------------------------------------------------------------------------
-// Bước 5: Quản lý web xem và xác nhận giao dịch chuyển khoản VietQR MB Bank
+// Bước Thanh Toán QR: Rental Moderator đối chiếu & xác nhận thanh toán của Renter
 // -----------------------------------------------------------------------------
 async function listPayments(req, res) {
-  const status = cleanText(req.query.status);
-  const filter = {};
-  if (status && status !== "all") {
-    filter["payment.paymentStatus"] = status;
-  } else {
-    filter["$or"] = [
-      { "payment.paymentStatus": { $in: ["pending_confirmation", "paid", "rejected"] } },
-      { status: { $in: ["PAYMENT_PENDING", "payment_pending", "PAID"] } },
-      { "payment.receiptImage": { $exists: true, $ne: "" } },
-    ];
-  }
+  const statusFilter = cleanText(req.query.status);
+  const filter = statusFilter
+    ? { status: statusFilter }
+    : {
+        $or: [
+          {
+            status: {
+              $in: [
+                "PAYMENT_VERIFYING",
+                "PAYMENT_REJECTED",
+                "PAID",
+                "ACTIVE",
+                "RETURNED",
+                "COMPLETED",
+                "payment_verifying",
+                "payment_rejected",
+                "confirmed",
+              ],
+            },
+          },
+          { "payment.paymentStatus": { $in: ["verifying", "paid", "rejected"] } },
+        ],
+      };
 
-  const rentals = await Rental.find(filter)
-    .populate("renter", "name email phone")
+  const items = await Rental.find(filter)
+    .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
     .populate("owner", "name email phone")
-    .populate("equipment", "title brand modelNumber dailyRate depositAmount images")
-    .sort({ "payment.transferNotifiedAt": -1, updatedAt: -1 })
+    .populate("renter", "name email phone")
+    .populate("payment.verifiedBy", "name email")
+    .sort({ updatedAt: -1 })
     .lean();
 
-  res.json({ payments: rentals });
+  const priority = (r) => {
+    const s = String(r.status || "").toUpperCase();
+    if (s === "PAYMENT_VERIFYING" || r.payment?.paymentStatus === "verifying") return 0;
+    if (s === "PAYMENT_REJECTED" || r.payment?.paymentStatus === "rejected") return 1;
+    return 2;
+  };
+  items.sort((a, b) => priority(a) - priority(b));
+
+  res.json({ payments: items });
 }
 
-async function reviewPayment(req, res) {
-  const { id } = req.params;
-  const { action, note } = req.body; // 'approve' | 'reject'
+async function verifyPayment(req, res) {
+  const { action } = req.body; // 'approve' | 'reject'
+  const note = cleanText(req.body.note);
 
   if (!["approve", "reject"].includes(action)) {
-    throw new AppError(400, "Hành động không hợp lệ (phải là approve hoặc reject)");
+    throw new AppError(400, "Thao tác xác nhận thanh toán không hợp lệ (approve hoặc reject).");
+  }
+  if (action === "reject" && !note) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối xác nhận thanh toán để khách thuê kiểm tra lại.");
   }
 
-  const rental = await Rental.findById(id)
-    .populate("renter", "name email")
-    .populate("owner", "name email")
-    .populate("equipment", "title");
+  const rental = await Rental.findById(req.params.id)
+    .populate("equipment", "title images dailyRate depositAmount category")
+    .populate("owner", "name email phone")
+    .populate("renter", "name email phone");
 
   if (!rental) {
-    throw new AppError(404, "Không tìm thấy thông tin đơn thuê cần xác nhận thanh toán");
+    throw new AppError(404, "Không tìm thấy đơn thuê cần xác nhận thanh toán.");
   }
 
-  const isPending =
-    rental.payment?.paymentStatus === "pending_confirmation" ||
-    String(rental.status).toUpperCase() === "PAYMENT_PENDING" ||
-    Boolean(rental.payment?.receiptImage);
-
-  if (!isPending) {
-    throw new AppError(400, `Giao dịch này không ở trạng thái chờ xác nhận (${rental.payment?.paymentStatus})`);
+  const upper = String(rental.status || "").toUpperCase();
+  if (upper !== "PAYMENT_VERIFYING" && rental.payment?.paymentStatus !== "verifying") {
+    throw new AppError(400, `Đơn thuê này không ở trạng thái chờ xác nhận thanh toán (hiện tại: ${rental.status}).`);
   }
 
-  const reviewedAt = new Date();
+  if (!rental.payment) {
+    rental.payment = {};
+  }
+
+  let notificationWarning = "";
+
   if (action === "approve") {
+    rental.status = "PAID";
     rental.payment.isPaid = true;
     rental.payment.paymentStatus = "paid";
-    rental.payment.paidAt = reviewedAt;
-    rental.payment.confirmedBy = req.user._id;
-    rental.status = "PAID";
+    rental.payment.paidAt = new Date();
+    rental.payment.verifiedBy = req.user._id;
+    rental.payment.verifiedAt = new Date();
+    rental.payment.moderatorNote =
+      note || "Rental Moderator đã đối chiếu chuyển khoản QR và xác nhận thanh toán thành công.";
     await rental.save();
 
-    // Đồng bộ sang RentalContract nếu có
-    await RentalContract.findOneAndUpdate(
-      {
-        $or: [
-          { contract_code: rental.contract?.contractNumber },
-          { renter_id: rental.renter?._id, equipment_id: rental.equipment?._id },
-        ],
-      },
-      {
-        $set: {
-          payment_status: "paid",
-          paid_at: reviewedAt,
-          payment_confirmed_by: req.user._id,
-        },
-      }
-    );
-
-    // Gửi thông báo cho Renter & Owner
-    await notifyUsers(
-      [rental.renter?._id],
-      "✅ Thanh toán chuyển khoản thành công!",
-      `Quản lý web đã xác nhận giao dịch chuyển khoản ${(rental.payment?.amountPaid || rental.totalAmount).toLocaleString("vi-VN")} đ cho đơn thuê #${rental.rentalCode}. Chủ máy sẽ sớm bàn giao thiết bị.`,
+    const w1 = await notifyUsers(
+      [rental.renter?._id || rental.renter],
+      `✅ Đã xác nhận thanh toán QR đơn #${rental.rentalCode}`,
+      `Rental Moderator đã xác nhận khoản thanh toán ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ cho thiết bị "${rental.equipment?.title || ""}". Bạn đã sẵn sàng nhận bàn giao thiết bị!`,
       rental._id
     );
+    const w2 = await notifyUsers(
+      [rental.owner?._id || rental.owner],
+      `💰 Khách thuê đã thanh toán phí thuê đơn #${rental.rentalCode}`,
+      `Rental Moderator đã xác nhận khách thuê ${rental.renter?.name || ""} chuyển khoản đủ ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ. Bạn có thể tiến hành bàn giao thiết bị.`,
+      rental._id
+    );
+    notificationWarning = w1 || w2;
 
-    await notifyUsers(
-      [rental.owner?._id],
-      "📦 Khách thuê đã hoàn tất thanh toán",
-      `Quản lý web đã xác nhận tiền chuyển khoản cho đơn #${rental.rentalCode}. Chủ máy hãy chuẩn bị thiết bị để bàn giao cho khách thuê.`,
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("payment:verified", {
+        rentalId: rental._id.toString(),
+        rentalCode: rental.rentalCode,
+        status: "PAID",
+      });
+    } catch {}
+
+    const populated = await Rental.findById(rental._id)
+      .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
+      .populate("owner", "name email phone")
+      .populate("renter", "name email phone")
+      .populate("payment.verifiedBy", "name email")
+      .lean();
+
+    return res.json({
+      message: `Đã xác nhận thanh toán QR cho đơn #${rental.rentalCode} thành công!`,
+      notificationWarning,
+      paymentRental: populated,
+    });
+  } else {
+    rental.status = "PAYMENT_REJECTED";
+    rental.payment.isPaid = false;
+    rental.payment.paymentStatus = "rejected";
+    rental.payment.verifiedBy = req.user._id;
+    rental.payment.verifiedAt = new Date();
+    rental.payment.moderatorNote = note;
+    await rental.save();
+
+    notificationWarning = await notifyUsers(
+      [rental.renter?._id || rental.renter],
+      `❌ Chưa thể xác nhận thanh toán đơn #${rental.rentalCode}`,
+      `Rental Moderator phản hồi về giao dịch thanh toán QR của bạn: ${note}. Vui lòng kiểm tra và gửi xác nhận lại.`,
       rental._id
     );
 
     try {
       const { getIO } = require("../config/socket");
       const io = getIO();
-      const toastData = {
-        type: "payment_approved",
-        rentalId: rental._id,
-        rentalCode: rental.rentalCode,
-        equipmentTitle: rental.equipment?.title || "Thiết bị",
-        renterId: String(rental.renter?._id || rental.renter),
-        ownerId: String(rental.owner?._id || rental.owner),
-        title: "✅ Thanh toán thành công!",
-        message: `Giao dịch thanh toán cho đơn #${rental.rentalCode} đã được phê duyệt! Sẵn sàng bàn giao thiết bị.`,
-        link: "/rentals/history",
-        createdAt: new Date(),
-      };
-      io.emit("payment:approved", toastData);
-    } catch (socketErr) {
-      console.warn("Socket emit error on moderator confirm payment:", socketErr?.message);
-    }
-
-    res.json({
-      message: "Đã phê duyệt xác nhận thanh toán chuyển khoản thành công!",
-      rental,
-    });
-  } else {
-    // Reject payment
-    const reason = cleanText(note) || "Chưa nhận được tiền chuyển khoản hoặc sai nội dung/số tiền";
-    rental.payment.paymentStatus = "rejected";
-    rental.payment.rejectionReason = reason;
-    rental.status = "CONTRACT_SIGNED"; // Chờ khách thực hiện thanh toán lại
-    await rental.save();
-
-    await RentalContract.findOneAndUpdate(
-      {
-        $or: [
-          { contract_code: rental.contract?.contractNumber },
-          { renter_id: rental.renter?._id, equipment_id: rental.equipment?._id },
-        ],
-      },
-      {
-        $set: {
-          payment_status: "rejected",
-          payment_rejection_reason: reason,
-        },
+      if (io) {
+        io.emit("payment:rejected", {
+          rentalId: rental._id.toString(),
+          rentalCode: rental.rentalCode,
+          reason: note,
+        });
       }
-    );
+    } catch {}
+
+    const populated = await Rental.findById(rental._id)
+      .populate("equipment", "title category brand model_name serial_number images dailyRate depositAmount")
+      .populate("owner", "name email phone")
+      .populate("renter", "name email phone")
+      .populate("payment.verifiedBy", "name email")
+      .lean();
+
+    return res.json({
+      message: `Đã từ chối xác nhận thanh toán đơn #${rental.rentalCode} và thông báo cho khách thuê.`,
+      notificationWarning,
+      paymentRental: populated,
+    });
+  }
+}
+
+// List Owner Payout Requests (Yêu cầu thanh toán / giải ngân từ Owner khi khách nhận hàng)
+async function listPayoutRequests(req, res) {
+  const payouts = await Settlement.find()
+    .populate({
+      path: "contract_id",
+      populate: { path: "equipment_id", select: "title images category brand model_name" },
+    })
+    .populate("owner_id", "name email phone")
+    .populate("renter_id", "name email phone")
+    .populate("moderator_review.moderator_id", "name email")
+    .sort({ requested_at: -1, updatedAt: -1 })
+    .lean();
+
+  res.json({ payouts });
+}
+
+// Review Owner Payout Request (Duyệt / Từ chối giải ngân tiền cho Owner)
+async function reviewPayoutRequest(req, res) {
+  const { id } = req.params;
+  const { action, note, transaction_code, receipt_image } = req.body;
+
+  if (!["approve", "reject"].includes(action)) {
+    throw new AppError(400, "Hành động không hợp lệ (chỉ chấp nhận 'approve' hoặc 'reject')");
+  }
+
+  const settlement = await Settlement.findById(id)
+    .populate("contract_id")
+    .populate("owner_id", "name email phone");
+
+  if (!settlement) {
+    throw new AppError(404, "Không tìm thấy yêu cầu quyết toán / giải ngân");
+  }
+
+  if (action === "approve") {
+    settlement.payout_status = "paid";
+    settlement.paid_at = new Date();
+    settlement.moderator_review = {
+      moderator_id: req.user._id,
+      reviewed_at: new Date(),
+      note: typeof note === "string" ? note.trim() : "Đã duyệt và giải ngân tiền thuê thành công",
+      transaction_code: typeof transaction_code === "string" ? transaction_code.trim() : "",
+      receipt_image: typeof receipt_image === "string" ? receipt_image.trim() : "",
+    };
+
+    await settlement.save();
 
     await notifyUsers(
-      [rental.renter?._id],
-      "⚠️ Xác nhận chuyển khoản chưa thành công",
-      `Quản lý web chưa thể xác nhận giao dịch chuyển khoản cho đơn #${rental.rentalCode}. Lý do: ${reason}. Vui lòng thử lại.`,
-      rental._id
+      [settlement.owner_id?._id],
+      "💵 Giải ngân tiền thuê thành công!",
+      `Quản lý web đã phê duyệt và chuyển khoản giải ngân số tiền ${settlement.owner_payout_amount.toLocaleString("vi-VN")} đ vào tài khoản ngân hàng ${settlement.bank_info?.bank_name} (${settlement.bank_info?.account_number}) của bạn.${transaction_code ? ` Mã GD: ${transaction_code}.` : ""}`,
+      settlement._id
     );
 
-    res.json({
-      message: "Đã từ chối xác nhận thanh toán.",
-      rental,
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("payout:verified", {
+        settlementId: settlement._id.toString(),
+        settlementCode: settlement.settlement_code,
+        status: "paid",
+      });
+    } catch (err) {}
+
+    return res.json({
+      message: `Đã xác nhận giải ngân thành công số tiền ${settlement.owner_payout_amount.toLocaleString("vi-VN")} đ cho Owner ${settlement.owner_id?.name || ""}.`,
+      settlement,
+    });
+  } else {
+    settlement.payout_status = "rejected";
+    settlement.moderator_review = {
+      moderator_id: req.user._id,
+      reviewed_at: new Date(),
+      note: typeof note === "string" ? note.trim() : "Thông tin thanh toán không hợp lệ, vui lòng kiểm tra lại",
+      transaction_code: "",
+      receipt_image: "",
+    };
+
+    await settlement.save();
+
+    await notifyUsers(
+      [settlement.owner_id?._id],
+      "❌ Yêu cầu giải ngân tiền thuê bị từ chối",
+      `Quản lý web đã từ chối yêu cầu giải ngân đơn ${settlement.settlement_code}. Lý do: ${note || "Vui lòng kiểm tra lại số tài khoản hoặc mã QR ngân hàng."}`,
+      settlement._id
+    );
+
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("payout:rejected", {
+        settlementId: settlement._id.toString(),
+        settlementCode: settlement.settlement_code,
+        reason: note,
+      });
+    } catch (err) {}
+
+    return res.json({
+      message: "Đã từ chối yêu cầu giải ngân của Owner và gửi thông báo phản hồi.",
+      settlement,
     });
   }
 }
 
 module.exports = {
+  listPayoutRequests,
+  reviewPayoutRequest,
+  listKycSubmissions: adminController.listKycSubmissions,
+  reviewKycSubmission: adminController.reviewKycSubmission,
   listPayments,
-  reviewPayment,
+  verifyPayment,
+  reviewPayment: verifyPayment,
   createTemplate,
   createTemplateVersion,
   forwardRentalRequest,

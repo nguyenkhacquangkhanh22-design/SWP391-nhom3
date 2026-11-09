@@ -1,4 +1,6 @@
 import { useState, useRef } from "react";
+import { useAuth } from "../../app/AuthProvider";
+import { smartEquipApi } from "../../services/smartEquipApi";
 import type { Equipment } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
 
@@ -17,6 +19,25 @@ export default function OwnerEquipmentsTab({
   onError,
   onSuccess,
 }: Props) {
+  // Auth & KYC Identity Verification Status
+  const { user, saveUser } = useAuth();
+  const isKycVerified = user?.kycStatus === "verified";
+  const isKycPending = user?.kycStatus === "pending";
+  const isKycRejected = user?.kycStatus === "rejected";
+  
+  // Quick KYC Modal states
+  const [showKycModal, setShowKycModal] = useState(false);
+  const [kycIdNumber, setKycIdNumber] = useState(user?.kycDocument?.idNumber || "");
+  const [kycFrontUrl, setKycFrontUrl] = useState(user?.kycDocument?.idCardFront || "");
+  const [kycBackUrl, setKycBackUrl] = useState(user?.kycDocument?.idCardBack || "");
+  const [kycSelfieUrl, setKycSelfieUrl] = useState(user?.kycDocument?.selfiePhoto || "");
+  const [isSubmittingKyc, setIsSubmittingKyc] = useState(false);
+  const [kycModalError, setKycModalError] = useState("");
+  const kycFrontFileRef = useRef<HTMLInputElement>(null);
+  const kycBackFileRef = useRef<HTMLInputElement>(null);
+  const [isUploadingKycFront, setIsUploadingKycFront] = useState(false);
+  const [isUploadingKycBack, setIsUploadingKycBack] = useState(false);
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
@@ -43,7 +64,7 @@ export default function OwnerEquipmentsTab({
   const [condition, setCondition] = useState("Tốt (95%)");
   const [pricePerDay, setPricePerDay] = useState(500000);
   const [pricePerHour, setPricePerHour] = useState(50000);
-  const [depositAmount, setDepositAmount] = useState(10000000);
+  const [depositAmount, setDepositAmount] = useState(0);
   const [rentalTerms, setRentalTerms] = useState(
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   );
@@ -62,6 +83,77 @@ export default function OwnerEquipmentsTab({
   const [statusProofUrl, setStatusProofUrl] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // State chuyển qua chuyển lại ảnh trên từng thẻ thiết bị
+  const [cardImageIndices, setCardImageIndices] = useState<Record<string, number>>({});
+  // State xem trước ảnh trong modal thêm / sửa thiết bị
+  const [modalPreviewIndex, setModalPreviewIndex] = useState(0);
+
+  async function handleKycImageUpload(file: File, type: "front" | "back") {
+    if (type === "front") setIsUploadingKycFront(true);
+    else setIsUploadingKycBack(true);
+    setKycModalError("");
+    try {
+      const res = await ownerApi.uploadPhoto(token, file);
+      if (type === "front") setKycFrontUrl(res.url);
+      else setKycBackUrl(res.url);
+    } catch (err) {
+      setKycModalError(err instanceof Error ? err.message : "Tải ảnh CCCD thất bại.");
+    } finally {
+      if (type === "front") setIsUploadingKycFront(false);
+      else setIsUploadingKycBack(false);
+    }
+  }
+
+  async function handleSubmitKyc(e: React.FormEvent) {
+    e.preventDefault();
+    setKycModalError("");
+    if (!kycIdNumber.trim() || kycIdNumber.trim().length < 9) {
+      setKycModalError("Số CMND/CCCD không hợp lệ (tối thiểu 9 ký tự số).");
+      return;
+    }
+    if (!kycFrontUrl.trim()) {
+      setKycModalError("Vui lòng tải lên hoặc dán URL ảnh mặt trước CCCD/CMND.");
+      return;
+    }
+    if (!kycBackUrl.trim()) {
+      setKycModalError("Vui lòng tải lên hoặc dán URL ảnh mặt sau CCCD/CMND.");
+      return;
+    }
+
+    setIsSubmittingKyc(true);
+    try {
+      await smartEquipApi.submitKyc(token, {
+        idNumber: kycIdNumber.trim(),
+        idCardFront: kycFrontUrl.trim(),
+        idCardBack: kycBackUrl.trim(),
+        selfiePhoto: kycSelfieUrl.trim() || undefined,
+      });
+
+      if (user) {
+        saveUser({
+          ...user,
+          kycStatus: "pending",
+          kycDocument: {
+            idNumber: kycIdNumber.trim(),
+            idCardFront: kycFrontUrl.trim(),
+            idCardBack: kycBackUrl.trim(),
+            selfiePhoto: kycSelfieUrl.trim(),
+            submittedAt: new Date().toISOString(),
+          },
+        });
+      }
+
+      onSuccess(
+        "Đã gửi hồ sơ định danh (CCCD) thành công! Quản lý web (Moderator) sẽ kiểm duyệt và xác nhận để bạn có thể đăng thiết bị cho thuê."
+      );
+      setShowKycModal(false);
+    } catch (err) {
+      setKycModalError(err instanceof Error ? err.message : "Gửi hồ sơ xác thực danh tính thất bại.");
+    } finally {
+      setIsSubmittingKyc(false);
+    }
+  }
 
   async function handleFileUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -100,6 +192,40 @@ export default function OwnerEquipmentsTab({
       const [item] = copy.splice(index, 1);
       return [item, ...copy];
     });
+    setModalPreviewIndex(0);
+  }
+
+  function handleMovePhoto(index: number, direction: "left" | "right") {
+    setImagesList((prev) => {
+      const targetIndex = direction === "left" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy;
+    });
+    setModalPreviewIndex((prev) => {
+      if (direction === "left" && prev === index) return index - 1;
+      if (direction === "right" && prev === index) return index + 1;
+      return prev;
+    });
+  }
+
+  function handlePrevCardImage(eqId: string, total: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setCardImageIndices((prev) => ({
+      ...prev,
+      [eqId]: ((prev[eqId] || 0) - 1 + total) % total,
+    }));
+  }
+
+  function handleNextCardImage(eqId: string, total: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setCardImageIndices((prev) => ({
+      ...prev,
+      [eqId]: ((prev[eqId] || 0) + 1) % total,
+    }));
   }
 
   async function handleProofFileUpload(file: File | null) {
@@ -131,7 +257,7 @@ export default function OwnerEquipmentsTab({
     setCondition("Tốt (95%)");
     setPricePerDay(500000);
     setPricePerHour(50000);
-    setDepositAmount(10000000);
+    setDepositAmount(0);
     setRentalTerms("Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.");
     setCancellationPolicy("Miễn phí hủy trước 24 giờ.");
     setVisibility("published");
@@ -172,6 +298,12 @@ export default function OwnerEquipmentsTab({
 
     const finalImages = imagesList.length > 0 ? imagesList : (imageUrl ? [imageUrl] : undefined);
 
+    if (Number(pricePerDay) < 0 || Number(pricePerHour) < 0 || Number(depositAmount) < 0) {
+      onError("Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0).");
+      setIsSubmitting(false);
+      return;
+    }
+
     const payload = {
       title,
       category,
@@ -191,6 +323,12 @@ export default function OwnerEquipmentsTab({
       cancellation_policy: cancellationPolicy,
       visibility,
     };
+
+    if (!editingEquipment && !isKycVerified) {
+      onError("Tài khoản của bạn chưa được Quản lý web (Moderator) xác nhận danh tính. Vui lòng nộp hồ sơ CCCD và chờ xác nhận trước khi đăng thiết bị.");
+      setShowKycModal(true);
+      return;
+    }
 
     try {
       if (editingEquipment) {
@@ -280,8 +418,85 @@ export default function OwnerEquipmentsTab({
 
   return (
     <div className="owner-tab-content">
+      {/* KYC Alert Banner if not verified */}
+      {!isKycVerified && (
+        <div
+          style={{
+            marginBottom: "20px",
+            padding: "16px 20px",
+            borderRadius: "14px",
+            background: isKycPending
+              ? "rgba(56, 189, 248, 0.12)"
+              : isKycRejected
+              ? "rgba(239, 68, 68, 0.12)"
+              : "rgba(249, 115, 22, 0.14)",
+            border: `1px solid ${
+              isKycPending
+                ? "rgba(56, 189, 248, 0.4)"
+                : isKycRejected
+                ? "rgba(239, 68, 68, 0.4)"
+                : "rgba(249, 115, 22, 0.45)"
+            }`,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "14px",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: "280px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "1.4rem" }}>
+                {isKycPending ? "⏳" : isKycRejected ? "⚠️" : "🔒"}
+              </span>
+              <strong
+                style={{
+                  fontSize: "1rem",
+                  color: isKycPending ? "#38bdf8" : isKycRejected ? "#f87171" : "#fb923c",
+                }}
+              >
+                {isKycPending
+                  ? "Hồ sơ xác thực danh tính đang chờ Quản lý web (Moderator) xét duyệt"
+                  : isKycRejected
+                  ? "Hồ sơ xác thực danh tính của bạn chưa được Quản lý web phê duyệt"
+                  : "Yêu cầu bắt buộc: Quản lý web (Moderator) xác nhận danh tính mới được đăng thiết bị"}
+              </strong>
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: "0.86rem", color: "#cbd5e1", lineHeight: 1.5 }}>
+              {isKycPending
+                ? "Hồ sơ CCCD của bạn đã được gửi và đang được Quản lý web (Moderator) kiểm tra tính hợp lệ. Bạn sẽ có thể đăng thiết bị cho thuê ngay sau khi được duyệt."
+                : isKycRejected
+                ? `Lý do: ${user?.kycDocument?.rejectionReason || "Ảnh chụp không rõ ràng hoặc thông tin chưa chính xác"}. Vui lòng cập nhật lại hồ sơ để được phê duyệt quyền đăng thiết bị.`
+                : "Theo quy định an toàn của sàn, Chủ thiết bị (Owner) bắt buộc phải được Quản lý web (Moderator) xác nhận danh tính (CCCD) trước khi được phép đăng thiết bị cho thuê."}
+            </p>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="button button-primary"
+              style={{
+                width: "auto",
+                minHeight: "40px",
+                background: isKycPending ? "#0284c7" : undefined,
+              }}
+              onClick={() => {
+                setKycModalError("");
+                setShowKycModal(true);
+              }}
+            >
+              {isKycPending
+                ? "👁️ Xem / Cập nhật hồ sơ KYC"
+                : isKycRejected
+                ? "🔄 Nộp lại hồ sơ xác thực CCCD"
+                : "🪪 Nộp hồ sơ xác thực danh tính ngay 🚀"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
             📦 Danh sách Thiết bị cho thuê của bạn
@@ -292,12 +507,31 @@ export default function OwnerEquipmentsTab({
         </div>
         <button
           className="button button-primary"
+          style={{
+            opacity: isKycVerified ? 1 : 0.85,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
           onClick={() => {
+            if (!isKycVerified) {
+              onError(
+                isKycPending
+                  ? "Hồ sơ xác thực danh tính của bạn đang chờ Quản lý web (Moderator) phê duyệt. Vui lòng chờ trước khi đăng bài."
+                  : "Bạn cần được Quản lý web (Moderator) xác nhận danh tính trước khi đăng thiết bị cho thuê. Vui lòng nộp hồ sơ CCCD."
+              );
+              setShowKycModal(true);
+              return;
+            }
             resetForm();
             setShowCreateModal(true);
           }}
         >
-          + Tạo bài đăng thiết bị mới (UC_O03)
+          {isKycVerified ? (
+            "+ Tạo bài đăng thiết bị mới (UC_O03) 📷"
+          ) : (
+            "🔒 Cần xác nhận danh tính để đăng bài"
+          )}
         </button>
       </div>
 
@@ -310,44 +544,177 @@ export default function OwnerEquipmentsTab({
             className="button button-primary"
             style={{ marginTop: "12px" }}
             onClick={() => {
+              if (!isKycVerified) {
+                onError("Bạn cần được Quản lý web (Moderator) xác nhận danh tính trước khi đăng thiết bị cho thuê.");
+                setShowKycModal(true);
+                return;
+              }
               resetForm();
               setShowCreateModal(true);
             }}
           >
-            Đăng thiết bị đầu tiên 🚀
+            {isKycVerified ? "Đăng thiết bị đầu tiên 🚀" : "🔒 Xác nhận danh tính để đăng thiết bị"}
           </button>
         </div>
       ) : (
         <div className="owner-equipment-grid">
           {equipments.map((eq) => (
             <div key={eq._id} className="owner-equipment-card">
-              <div className="owner-card-img-wrap">
-                <img
-                  src={
-                    eq.images?.[0] ||
-                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
-                  }
-                  alt={eq.title}
-                />
-                {eq.images && eq.images.length > 1 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      bottom: "10px",
-                      left: "10px",
-                      background: "rgba(0, 0, 0, 0.75)",
-                      color: "#fff",
-                      padding: "2px 8px",
-                      borderRadius: "6px",
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                      backdropFilter: "blur(4px)",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                    }}
-                  >
-                    📷 {eq.images.length} ảnh
-                  </span>
-                )}
+              <div className="owner-card-img-wrap" style={{ position: "relative", overflow: "hidden" }}>
+                {(() => {
+                  const images =
+                    eq.images && eq.images.length > 0
+                      ? eq.images
+                      : [
+                          "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80",
+                        ];
+                  const currentIdx = (cardImageIndices[eq._id] || 0) % images.length;
+                  const currentImg = images[currentIdx];
+
+                  return (
+                    <>
+                      <img
+                        src={currentImg}
+                        alt={eq.title}
+                        key={`${eq._id}-${currentIdx}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", transition: "opacity 0.2s" }}
+                      />
+
+                      {/* Nút chuyển ảnh qua lại trên thẻ */}
+                      {images.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            title="Ảnh trước"
+                            aria-label="Ảnh trước"
+                            onClick={(e) => handlePrevCardImage(eq._id, images.length, e)}
+                            style={{
+                              position: "absolute",
+                              left: "8px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "30px",
+                              height: "30px",
+                              borderRadius: "50%",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "#fff",
+                              border: "1px solid rgba(255, 255, 255, 0.35)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              fontSize: "1.1rem",
+                              fontWeight: "bold",
+                              zIndex: 4,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                              userSelect: "none",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(234, 88, 12, 0.95)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0, 0, 0, 0.75)")}
+                          >
+                            ‹
+                          </button>
+
+                          <button
+                            type="button"
+                            title="Ảnh tiếp theo"
+                            aria-label="Ảnh tiếp theo"
+                            onClick={(e) => handleNextCardImage(eq._id, images.length, e)}
+                            style={{
+                              position: "absolute",
+                              right: "8px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "30px",
+                              height: "30px",
+                              borderRadius: "50%",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "#fff",
+                              border: "1px solid rgba(255, 255, 255, 0.35)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              fontSize: "1.1rem",
+                              fontWeight: "bold",
+                              zIndex: 4,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                              userSelect: "none",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(234, 88, 12, 0.95)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0, 0, 0, 0.75)")}
+                          >
+                            ›
+                          </button>
+
+                          {/* Dots chuyển nhanh ảnh */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "8px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              display: "flex",
+                              gap: "4px",
+                              zIndex: 3,
+                              background: "rgba(0,0,0,0.55)",
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              backdropFilter: "blur(4px)",
+                            }}
+                          >
+                            {images.map((_, dotIdx) => (
+                              <button
+                                key={dotIdx}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCardImageIndices((prev) => ({ ...prev, [eq._id]: dotIdx }));
+                                }}
+                                style={{
+                                  width: dotIdx === currentIdx ? "14px" : "6px",
+                                  height: "6px",
+                                  borderRadius: "3px",
+                                  background: dotIdx === currentIdx ? "#f97316" : "rgba(255,255,255,0.45)",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  transition: "all 0.2s",
+                                }}
+                                title={`Xem ảnh ${dotIdx + 1}`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Badge hiển thị số thứ tự ảnh */}
+                      {images.length > 1 && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            bottom: "10px",
+                            left: "10px",
+                            background: "rgba(0, 0, 0, 0.8)",
+                            color: "#fff",
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                            backdropFilter: "blur(4px)",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            zIndex: 3,
+                          }}
+                        >
+                          📷 {currentIdx + 1} / {images.length}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
+
                 <span className={`owner-vis-badge vis-${eq.visibility}`}>
                   {eq.visibility === "published"
                     ? "Đang hiển thị"
@@ -382,8 +749,8 @@ export default function OwnerEquipmentsTab({
                   </div>
                   <div>
                     <span className="price-label">Tiền cọc:</span>
-                    <span className="deposit-num">
-                      {eq.pricing.deposit_amount.toLocaleString("vi-VN")} đ
+                    <span className="deposit-num" style={{ color: "#10b981" }}>
+                      Không cần cọc (0 đ)
                     </span>
                   </div>
                 </div>
@@ -659,6 +1026,100 @@ export default function OwnerEquipmentsTab({
                   {/* Image thumbnails list */}
                   {imagesList.length > 0 && (
                     <div style={{ marginTop: "14px" }}>
+                      {/* Live preview carousel box with prev/next */}
+                      {imagesList.length > 1 && (
+                        <div
+                          style={{
+                            position: "relative",
+                            width: "100%",
+                            height: "220px",
+                            borderRadius: "12px",
+                            overflow: "hidden",
+                            background: "#080c14",
+                            border: "1px solid var(--border)",
+                            marginBottom: "14px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <img
+                            src={imagesList[modalPreviewIndex % imagesList.length]}
+                            alt="Xem trước ảnh"
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          />
+                          <button
+                            type="button"
+                            title="Ảnh trước"
+                            onClick={() =>
+                              setModalPreviewIndex((prev) => (prev - 1 + imagesList.length) % imagesList.length)
+                            }
+                            style={{
+                              position: "absolute",
+                              left: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "50%",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              border: "1px solid rgba(255,255,255,0.3)",
+                              cursor: "pointer",
+                              fontSize: "1.3rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            ‹
+                          </button>
+                          <button
+                            type="button"
+                            title="Ảnh tiếp theo"
+                            onClick={() =>
+                              setModalPreviewIndex((prev) => (prev + 1) % imagesList.length)
+                            }
+                            style={{
+                              position: "absolute",
+                              right: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "50%",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              border: "1px solid rgba(255,255,255,0.3)",
+                              cursor: "pointer",
+                              fontSize: "1.3rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            ›
+                          </button>
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "8px",
+                              right: "12px",
+                              background: "rgba(0,0,0,0.8)",
+                              color: "#fff",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            📷 {(modalPreviewIndex % imagesList.length) + 1} / {imagesList.length}
+                          </div>
+                        </div>
+                      )}
+
                       <div
                         style={{
                           display: "grid",
@@ -669,16 +1130,23 @@ export default function OwnerEquipmentsTab({
                         {imagesList.map((imgUrl, idx) => (
                           <div
                             key={idx}
+                            onClick={() => setModalPreviewIndex(idx)}
                             style={{
                               position: "relative",
                               borderRadius: "10px",
                               overflow: "hidden",
-                              border: idx === 0 ? "2px solid var(--orange)" : "1px solid var(--border)",
+                              border:
+                                idx === 0
+                                  ? "2px solid var(--orange)"
+                                  : idx === (modalPreviewIndex % imagesList.length)
+                                    ? "2px solid #38bdf8"
+                                    : "1px solid var(--border)",
                               background: "#0b0f19",
-                              height: "110px",
+                              height: "115px",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
+                              cursor: "pointer",
                             }}
                           >
                             <img
@@ -705,26 +1173,31 @@ export default function OwnerEquipmentsTab({
                                   padding: "2px 6px",
                                   borderRadius: "4px",
                                   boxShadow: "0 2px 4px rgba(0,0,0,0.4)",
+                                  zIndex: 2,
                                 }}
                               >
-                                ★ ẢNH BÌA
+                                ★ BÌA
                               </span>
                             ) : (
                               <button
                                 type="button"
                                 title="Đặt làm ảnh bìa"
-                                onClick={() => handleSetPrimaryPhoto(idx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetPrimaryPhoto(idx);
+                                }}
                                 style={{
                                   position: "absolute",
                                   top: "6px",
                                   left: "6px",
-                                  background: "rgba(0,0,0,0.75)",
+                                  background: "rgba(0,0,0,0.8)",
                                   color: "#fff",
-                                  border: "1px solid rgba(255,255,255,0.2)",
+                                  border: "1px solid rgba(255,255,255,0.25)",
                                   borderRadius: "4px",
                                   fontSize: "0.65rem",
                                   padding: "2px 6px",
                                   cursor: "pointer",
+                                  zIndex: 2,
                                 }}
                               >
                                 Đặt bìa
@@ -735,7 +1208,10 @@ export default function OwnerEquipmentsTab({
                             <button
                               type="button"
                               title="Xóa ảnh"
-                              onClick={() => handleRemovePhoto(idx)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemovePhoto(idx);
+                              }}
                               style={{
                                 position: "absolute",
                                 top: "6px",
@@ -752,10 +1228,70 @@ export default function OwnerEquipmentsTab({
                                 cursor: "pointer",
                                 fontSize: "0.75rem",
                                 fontWeight: "bold",
+                                zIndex: 2,
                               }}
                             >
                               ✕
                             </button>
+
+                            {/* Chuyển qua / chuyển lại thứ tự ảnh */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: "4px",
+                                left: "4px",
+                                right: "4px",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                zIndex: 2,
+                              }}
+                            >
+                              {idx > 0 ? (
+                                <button
+                                  type="button"
+                                  title="Chuyển ảnh sang trái"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMovePhoto(idx, "left");
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.8)",
+                                    color: "#fff",
+                                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                                    borderRadius: "4px",
+                                    padding: "2px 6px",
+                                    fontSize: "0.7rem",
+                                    cursor: "pointer",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  ◀
+                                </button>
+                              ) : <span />}
+
+                              {idx < imagesList.length - 1 ? (
+                                <button
+                                  type="button"
+                                  title="Chuyển ảnh sang phải"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMovePhoto(idx, "right");
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.8)",
+                                    color: "#fff",
+                                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                                    borderRadius: "4px",
+                                    padding: "2px 6px",
+                                    fontSize: "0.7rem",
+                                    cursor: "pointer",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  ▶
+                                </button>
+                              ) : <span />}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -797,9 +1333,13 @@ export default function OwnerEquipmentsTab({
                     <input
                       className="input-field"
                       type="number"
+                      min={0}
                       step={10000}
                       value={pricePerDay}
-                      onChange={(e) => setPricePerDay(Number(e.target.value))}
+                      onChange={(e) => setPricePerDay(Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e") e.preventDefault();
+                      }}
                       required
                     />
                   </div>
@@ -808,20 +1348,27 @@ export default function OwnerEquipmentsTab({
                     <input
                       className="input-field"
                       type="number"
+                      min={0}
                       step={5000}
                       value={pricePerHour}
-                      onChange={(e) => setPricePerHour(Number(e.target.value))}
+                      onChange={(e) => setPricePerHour(Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e") e.preventDefault();
+                      }}
                     />
                   </div>
                   <div>
-                    <label className="field-label">Tiền đặt cọc cam kết (VND) *</label>
+                    <label className="field-label">Tiền đặt cọc (VND - Không cần cọc: 0 đ)</label>
                     <input
                       className="input-field"
                       type="number"
-                      step={100000}
+                      min={0}
+                      step={50000}
                       value={depositAmount}
-                      onChange={(e) => setDepositAmount(Number(e.target.value))}
-                      required
+                      onChange={(e) => setDepositAmount(Math.max(0, Number(e.target.value) || 0))}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e") e.preventDefault();
+                      }}
                     />
                   </div>
                 </div>
@@ -948,6 +1495,188 @@ export default function OwnerEquipmentsTab({
       )}
 
       {/* MODAL: Submit Equipment Status Update Request (UC_O16) */}
+      {/* MODAL: Quick Identity Verification (KYC / CCCD) for Owner */}
+      {showKycModal && (
+        <div className="owner-modal-overlay">
+          <div className="owner-modal-card" style={{ maxWidth: "620px" }}>
+            <div className="owner-modal-header">
+              <h3>🪪 Xác thực Danh tính Chủ thiết bị (KYC / CCCD)</h3>
+              <button className="close-modal-btn" onClick={() => setShowKycModal(false)}>
+                ✕
+              </button>
+            </div>
+
+            <p style={{ color: "var(--muted)", fontSize: "0.86rem", marginTop: 0 }}>
+              Theo quy định an toàn, hồ sơ định danh sẽ được{" "}
+              <strong style={{ color: "#38bdf8" }}>Quản lý web (Moderator)</strong> rà soát và xác nhận
+              để mở quyền đăng thiết bị cho thuê trên nền tảng.
+            </p>
+
+            {kycModalError && (
+              <div
+                style={{
+                  marginBottom: "14px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  color: "#fca5a5",
+                  fontSize: "0.85rem",
+                }}
+              >
+                ⚠️ {kycModalError}
+              </div>
+            )}
+
+            {isKycPending && (
+              <div
+                style={{
+                  marginBottom: "14px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "rgba(56, 189, 248, 0.12)",
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  color: "#7dd3fc",
+                  fontSize: "0.85rem",
+                }}
+              >
+                ⏳ <strong>Hồ sơ đang chờ duyệt:</strong> Bạn có thể nộp lại giấy tờ mới nếu muốn thay đổi thông tin.
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitKyc}>
+              <div style={{ display: "grid", gap: "14px" }}>
+                <div>
+                  <label className="field-label">Số CMND / Căn cước công dân (CCCD) *</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Nhập 12 chữ số trên thẻ CCCD gắn chip..."
+                    value={kycIdNumber}
+                    onChange={(e) => setKycIdNumber(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="field-label">Ảnh mặt trước CCCD gắn chip *</label>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Dán URL ảnh hoặc bấm Tải ảnh..."
+                      value={kycFrontUrl}
+                      onChange={(e) => setKycFrontUrl(e.target.value)}
+                      required
+                    />
+                    <input
+                      ref={kycFrontFileRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleKycImageUpload(file, "front");
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ width: "auto", whiteSpace: "nowrap" }}
+                      onClick={() => kycFrontFileRef.current?.click()}
+                      disabled={isUploadingKycFront}
+                    >
+                      {isUploadingKycFront ? "Đang tải..." : "📁 Tải ảnh"}
+                    </button>
+                  </div>
+                  {kycFrontUrl && (
+                    <div style={{ marginTop: "6px" }}>
+                      <img
+                        src={kycFrontUrl}
+                        alt="CCCD Mặt trước"
+                        style={{ height: "90px", borderRadius: "8px", objectFit: "cover", border: "1px solid #334155" }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="field-label">Ảnh mặt sau CCCD gắn chip *</label>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Dán URL ảnh hoặc bấm Tải ảnh..."
+                      value={kycBackUrl}
+                      onChange={(e) => setKycBackUrl(e.target.value)}
+                      required
+                    />
+                    <input
+                      ref={kycBackFileRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleKycImageUpload(file, "back");
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ width: "auto", whiteSpace: "nowrap" }}
+                      onClick={() => kycBackFileRef.current?.click()}
+                      disabled={isUploadingKycBack}
+                    >
+                      {isUploadingKycBack ? "Đang tải..." : "📁 Tải ảnh"}
+                    </button>
+                  </div>
+                  {kycBackUrl && (
+                    <div style={{ marginTop: "6px" }}>
+                      <img
+                        src={kycBackUrl}
+                        alt="CCCD Mặt sau"
+                        style={{ height: "90px", borderRadius: "8px", objectFit: "cover", border: "1px solid #334155" }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="field-label">Ảnh chân dung selfie cầm CCCD (Tùy chọn)</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="URL ảnh chân dung (tăng độ tin cậy và duyệt nhanh hơn)..."
+                    value={kycSelfieUrl}
+                    onChange={(e) => setKycSelfieUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: "18px" }}>
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  style={{ width: "auto" }}
+                  onClick={() => setShowKycModal(false)}
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  style={{ width: "auto" }}
+                  disabled={isSubmittingKyc || isUploadingKycFront || isUploadingKycBack}
+                >
+                  {isSubmittingKyc ? "Đang gửi hồ sơ..." : "📤 Gửi Quản lý web xác nhận danh tính"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {statusRequestEquipment && (
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "520px" }}>
