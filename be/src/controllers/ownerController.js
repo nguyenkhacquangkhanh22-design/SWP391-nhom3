@@ -62,8 +62,12 @@ async function getOverview(req, res) {
     settlements,
     recentRequests,
   ] = await Promise.all([
-    Equipment.countDocuments({ owner_id: ownerId }),
-    Equipment.countDocuments({ owner_id: ownerId, visibility: "published", status: "available" }),
+    Equipment.countDocuments({ $or: [{ owner_id: ownerId }, { owner: ownerId }] }),
+    Equipment.countDocuments({
+      $or: [{ owner_id: ownerId }, { owner: ownerId }],
+      visibility: "published",
+      status: "available",
+    }),
     RentalRequest.countDocuments({ owner_id: ownerId, status: "pending" }),
     RentalContract.countDocuments({
       owner_id: ownerId,
@@ -105,7 +109,9 @@ async function getOverview(req, res) {
 // -----------------------------------------------------------------------------
 async function getOwnerEquipments(req, res) {
   const ownerId = req.user._id;
-  const equipments = await Equipment.find({ owner_id: ownerId })
+  const equipments = await Equipment.find({
+    $or: [{ owner_id: ownerId }, { owner: ownerId }],
+  })
     .sort({ createdAt: -1 })
     .lean();
 
@@ -116,7 +122,7 @@ async function getEquipmentDetail(req, res) {
   const { id } = req.params;
   const equipment = await Equipment.findOne({
     _id: id,
-    owner_id: req.user._id,
+    $or: [{ owner_id: req.user._id }, { owner: req.user._id }],
   }).lean();
 
   if (!equipment) {
@@ -241,7 +247,10 @@ async function updateEquipment(req, res) {
   const { id } = req.params;
   const ownerId = req.user._id;
 
-  const equipment = await Equipment.findOne({ _id: id, owner_id: ownerId });
+  const equipment = await Equipment.findOne({
+    _id: id,
+    $or: [{ owner_id: ownerId }, { owner: ownerId }],
+  });
   if (!equipment) {
     throw new AppError(404, "Không tìm thấy thiết bị");
   }
@@ -322,7 +331,10 @@ async function toggleEquipmentVisibility(req, res) {
     throw new AppError(400, "Trạng thái hiển thị không hợp lệ");
   }
 
-  const equipment = await Equipment.findOne({ _id: id, owner_id: req.user._id });
+  const equipment = await Equipment.findOne({
+    _id: id,
+    $or: [{ owner_id: req.user._id }, { owner: req.user._id }],
+  });
   if (!equipment) {
     throw new AppError(404, "Không tìm thấy thiết bị");
   }
@@ -352,7 +364,10 @@ async function scheduleEquipmentAvailability(req, res) {
     throw new AppError(400, "Ngày kết thúc phải sau ngày bắt đầu");
   }
 
-  const equipment = await Equipment.findOne({ _id: id, owner_id: req.user._id });
+  const equipment = await Equipment.findOne({
+    _id: id,
+    $or: [{ owner_id: req.user._id }, { owner: req.user._id }],
+  });
   if (!equipment) {
     throw new AppError(404, "Không tìm thấy thiết bị");
   }
@@ -397,7 +412,10 @@ async function submitEquipmentStatusUpdateRequest(req, res) {
     throw new AppError(400, "Vui lòng nhập trạng thái cần đổi và lý do kèm minh chứng");
   }
 
-  const equipment = await Equipment.findOne({ _id: id, owner_id: req.user._id });
+  const equipment = await Equipment.findOne({
+    _id: id,
+    $or: [{ owner_id: req.user._id }, { owner: req.user._id }],
+  });
   if (!equipment) {
     throw new AppError(404, "Không tìm thấy thiết bị");
   }

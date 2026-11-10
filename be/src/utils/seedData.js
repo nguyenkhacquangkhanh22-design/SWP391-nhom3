@@ -124,7 +124,24 @@ async function seedData() {
   );
   console.log("✓ Đã nạp hồ sơ định danh & tài khoản ngân hàng Owner (UC_O02)");
 
-  // Clear existing owner equipments & related records to prevent duplication
+  // Kiểm tra nếu Owner đã có bài đăng thiết bị trong DB thì KHÔNG xóa, bảo toàn toàn bộ bài đăng thực tế của Owner
+  const existingOwnerEquipments = await Equipment.countDocuments({
+    $or: [{ owner_id: owner._id }, { owner: owner._id }],
+  });
+
+  if (existingOwnerEquipments > 0) {
+    console.log(`✓ Owner (${owner.email}) đã có ${existingOwnerEquipments} bài đăng thiết bị. Giữ nguyên toàn bộ bài đăng và dữ liệu thực tế.`);
+    try {
+      const seedFiveOwnersAndRentals = require("./seedFiveOwnersAndRentals");
+      await seedFiveOwnersAndRentals();
+    } catch (e5) {
+      console.warn("Lỗi nạp 5 owner & renter:", e5.message);
+    }
+    console.log("--- Hoàn tất khởi động dữ liệu an toàn! ---");
+    return;
+  }
+
+  // Nếu DB trống, khởi tạo bộ dữ liệu mẫu ban đầu
   await Equipment.deleteMany({ owner_id: owner._id });
   await RentalRequest.deleteMany({ owner_id: owner._id });
   await RentalContract.deleteMany({ owner_id: owner._id });

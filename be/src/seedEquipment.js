@@ -178,11 +178,10 @@ async function seed() {
     await owner.save();
   }
 
-  // Không xóa thiết bị liên tục làm thay đổi _id của các đơn đang thuê
+  // Giữ nguyên thiết bị và đúng chủ sở hữu cho từng Owner, không xóa và không ghi đè chủ sở hữu
   const existingCount = await Equipment.countDocuments();
-  if (existingCount >= sampleEquipments.length) {
-    await Equipment.updateMany({}, { $set: { owner: owner._id, owner_id: owner._id } });
-    console.log(`✓ Đã có ${existingCount} thiết bị trong DB, giữ nguyên ID và cập nhật chủ máy: ${owner.email}`);
+  if (existingCount > 0) {
+    console.log(`✓ Đã có ${existingCount} thiết bị trong DB, giữ nguyên toàn bộ bài đăng và quyền sở hữu của từng Owner.`);
     return;
   }
 
