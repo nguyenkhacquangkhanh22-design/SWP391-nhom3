@@ -62,9 +62,9 @@ export default function OwnerEquipmentsTab({
 
   const [accessoriesInput, setAccessoriesInput] = useState("");
   const [condition, setCondition] = useState("Tốt (95%)");
-  const [pricePerDay, setPricePerDay] = useState(500000);
-  const [pricePerHour, setPricePerHour] = useState(50000);
-  const [depositAmount, setDepositAmount] = useState(0);
+  const [pricePerDay, setPricePerDay] = useState<number | string>(500000);
+  const [pricePerHour, setPricePerHour] = useState<number | string>(50000);
+  const [depositAmount, setDepositAmount] = useState<number | string>(0);
   const [rentalTerms, setRentalTerms] = useState(
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   );
@@ -298,7 +298,11 @@ export default function OwnerEquipmentsTab({
 
     const finalImages = imagesList.length > 0 ? imagesList : (imageUrl ? [imageUrl] : undefined);
 
-    if (Number(pricePerDay) < 0 || Number(pricePerHour) < 0 || Number(depositAmount) < 0) {
+    const finalPricePerDay = pricePerDay === "" ? 0 : Number(pricePerDay);
+    const finalPricePerHour = pricePerHour === "" ? 0 : Number(pricePerHour);
+    const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
+
+    if (finalPricePerDay < 0 || finalPricePerHour < 0 || finalDepositAmount < 0) {
       onError("Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0).");
       setIsSubmitting(false);
       return;
@@ -315,9 +319,9 @@ export default function OwnerEquipmentsTab({
       accessories: accessoriesList,
       condition,
       pricing: {
-        price_per_day: Number(pricePerDay),
-        price_per_hour: Number(pricePerHour),
-        deposit_amount: Number(depositAmount),
+        price_per_day: finalPricePerDay,
+        price_per_hour: finalPricePerHour,
+        deposit_amount: finalDepositAmount,
       },
       rental_terms: rentalTerms,
       cancellation_policy: cancellationPolicy,
@@ -1338,7 +1342,12 @@ export default function OwnerEquipmentsTab({
                       value={pricePerDay}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setPricePerDay(val === "" ? 0 : Math.max(0, Number(val)));
+                        if (val === "") {
+                          setPricePerDay("");
+                        } else {
+                          const num = Number(val);
+                          if (!isNaN(num)) setPricePerDay(Math.max(0, num));
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
@@ -1356,7 +1365,12 @@ export default function OwnerEquipmentsTab({
                       value={pricePerHour}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setPricePerHour(val === "" ? 0 : Math.max(0, Number(val)));
+                        if (val === "") {
+                          setPricePerHour("");
+                        } else {
+                          const num = Number(val);
+                          if (!isNaN(num)) setPricePerHour(Math.max(0, num));
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
@@ -1373,7 +1387,12 @@ export default function OwnerEquipmentsTab({
                       value={depositAmount}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setDepositAmount(val === "" ? 0 : Math.max(0, Number(val)));
+                        if (val === "") {
+                          setDepositAmount("");
+                        } else {
+                          const num = Number(val);
+                          if (!isNaN(num)) setDepositAmount(Math.max(0, num));
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();

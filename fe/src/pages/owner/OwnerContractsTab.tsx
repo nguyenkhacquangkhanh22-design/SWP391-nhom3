@@ -180,6 +180,12 @@ export default function OwnerContractsTab({
       ? [initialSelectedRequest, ...approvedRequests]
       : approvedRequests;
 
+  useEffect(() => {
+    if (showCreateModal && !selectedRequestForContract && selectableRequests.length > 0) {
+      setSelectedRequestForContract(selectableRequests[0]._id);
+    }
+  }, [showCreateModal, selectedRequestForContract, selectableRequests]);
+
   const activeRequestObj = selectableRequests.find((r) => r._id === selectedRequestForContract);
 
   // Keep standard contract preview updated unless Owner manually toggled custom editing
@@ -1128,38 +1134,72 @@ export default function OwnerContractsTab({
                 </div>
               </div>
 
-              <div className="modal-actions" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="button button-quiet"
-                  style={{ width: "auto" }}
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Hủy
-                </button>
+                {modalError && (
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.15)",
+                      border: "1px solid rgba(239, 68, 68, 0.4)",
+                      color: "#fca5a5",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      marginTop: "16px",
+                      marginBottom: "6px",
+                      fontSize: "0.85rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>⚠️ {modalError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setModalError("")}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#fca5a5",
+                        cursor: "pointer",
+                        fontSize: "1rem",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
 
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <div className="modal-actions" style={{ justifyContent: "space-between", flexWrap: "wrap", marginTop: "16px" }}>
                   <button
                     type="button"
-                    className="button button-secondary"
+                    className="button button-quiet"
                     style={{ width: "auto" }}
-                    disabled={isSubmitting || !selectedRequestForContract}
-                    onClick={() => void handleCreateContract(false)}
+                    onClick={() => setShowCreateModal(false)}
                   >
-                    📝 Chỉ lưu bản nháp (v1)
+                    Hủy
                   </button>
-                  <button
-                    type="submit"
-                    className="button button-primary"
-                    style={{ width: "auto" }}
-                    disabled={isSubmitting || !selectedRequestForContract}
-                  >
-                    {isSubmitting
-                      ? "Đang xử lý..."
-                      : "📤 Lập Hợp đồng & Gửi Người thuê qua Chat"}
-                  </button>
+
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ width: "auto" }}
+                      disabled={isSubmitting || !selectedRequestForContract}
+                      onClick={() => void handleCreateContract(false)}
+                    >
+                      📝 Chỉ lưu bản nháp (v1)
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      style={{ width: "auto" }}
+                      disabled={isSubmitting || !selectedRequestForContract}
+                      onClick={() => void handleCreateContract(true)}
+                    >
+                      {isSubmitting
+                        ? "Đang xử lý..."
+                        : "📤 Lập Hợp đồng & Gửi Người thuê qua Chat"}
+                    </button>
+                  </div>
                 </div>
-              </div>
             </form>
           </div>
         </div>

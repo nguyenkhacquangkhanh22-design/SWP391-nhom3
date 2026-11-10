@@ -23,7 +23,8 @@ const {
 function generateCode(prefix) {
   const randomPart = crypto.randomBytes(3).toString("hex").toUpperCase();
   const year = new Date().getFullYear();
-  return `${prefix}-${year}-${randomPart}`;
+  const time = Date.now().toString().slice(-4);
+  return `${prefix}-${year}-${time}-${randomPart}`;
 }
 
 async function notifyManagers(title, message, relatedRecordId) {
@@ -760,6 +761,14 @@ async function createRentalContract(req, res) {
     }).populate("equipment_id");
   }
 
+  // Nếu chưa tìm thấy với ownerIds, thử tìm trực tiếp theo ID hoặc request_code
+  if (!rentalReq && mongoose.isValidObjectId(request_id)) {
+    rentalReq = await RentalRequest.findById(request_id).populate("equipment_id");
+  }
+  if (!rentalReq) {
+    rentalReq = await RentalRequest.findOne({ request_code: request_id }).populate("equipment_id");
+  }
+
   // Nếu không tìm thấy trong RentalRequest, tìm kiếm trong bảng Rental trực tiếp
   if (!rentalReq) {
     let directRental = null;
@@ -774,6 +783,12 @@ async function createRentalContract(req, res) {
         rentalCode: request_id,
         owner: { $in: ownerIds },
       }).populate("equipment").populate("renter");
+    }
+    if (!directRental && mongoose.isValidObjectId(request_id)) {
+      directRental = await Rental.findById(request_id).populate("equipment renter");
+    }
+    if (!directRental) {
+      directRental = await Rental.findOne({ rentalCode: request_id }).populate("equipment renter");
     }
 
     if (directRental) {
@@ -794,7 +809,7 @@ async function createRentalContract(req, res) {
           renter_name: renterName,
           renter_email: renterEmail,
           renter_phone: renterPhone,
-          owner_id: directRental.owner,
+          owner_id: directRental.owner || ownerId,
           equipment_id: equipObj?._id || equipObj,
           start_date: directRental.startDate,
           end_date: directRental.endDate,
@@ -819,9 +834,19 @@ async function createRentalContract(req, res) {
     "pending",
     "contract_created",
     "contract_drafted",
+    "contract_pending",
     "confirmed",
+    "paid",
+    "signed",
+    "active",
     "APPROVED",
     "PENDING",
+    "CONTRACT_PENDING",
+    "CONTRACT_DRAFTED",
+    "CONFIRMED",
+    "PAID",
+    "SIGNED",
+    "ACTIVE",
   ];
   if (!validReqStatuses.includes(rentalReq.status)) {
     throw new AppError(400, `Yêu cầu thuê đang ở trạng thái "${rentalReq.status}", không thể lập hợp đồng.`);
@@ -997,13 +1022,25 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
     });
     await contract.save();
   } else {
+    let contractRenterId = rentalReq.renter_id?._id || rentalReq.renter_id;
+    if (!contractRenterId) {
+      let renterUser = null;
+      if (rentalReq.renter_email) {
+        renterUser = await User.findOne({ email: rentalReq.renter_email }).select("_id").lean();
+      }
+      if (!renterUser) {
+        renterUser = await User.findOne({ role: "renter" }).select("_id").lean();
+      }
+      contractRenterId = renterUser?._id || ownerId;
+    }
+
     contract = await RentalContract.create({
       contract_code: contractCode,
       request_id: rentalReq._id,
-      equipment_id: equipment._id,
+      equipment_id: equipment?._id || equipment,
       owner_id: ownerId,
-      renter_id: rentalReq.renter_id,
-      title: `Hợp đồng thuê ${equipment.title} - ${rentalReq.renter_name}`,
+      renter_id: contractRenterId,
+      title: `Hợp đồng thuê ${equipment.title || "thiết bị"} - ${rentalReq.renter_name || "Khách thuê"}`,
       terms_content: standardTerms,
       rental_price: rentalReq.rental_fee,
       deposit_amount: 0, // Không cần tiền cọc
