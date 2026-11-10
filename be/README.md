@@ -10,6 +10,13 @@ credentials, and the frontend URL used for password reset links. Never commit
 Google sign-in expects an ID token from a client configured with
 `GOOGLE_CLIENT_ID`; a Google API key is not used to authenticate users.
 
+Owner membership payments use the official PayOS Node SDK. Configure
+`PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, and `PAYOS_CHECKSUM_KEY` in the backend's
+local `.env`, and set the PayOS webhook in the merchant dashboard to
+`https://<backend-domain>/api/payments/payos/webhook`. Keep PayOS credentials
+server-side; payment activation is based on the verified webhook, not the
+browser return URL.
+
 ## Endpoints
 
 All routes use the `/api/auth` prefix. Protected routes require
@@ -60,6 +67,22 @@ Protected with role `owner` or `systemadmin`:
 | GET | `/disputes` | UC_O17 | Danh sách khiếu nại của Owner |
 | POST | `/support-tickets` | UC_O18 | Gửi yêu cầu hỗ trợ |
 | GET | `/support-tickets` | UC_O18 | Theo dõi tiến độ xử lý ticket hỗ trợ |
+
+### Owner Membership
+
+Only approved Owner accounts can use these routes. The free 7-day trial can be
+activated once per Owner. Paid plans are 20,000 VND / 1 month, 35,000 VND /
+2 months, and 50,000 VND / 3 months. Renewals extend from the current expiry.
+Expired membership hides the Owner's published listings; renewing restores
+listings hidden by membership expiry.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/owner/membership` | Read current membership, available plans, and recent orders |
+| POST | `/api/owner/membership/trial` | Activate the one-time 7-day free trial |
+| POST | `/api/owner/membership/checkout` | Create a PayOS checkout link (`plan`: `month_1`, `month_2`, or `month_3`) |
+| GET | `/api/owner/membership/orders/:orderCode` | Read the authenticated Owner's payment order status |
+| POST | `/api/payments/payos/webhook` | Receive and verify PayOS payment notifications |
 
 Người thuê xác nhận đã nhận thiết bị tại `POST /api/equipments/my/contracts/:id/confirm-receipt`.
 Sau xác nhận, settlement được ghi nhận giải ngân; Owner nhận thông báo khi có biên bản

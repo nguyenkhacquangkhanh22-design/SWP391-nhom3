@@ -284,6 +284,10 @@ async function updateEquipment(req, res) {
   if (cancellation_policy !== undefined) equipment.cancellation_policy = cancellation_policy;
   if (visibility && ["published", "hidden", "draft"].includes(visibility)) {
     equipment.visibility = visibility;
+    equipment.membership_hidden = false;
+    if (visibility === "published") {
+      equipment.hidden_reason = "";
+    }
   }
 
   await equipment.save();
@@ -309,6 +313,10 @@ async function toggleEquipmentVisibility(req, res) {
   }
 
   equipment.visibility = visibility;
+  equipment.membership_hidden = false;
+  if (visibility === "published") {
+    equipment.hidden_reason = "";
+  }
   await equipment.save();
 
   res.json({

@@ -11,6 +11,8 @@ import type {
   OwnerStats,
   OwnerContractTemplate,
   DigitalSignaturePayload,
+  OwnerMembershipOverview,
+  OwnerMembershipOrder,
 } from "../types/owner";
 
 async function request<T>(
@@ -51,6 +53,30 @@ async function request<T>(
 }
 
 export const ownerApi = {
+  getMembership: (token: string) =>
+    request<OwnerMembershipOverview>("/api/owner/membership", { method: "GET" }, token),
+
+  startMembershipTrial: (token: string) =>
+    request<{ message: string; membership: OwnerMembershipOrder }>(
+      "/api/owner/membership/trial",
+      { method: "POST", body: JSON.stringify({}) },
+      token,
+    ),
+
+  createMembershipCheckout: (token: string, plan: string) =>
+    request<{ message: string; orderCode: number; checkoutUrl: string; amount: number; plan: string }>(
+      "/api/owner/membership/checkout",
+      { method: "POST", body: JSON.stringify({ plan }) },
+      token,
+    ),
+
+  getMembershipOrder: (token: string, orderCode: string) =>
+    request<{ order: OwnerMembershipOrder }>(
+      `/api/owner/membership/orders/${encodeURIComponent(orderCode)}`,
+      { method: "GET" },
+      token,
+    ),
+
   // 1. Overview & Stats
   getOverview: (token: string) =>
     request<{ stats: OwnerStats; recentRequests: RentalRequest[] }>(

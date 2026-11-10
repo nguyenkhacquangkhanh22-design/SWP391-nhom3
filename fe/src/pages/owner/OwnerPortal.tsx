@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../app/AuthProvider";
 import Brand from "../../components/Brand";
 import Feedback from "../../components/Feedback";
@@ -9,6 +9,7 @@ import type {
   RentalRequest,
   RentalContract,
   OwnerStats,
+  OwnerMembershipOverview,
 } from "../../types/owner";
 
 import OwnerOverviewTab from "./OwnerOverviewTab";
@@ -19,11 +20,14 @@ import OwnerHandoverTab from "./OwnerHandoverTab";
 import OwnerSettlementTab from "./OwnerSettlementTab";
 import OwnerDisputesTab from "./OwnerDisputesTab";
 import OwnerSupportTab from "./OwnerSupportTab";
+import OwnerMembershipTab from "./OwnerMembershipTab";
 
 export default function OwnerPortal() {
   const { user, token, signOut } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<
+    | "membership"
     | "overview"
     | "equipments"
     | "requests"
@@ -40,6 +44,7 @@ export default function OwnerPortal() {
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [requests, setRequests] = useState<RentalRequest[]>([]);
   const [contracts, setContracts] = useState<RentalContract[]>([]);
+  const [membership, setMembership] = useState<OwnerMembershipOverview | null>(null);
 
   // Inter-tab selections
   const [requestForContract, setRequestForContract] = useState<RentalRequest | null>(null);
@@ -48,6 +53,12 @@ export default function OwnerPortal() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const paymentReturn = searchParams.get("membership") === "return";
+
+  useEffect(() => {
+    if (paymentReturn) setActiveTab("membership");
+  }, [paymentReturn]);
 
   useEffect(() => {
     if (token) {
@@ -59,12 +70,16 @@ export default function OwnerPortal() {
     if (!token) return;
     if (showSpinner) setIsLoading(true);
     try {
-      const [overviewData, equipmentsData, requestsData, contractsData] =
+      const [overviewData, equipmentsData, requestsData, contractsData, membershipData] =
         await Promise.all([
           ownerApi.getOverview(token).catch(() => ({ stats: null, recentRequests: [] })),
           ownerApi.getEquipments(token).catch(() => ({ equipments: [] })),
           ownerApi.getRentalRequests(token).catch(() => ({ requests: [] })),
           ownerApi.getContracts(token).catch(() => ({ contracts: [] })),
+          ownerApi.getMembership(token).catch((err) => {
+            setError(err instanceof Error ? err.message : "Không thể tải trạng thái membership.");
+            return null;
+          }),
         ]);
 
       setStats(overviewData.stats);
@@ -72,6 +87,10 @@ export default function OwnerPortal() {
       setEquipments(equipmentsData.equipments || []);
       setRequests(requestsData.requests || []);
       setContracts(contractsData.contracts || []);
+      setMembership(membershipData);
+      if (!membershipData?.current) {
+        setActiveTab((currentTab) => currentTab === "overview" ? "membership" : currentTab);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu.");
     } finally {
@@ -122,6 +141,12 @@ export default function OwnerPortal() {
       <div className="owner-container">
         {/* Navigation Tabs Bar */}
         <div className="owner-tabs-nav">
+          <button
+            className={`owner-tab-btn ${activeTab === "membership" ? "active" : ""}`}
+            onClick={() => handleTabChange("membership")}
+          >
+            💳 Membership {!membership?.current && <span className="tab-badge-alert" style={{ marginLeft: 8 }}>Cần đăng ký</span>}
+          </button>
           <button
             className={`owner-tab-btn ${activeTab === "overview" ? "active" : ""}`}
             onClick={() => handleTabChange("overview")}
@@ -208,6 +233,16 @@ export default function OwnerPortal() {
           </div>
         ) : (
           <>
+            {activeTab === "membership" && (
+              <OwnerMembershipTab
+                token={token || ""}
+                membership={membership}
+                setMembership={setMembership}
+                onError={setError}
+                onSuccess={setSuccess}
+              />
+            )}
+
             {activeTab === "overview" && (
               <OwnerOverviewTab
                 stats={stats}
@@ -221,6 +256,8 @@ export default function OwnerPortal() {
               <OwnerEquipmentsTab
                 equipments={equipments}
                 token={token || ""}
+                membershipActive={Boolean(membership?.current)}
+                onMembershipRequired={() => handleTabChange("membership")}
                 onRefresh={() => void loadAllData(false)}
                 onError={setError}
                 onSuccess={setSuccess}

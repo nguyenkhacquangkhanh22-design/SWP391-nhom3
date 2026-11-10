@@ -7,6 +7,7 @@ const app = require("./app");
 const connectDB = require("./config/db");
 const { initSocket } = require("./config/socket");
 const { startRentalReminderService } = require("./services/rentalReminderService");
+const { startMembershipExpiryService } = require("./services/ownerMembershipService");
 
 const port = process.env.PORT || 3000;
 
@@ -60,10 +61,11 @@ async function startServer() {
     console.warn("Seed data notice:", seedErr.message);
   }
 
+  startRentalReminderService();
+  await startMembershipExpiryService();
   if (typeof app.setServerReady === "function") {
     app.setServerReady(true);
   }
-  startRentalReminderService();
   console.log(`✓ Database & Seed Data ready! Server is fully operational on port ${port}`);
 }
 

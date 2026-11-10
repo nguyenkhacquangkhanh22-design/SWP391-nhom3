@@ -295,3 +295,28 @@ export interface OwnerStats {
   pendingPayout: number;
   completedOrders: number;
 }
+
+export interface OwnerMembershipOrder {
+  _id: string;
+  plan: "trial_7d" | "month_1" | "month_2" | "month_3";
+  amount: number;
+  status: "pending_payment" | "active" | "extended" | "expired" | "failed";
+  order_code?: number;
+  started_at?: string;
+  expires_at?: string;
+  paid_at?: string;
+  createdAt: string;
+}
+
+export interface OwnerMembershipOverview {
+  plans: {
+    id: "trial_7d" | "month_1" | "month_2" | "month_3";
+    name: string;
+    durationDays?: number;
+    durationMonths?: number;
+    amount: number;
+  }[];
+  current: OwnerMembershipOrder | null;
+  hasUsedTrial: boolean;
+  orders: OwnerMembershipOrder[];
+}

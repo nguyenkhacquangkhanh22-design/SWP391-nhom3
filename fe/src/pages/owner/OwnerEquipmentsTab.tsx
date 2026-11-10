@@ -7,6 +7,8 @@ import { ownerApi } from "../../services/ownerApi";
 interface Props {
   equipments: Equipment[];
   token: string;
+  membershipActive: boolean;
+  onMembershipRequired: () => void;
   onRefresh: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
@@ -15,6 +17,8 @@ interface Props {
 export default function OwnerEquipmentsTab({
   equipments,
   token,
+  membershipActive,
+  onMembershipRequired,
   onRefresh,
   onError,
   onSuccess,
@@ -329,6 +333,11 @@ export default function OwnerEquipmentsTab({
       setShowKycModal(true);
       return;
     }
+    if (!editingEquipment && !membershipActive) {
+      onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+      onMembershipRequired();
+      return;
+    }
 
     try {
       if (editingEquipment) {
@@ -353,6 +362,11 @@ export default function OwnerEquipmentsTab({
 
   async function handleToggleVisibility(eq: Equipment) {
     const nextVisibility = eq.visibility === "published" ? "hidden" : "published";
+    if (nextVisibility === "published" && !membershipActive) {
+      onError("Bạn cần membership còn hạn để đưa bài đăng trở lại công khai.");
+      onMembershipRequired();
+      return;
+    }
     try {
       await ownerApi.toggleVisibility(token, eq._id, nextVisibility);
       onSuccess(`Đã đổi trạng thái bài đăng sang: ${nextVisibility === "published" ? "Hiện (Công khai)" : "Ẩn"}.`);
@@ -508,12 +522,17 @@ export default function OwnerEquipmentsTab({
         <button
           className="button button-primary"
           style={{
-            opacity: isKycVerified ? 1 : 0.85,
+            opacity: isKycVerified && membershipActive ? 1 : 0.85,
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
           }}
           onClick={() => {
+            if (!membershipActive) {
+              onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+              onMembershipRequired();
+              return;
+            }
             if (!isKycVerified) {
               onError(
                 isKycPending
@@ -527,11 +546,11 @@ export default function OwnerEquipmentsTab({
             setShowCreateModal(true);
           }}
         >
-          {isKycVerified ? (
-            "+ Tạo bài đăng thiết bị mới (UC_O03) 📷"
-          ) : (
-            "🔒 Cần xác nhận danh tính để đăng bài"
-          )}
+          {!membershipActive
+            ? "🔒 Đăng ký membership để đăng bài"
+            : isKycVerified
+              ? "+ Tạo bài đăng thiết bị mới (UC_O03) 📷"
+              : "🔒 Cần xác nhận danh tính để đăng bài"}
         </button>
       </div>
 
@@ -544,6 +563,11 @@ export default function OwnerEquipmentsTab({
             className="button button-primary"
             style={{ marginTop: "12px" }}
             onClick={() => {
+              if (!membershipActive) {
+                onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+                onMembershipRequired();
+                return;
+              }
               if (!isKycVerified) {
                 onError("Bạn cần được Quản lý web (Moderator) xác nhận danh tính trước khi đăng thiết bị cho thuê.");
                 setShowKycModal(true);
@@ -553,7 +577,11 @@ export default function OwnerEquipmentsTab({
               setShowCreateModal(true);
             }}
           >
-            {isKycVerified ? "Đăng thiết bị đầu tiên 🚀" : "🔒 Xác nhận danh tính để đăng thiết bị"}
+            {!membershipActive
+              ? "🔒 Đăng ký membership để đăng thiết bị"
+              : isKycVerified
+                ? "Đăng thiết bị đầu tiên 🚀"
+                : "🔒 Xác nhận danh tính để đăng thiết bị"}
           </button>
         </div>
       ) : (
