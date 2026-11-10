@@ -671,25 +671,107 @@ async function createRentalContract(req, res) {
     throw new AppError(400, "Vui lòng cung cấp mã yêu cầu thuê đã chấp thuận");
   }
 
+  const mongoose = require("mongoose");
   const ownerIds = [ownerId];
   try {
     const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
     if (hubUser) ownerIds.push(hubUser._id);
   } catch (e) {}
-  const rentalReq = await RentalRequest.findOne({
-    _id: request_id,
-    owner_id: { $in: ownerIds },
-  }).populate("equipment_id");
+
+  let rentalReq = null;
+  if (mongoose.isValidObjectId(request_id)) {
+    rentalReq = await RentalRequest.findOne({
+      _id: request_id,
+      owner_id: { $in: ownerIds },
+    }).populate("equipment_id");
+  }
 
   if (!rentalReq) {
-    throw new AppError(404, "Không tìm thấy yêu cầu thuê");
+    rentalReq = await RentalRequest.findOne({
+      $or: [{ request_code: request_id }, { _id: request_id }],
+      owner_id: { $in: ownerIds },
+    }).populate("equipment_id");
   }
 
-  if (!["approved", "pending"].includes(rentalReq.status)) {
-    throw new AppError(400, "Chỉ có thể lập hợp đồng từ yêu cầu thuê hợp lệ");
+  // Nếu không tìm thấy trong RentalRequest, tìm kiếm trong bảng Rental trực tiếp
+  if (!rentalReq) {
+    let directRental = null;
+    if (mongoose.isValidObjectId(request_id)) {
+      directRental = await Rental.findOne({
+        _id: request_id,
+        owner: { $in: ownerIds },
+      }).populate("equipment").populate("renter");
+    }
+    if (!directRental) {
+      directRental = await Rental.findOne({
+        rentalCode: request_id,
+        owner: { $in: ownerIds },
+      }).populate("equipment").populate("renter");
+    }
+
+    if (directRental) {
+      // Tìm RentalRequest tương ứng theo mã rentalCode
+      rentalReq = await RentalRequest.findOne({
+        request_code: directRental.rentalCode,
+      }).populate("equipment_id");
+
+      if (!rentalReq) {
+        const renterName = directRental.renter?.name || "Khách thuê";
+        const renterEmail = directRental.renter?.email || "";
+        const renterPhone = directRental.renter?.phone || "";
+        const equipObj = directRental.equipment;
+
+        rentalReq = await RentalRequest.create({
+          request_code: directRental.rentalCode,
+          renter_id: directRental.renter?._id || directRental.renter,
+          renter_name: renterName,
+          renter_email: renterEmail,
+          renter_phone: renterPhone,
+          owner_id: directRental.owner,
+          equipment_id: equipObj?._id || equipObj,
+          start_date: directRental.startDate,
+          end_date: directRental.endDate,
+          duration_days: directRental.totalDays || 1,
+          rental_fee: directRental.totalAmount || directRental.rentalFee || 0,
+          deposit_amount: directRental.depositAmount || 0,
+          delivery_address: directRental.deliveryAddress || "",
+          status: "approved",
+          responded_at: new Date(),
+        });
+        rentalReq = await RentalRequest.findById(rentalReq._id).populate("equipment_id");
+      }
+    }
   }
 
-  const equipment = rentalReq.equipment_id;
+  if (!rentalReq) {
+    throw new AppError(404, "Không tìm thấy yêu cầu thuê hoặc đơn thuê tương ứng");
+  }
+
+  const validReqStatuses = [
+    "approved",
+    "pending",
+    "contract_created",
+    "contract_drafted",
+    "confirmed",
+    "APPROVED",
+    "PENDING",
+  ];
+  if (!validReqStatuses.includes(rentalReq.status)) {
+    throw new AppError(400, `Yêu cầu thuê đang ở trạng thái "${rentalReq.status}", không thể lập hợp đồng.`);
+  }
+
+  let equipment = rentalReq.equipment_id;
+  if (!equipment || !equipment.title) {
+    equipment = (await Equipment.findById(rentalReq.equipment_id || rentalReq.equipment)) || {
+      _id: rentalReq.equipment_id || rentalReq.equipment,
+      title: "Thiết bị điện tử",
+      accessories: [],
+      condition: "Tốt (95%)",
+      brand: "Chính hãng",
+      model_name: "Tiêu chuẩn",
+    };
+  }
+
   const contractCode = generateCode("HD");
   const accessoriesText =
     Array.isArray(equipment.accessories) && equipment.accessories.length > 0
@@ -806,54 +888,80 @@ ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
   // Luồng trực tiếp: Khi Owner bấm gửi ngay, hợp đồng chuyển thẳng tới Người thuê (moderator_approved) để ký & trao đổi qua Chat
   const initialStatus = submit_immediately ? "moderator_approved" : "draft";
 
-  const contract = await RentalContract.create({
-    contract_code: contractCode,
-    request_id: rentalReq._id,
-    equipment_id: equipment._id,
-    owner_id: ownerId,
-    renter_id: rentalReq.renter_id,
-    title: `Hợp đồng thuê ${equipment.title} - ${rentalReq.renter_name}`,
-    terms_content: standardTerms,
-    rental_price: rentalReq.rental_fee,
-    deposit_amount: 0, // Không cần tiền cọc
-    delivery_address: rentalReq.delivery_address || "",
-    start_date: rentalReq.start_date,
-    end_date: rentalReq.end_date,
-    special_conditions: special_conditions || "",
-    template_id: selectedTemplate?._id,
-    template_version: selectedTemplate?.version,
-    version: 1,
-    moderator_approved_at: submit_immediately ? new Date() : undefined,
-    version_history: [
-      {
-        version: 1,
-        edited_at: new Date(),
-        changes_summary: submit_immediately
-          ? "Owner lập hợp đồng chuẩn v1 và gửi trực tiếp cho Người thuê ký tên & trao đổi qua Chat"
-          : "Owner khởi tạo bản nháp hợp đồng chuẩn v1",
-        terms_content: standardTerms,
-      },
-    ],
-    owner_signature: (() => {
-      const certCode = `CERT-OWNER-${ownerId.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
-      const signerName = (digital_signature && digital_signature.signer_name && digital_signature.signer_name.trim()) || req.user.name;
-      const signatureType = (digital_signature && digital_signature.signature_type) || "typed";
-      const signatureImage = (digital_signature && digital_signature.signature_image) || "";
-      const signatureNote = (digital_signature && digital_signature.signature_note) || "";
-      return {
-        signed: true,
-        signed_at: new Date(),
-        signature_data: signatureNote
-          ? `${signatureNote} [${certCode}]`
-          : `E-SIGNED BY ${signerName} [${certCode}]`,
-        signer_name: signerName,
-        signature_image: signatureImage,
-        signature_type: signatureType,
-        certificate_code: certCode,
-      };
-    })(),
-    status: initialStatus,
-  });
+  const ownerSignatureData = (() => {
+    const certCode = `CERT-OWNER-${ownerId.toString().slice(-4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const signerName =
+      (digital_signature && digital_signature.signer_name && digital_signature.signer_name.trim()) ||
+      req.user.name;
+    const signatureType = (digital_signature && digital_signature.signature_type) || "typed";
+    const signatureImage = (digital_signature && digital_signature.signature_image) || "";
+    const signatureNote = (digital_signature && digital_signature.signature_note) || "";
+    return {
+      signed: true,
+      signed_at: new Date(),
+      signature_data: signatureNote
+        ? `${signatureNote} [${certCode}]`
+        : `E-SIGNED BY ${signerName} [${certCode}]`,
+      signer_name: signerName,
+      signature_image: signatureImage,
+      signature_type: signatureType,
+      certificate_code: certCode,
+    };
+  })();
+
+  let contract = await RentalContract.findOne({ request_id: rentalReq._id });
+  if (contract) {
+    contract.terms_content = standardTerms;
+    contract.special_conditions = special_conditions || "";
+    contract.owner_signature = ownerSignatureData;
+    contract.status = initialStatus;
+    if (submit_immediately) {
+      contract.moderator_approved_at = new Date();
+    }
+    contract.version = (contract.version || 1) + 1;
+    contract.version_history = contract.version_history || [];
+    contract.version_history.push({
+      version: contract.version,
+      edited_at: new Date(),
+      changes_summary: submit_immediately
+        ? `Owner cập nhật hợp đồng v${contract.version} và gửi trực tiếp cho Người thuê qua Chat`
+        : `Owner cập nhật bản nháp hợp đồng v${contract.version}`,
+      terms_content: standardTerms,
+    });
+    await contract.save();
+  } else {
+    contract = await RentalContract.create({
+      contract_code: contractCode,
+      request_id: rentalReq._id,
+      equipment_id: equipment._id,
+      owner_id: ownerId,
+      renter_id: rentalReq.renter_id,
+      title: `Hợp đồng thuê ${equipment.title} - ${rentalReq.renter_name}`,
+      terms_content: standardTerms,
+      rental_price: rentalReq.rental_fee,
+      deposit_amount: 0, // Không cần tiền cọc
+      delivery_address: rentalReq.delivery_address || "",
+      start_date: rentalReq.start_date,
+      end_date: rentalReq.end_date,
+      special_conditions: special_conditions || "",
+      template_id: selectedTemplate?._id,
+      template_version: selectedTemplate?.version,
+      version: 1,
+      moderator_approved_at: submit_immediately ? new Date() : undefined,
+      version_history: [
+        {
+          version: 1,
+          edited_at: new Date(),
+          changes_summary: submit_immediately
+            ? "Owner lập hợp đồng chuẩn v1 và gửi trực tiếp cho Người thuê ký tên & trao đổi qua Chat"
+            : "Owner khởi tạo bản nháp hợp đồng chuẩn v1",
+          terms_content: standardTerms,
+        },
+      ],
+      owner_signature: ownerSignatureData,
+      status: initialStatus,
+    });
+  }
 
   rentalReq.status = "contract_created";
   await rentalReq.save();

@@ -129,6 +129,7 @@ export default function OwnerContractsTab({
   // View Modal states
   const [viewingContract, setViewingContract] = useState<RentalContract | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalError, setModalError] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Digital Signature states (UC_O12, UC_O13, UC_O15)
@@ -259,14 +260,29 @@ export default function OwnerContractsTab({
 
   // Lập hợp đồng & gửi trực tiếp cho Người thuê
   async function handleCreateContract(submitImmediately: boolean) {
+    setModalError("");
     if (!selectedRequestForContract) {
-      onError("Vui lòng chọn một yêu cầu thuê đã chấp nhận.");
+      const msg = "Vui lòng chọn một yêu cầu thuê đã chấp nhận.";
+      setModalError(msg);
+      onError(msg);
       return;
     }
 
     if (submitImmediately && !createSignature) {
-      onError("Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi Người thuê.");
+      const msg = "Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi Người thuê.";
+      setModalError(msg);
+      onError(msg);
       return;
+    }
+
+    let termsToSend = customDraftTerms;
+    if (!selectedTemplateId && !termsToSend.trim() && activeRequestObj) {
+      termsToSend = buildStandardOwnerContractText(
+        activeRequestObj,
+        user?.name || "Chủ thiết bị (Owner)",
+        user?.email || "owner@swp391.vn",
+        specialConditions
+      );
     }
 
     setIsSubmitting(true);
@@ -276,7 +292,7 @@ export default function OwnerContractsTab({
       const res = await ownerApi.createContract(token, {
         request_id: selectedRequestForContract,
         special_conditions: specialConditions,
-        custom_terms: selectedTemplateId ? undefined : customDraftTerms,
+        custom_terms: selectedTemplateId ? undefined : termsToSend,
         template_id: selectedTemplateId || undefined,
         template_values: templateValues,
         submit_immediately: submitImmediately,
@@ -288,6 +304,7 @@ export default function OwnerContractsTab({
           : `Đã lưu bản nháp Hợp đồng chuẩn "${res.contract.contract_code}" (v1)${createSignature ? " kèm chữ ký số" : ""}.`
       );
       setShowCreateModal(false);
+      setModalError("");
       setSpecialConditions("");
       setCustomDraftTerms("");
       setIsCustomizingTerms(false);
@@ -301,7 +318,9 @@ export default function OwnerContractsTab({
         handleOpenChatForContract(res.contract);
       }
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Lập hợp đồng thất bại.");
+      const msg = err instanceof Error ? err.message : "Lập hợp đồng thất bại.";
+      setModalError(msg);
+      onError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -870,10 +889,48 @@ export default function OwnerContractsTab({
           <div className="owner-modal-card" style={{ maxWidth: "820px" }}>
             <div className="owner-modal-header">
               <h3>📜 Lập Hợp đồng cho thuê & Gửi trực tiếp Người thuê</h3>
-              <button className="close-modal-btn" onClick={() => setShowCreateModal(false)}>
+              <button
+                className="close-modal-btn"
+                onClick={() => {
+                  setModalError("");
+                  setShowCreateModal(false);
+                }}
+              >
                 ✕
               </button>
             </div>
+
+            {modalError && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  color: "#fca5a5",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  fontSize: "0.88rem",
+                  marginBottom: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>⚠️ {modalError}</span>
+                <button
+                  type="button"
+                  onClick={() => setModalError("")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fca5a5",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginTop: 0 }}>
               Hệ thống tự động trích xuất dữ liệu từ Yêu cầu thuê đã được Owner duyệt để lập{" "}
@@ -1051,7 +1108,6 @@ export default function OwnerContractsTab({
                         lineHeight: 1.55,
                         background: "#0b101b",
                       }}
-                      required
                     />
                   </div>
                 )}
