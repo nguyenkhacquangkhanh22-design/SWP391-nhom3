@@ -25,16 +25,16 @@ async function seedData() {
       status: "active",
       trust_score: 98,
       bankInfo: {
-        bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
-        accountNumber: "19039916819018",
-        accountHolder: "DO NGOC NHAN",
-        bankCode: "TCB",
+        bankName: "MB Bank (Ngân hàng Quân Đội)",
+        accountNumber: "111105056666",
+        accountHolder: "NGUYEN KHAC QUANG KHANH",
+        bankCode: "MB",
       },
       bankAccounts: [
         {
-          bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
-          accountNumber: "19039916819018",
-          accountHolderName: "DO NGOC NHAN",
+          bankName: "MB Bank (Ngân hàng Quân Đội)",
+          accountNumber: "111105056666",
+          accountHolderName: "NGUYEN KHAC QUANG KHANH",
           status: "APPROVED",
         },
       ],
@@ -45,17 +45,17 @@ async function seedData() {
     owner.password_hash = passwordHash;
     owner.status = "active";
     owner.bankInfo = {
-      bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
-      accountNumber: "19039916819018",
-      accountHolder: "DO NGOC NHAN",
-      bankCode: "TCB",
+      bankName: "MB Bank (Ngân hàng Quân Đội)",
+      accountNumber: "111105056666",
+      accountHolder: "NGUYEN KHAC QUANG KHANH",
+      bankCode: "MB",
     };
     if (!owner.bankAccounts || owner.bankAccounts.length === 0) {
       owner.bankAccounts = [
         {
-          bankName: "Techcombank (Ngân hàng Kỹ Thương Việt Nam)",
-          accountNumber: "19039916819018",
-          accountHolderName: "DO NGOC NHAN",
+          bankName: "MB Bank (Ngân hàng Quân Đội)",
+          accountNumber: "111105056666",
+          accountHolderName: "NGUYEN KHAC QUANG KHANH",
           status: "APPROVED",
         },
       ];

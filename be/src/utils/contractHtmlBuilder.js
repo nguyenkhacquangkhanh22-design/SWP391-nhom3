@@ -149,9 +149,9 @@ function buildContractHtmlServer(rental) {
     : signedDateStr;
 
   const ownerBankInfo = rental.owner?.bankInfo;
-  const bankNameDisplay = ownerBankInfo?.bankName || "Techcombank (Ngân hàng Kỹ Thương)";
-  const accNumDisplay = ownerBankInfo?.accountNumber || "19039916819018";
-  const accHolderDisplay = ownerBankInfo?.accountHolder || "DO NGOC NHAN";
+  const bankNameDisplay = ownerBankInfo?.bankName || "MB Bank";
+  const accNumDisplay = ownerBankInfo?.accountNumber || "111105056666";
+  const accHolderDisplay = ownerBankInfo?.accountHolder || ownerName;
 
   const customTermsHtml = rental.contract?.contractTerms
     ? `<li style="color:#0369a1; background:#f0f9ff; padding:6px 10px; border-radius:6px; border-left:3px solid #0284c7; margin-bottom:6px;">

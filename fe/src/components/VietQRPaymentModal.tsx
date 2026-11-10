@@ -32,10 +32,10 @@ export default function VietQRPaymentModal({
   if (!isOpen) return null;
 
   const ownerBankInfo = owner?.bankInfo;
-  const bankName = ownerBankInfo?.bankName || "Techcombank (Ngân hàng TMCP Kỹ Thương Việt Nam)";
-  const accountNumber = ownerBankInfo?.accountNumber || "19039916819018";
-  const accountHolder = ownerBankInfo?.accountHolder || owner?.name || "DO NGOC NHAN";
-  const bankCode = ownerBankInfo?.bankCode || "TCB";
+  const bankName = ownerBankInfo?.bankName || "MB Bank (Ngân hàng TMCP Quân Đội)";
+  const accountNumber = ownerBankInfo?.accountNumber || "111105056666";
+  const accountHolder = ownerBankInfo?.accountHolder || owner?.name || "NGUYEN KHAC QUANG KHANH";
+  const bankCode = ownerBankInfo?.bankCode || "MB";
   const transferContent = `THUE ${contractCode || rentalCode}`;
 
   // VietQR Dynamic URL with specific amount and memo
