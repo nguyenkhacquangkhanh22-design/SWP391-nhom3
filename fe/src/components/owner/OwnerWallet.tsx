@@ -117,6 +117,24 @@ export default function OwnerWallet() {
 
   // Xóa tài khoản ngân hàng
   const handleRemoveBankAccount = async (accountId: string) => {
+    const acc = bankAccounts.find((a) => a._id === accountId);
+    const pendingWithdrawal = withdrawals.find(
+      (w) =>
+        w.status === "PENDING" &&
+        (w.bankInfoSnapshot?.bankAccountId === accountId ||
+          (acc &&
+            w.bankInfoSnapshot?.accountNumber === acc.accountNumber &&
+            w.bankInfoSnapshot?.bankName === acc.bankName))
+    );
+    if (pendingWithdrawal) {
+      setError(
+        `Không thể xóa tài khoản ngân hàng này vì đang có Lệnh rút tiền ${pendingWithdrawal.amount.toLocaleString(
+          "vi-VN"
+        )} đ ở trạng thái chờ duyệt (PENDING). Vui lòng đợi Admin xử lý xong hoặc từ chối lệnh rút tiền trước khi xóa.`
+      );
+      return;
+    }
+
     if (!window.confirm("Bạn có chắc chắn muốn xóa tài khoản ngân hàng này?")) return;
     setActionLoading(true);
     setError("");
@@ -124,7 +142,7 @@ export default function OwnerWallet() {
     try {
       const res = await walletApi.removeBankAccount(token || "", accountId);
       setBankAccounts(res.data || []);
-      setSuccess("Đã xóa tài khoản ngân hàng.");
+      setSuccess("Đã xóa tài khoản ngân hàng thành công.");
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || "Không thể xóa tài khoản");
     } finally {
@@ -400,6 +418,15 @@ export default function OwnerWallet() {
               const isPending = acc.status === "PENDING";
               const isRejected = acc.status === "REJECTED";
 
+              // Kiểm tra xem tài khoản này có Lệnh rút tiền PENDING đang chờ Admin xử lý không
+              const pendingWithdrawal = withdrawals.find(
+                (w) =>
+                  w.status === "PENDING" &&
+                  (w.bankInfoSnapshot?.bankAccountId === acc._id ||
+                    (w.bankInfoSnapshot?.accountNumber === acc.accountNumber &&
+                      w.bankInfoSnapshot?.bankName === acc.bankName))
+              );
+
               return (
                 <div
                   key={acc._id}
@@ -417,21 +444,31 @@ export default function OwnerWallet() {
                         {acc.bankName}
                       </span>
                       {/* Badge trạng thái */}
-                      {isApproved && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shrink-0">
-                          <span>✅</span> Đã duyệt
-                        </span>
-                      )}
-                      {isPending && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 shrink-0 animate-pulse">
-                          <span>⏳</span> Chờ duyệt
-                        </span>
-                      )}
-                      {isRejected && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1 shrink-0">
-                          <span>❌</span> Từ chối
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {pendingWithdrawal && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1"
+                            title={`Đang có lệnh rút ${pendingWithdrawal.amount.toLocaleString("vi-VN")} đ chờ Admin chuyển tiền`}
+                          >
+                            <span>🔒</span> Lệnh rút chờ duyệt
+                          </span>
+                        )}
+                        {isApproved && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                            <span>✅</span> Đã duyệt
+                          </span>
+                        )}
+                        {isPending && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse">
+                            <span>⏳</span> Chờ duyệt
+                          </span>
+                        )}
+                        {isRejected && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1">
+                            <span>❌</span> Từ chối
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="text-base font-mono font-bold text-white tracking-wider">
@@ -445,20 +482,31 @@ export default function OwnerWallet() {
 
                   <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
                     <span className="text-slate-500">
-                      {isApproved
+                      {pendingWithdrawal
+                        ? `🔒 Có lệnh rút ${pendingWithdrawal.amount.toLocaleString("vi-VN")} đ`
+                        : isApproved
                         ? "🟢 Đủ điều kiện rút tiền"
                         : isPending
                         ? "🟡 Đang chờ Admin xác thực"
                         : "🔴 Không thể dùng"}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveBankAccount(acc._id)}
-                      disabled={actionLoading}
-                      className="text-rose-400 hover:text-rose-300 font-medium cursor-pointer"
-                    >
-                      Xóa
-                    </button>
+                    {pendingWithdrawal ? (
+                      <span
+                        className="text-slate-500 font-medium text-[11px] cursor-not-allowed flex items-center gap-1"
+                        title="Không thể xóa tài khoản này vì đang có lệnh rút tiền chờ Admin duyệt đối soát"
+                      >
+                        🔒 Khóa xóa
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBankAccount(acc._id)}
+                        disabled={actionLoading}
+                        className="text-rose-400 hover:text-rose-300 font-medium cursor-pointer"
+                      >
+                        Xóa
+                      </button>
+                    )}
                   </div>
                 </div>
               );

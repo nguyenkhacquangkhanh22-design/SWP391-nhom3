@@ -86,12 +86,42 @@ const walletController = {
   /**
    * UC_W03: Xóa tài khoản ngân hàng (nếu không cần dùng nữa)
    * DELETE /api/owners/bank-accounts/:accountId
+   * Quy định: Không cho phép xóa nếu đang có Lệnh rút tiền PENDING chờ Admin chuyển tiền
    */
   async removeBankAccount(req, res) {
     const { accountId } = req.params;
     const user = await User.findById(req.user._id);
     if (!user) {
       throw new AppError(404, "Không tìm thấy thông tin người dùng.");
+    }
+
+    const targetAccount = user.bankAccounts?.find(
+      (acc) => acc._id.toString() === accountId
+    );
+    if (!targetAccount) {
+      throw new AppError(404, "Không tìm thấy tài khoản ngân hàng cần xóa.");
+    }
+
+    // Kiểm tra xem tài khoản ngân hàng này có Lệnh rút tiền đang ở trạng thái PENDING không
+    const pendingWithdrawal = await WithdrawalRequest.findOne({
+      ownerId: req.user._id,
+      status: "PENDING",
+      $or: [
+        { "bankInfoSnapshot.bankAccountId": targetAccount._id },
+        {
+          "bankInfoSnapshot.accountNumber": targetAccount.accountNumber,
+          "bankInfoSnapshot.bankName": targetAccount.bankName,
+        },
+      ],
+    });
+
+    if (pendingWithdrawal) {
+      throw new AppError(
+        400,
+        `Không thể xóa tài khoản ngân hàng "${targetAccount.bankName} - ${targetAccount.accountNumber}" vì đang có Lệnh rút tiền (${pendingWithdrawal.amount.toLocaleString(
+          "vi-VN"
+        )} đ) ở trạng thái chờ duyệt (PENDING). Vui lòng đợi Admin xử lý xong hoặc từ chối lệnh rút tiền trước khi xóa.`
+      );
     }
 
     const initialLength = user.bankAccounts.length;
