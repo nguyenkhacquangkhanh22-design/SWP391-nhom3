@@ -24,6 +24,7 @@ export default function EquipmentDetailPage() {
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Form booking state
   // Mới vào phải hoàn toàn trống theo yêu cầu người dùng
@@ -259,27 +260,49 @@ export default function EquipmentDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Images, Specs & Description */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Main Image */}
-            <div className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg">
-              {equipment.images && equipment.images.length > 0 ? (
-                <img
-                  src={equipment.images[0]}
-                  alt={equipment.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="text-6xl text-slate-600">📷</div>
-              )}
-              <div className="absolute top-4 left-4 flex gap-2">
-                <span className="px-3 py-1 rounded-lg text-xs font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c]">
-                  {equipment.category}
-                </span>
-                <span className="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-950/80 backdrop-blur-sm text-emerald-400 border border-emerald-800">
-                  {equipment.condition === "like-new"
-                    ? "Như mới (Like New)"
-                    : "Hoạt động tốt"}
-                </span>
+            {/* Main Image & Thumbnail Gallery */}
+            <div className="space-y-3">
+              <div className="aspect-video w-full bg-[#141d2d] border border-[#223049] rounded-2xl overflow-hidden flex items-center justify-center relative shadow-lg">
+                {equipment.images && equipment.images.length > 0 ? (
+                  <img
+                    src={equipment.images[selectedImageIndex] || equipment.images[0]}
+                    alt={equipment.title}
+                    className="w-full h-full object-cover transition-all duration-300"
+                  />
+                ) : (
+                  <div className="text-6xl text-slate-600">📷</div>
+                )}
+                <div className="absolute top-4 left-4 flex gap-2">
+                  <span className="px-3 py-1 rounded-lg text-xs font-bold bg-[#0f1623]/80 backdrop-blur-sm text-orange-400 border border-[#28354c]">
+                    {equipment.category}
+                  </span>
+                  <span className="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-950/80 backdrop-blur-sm text-emerald-400 border border-emerald-800">
+                    {equipment.condition === "like-new"
+                      ? "Như mới (Like New)"
+                      : "Hoạt động tốt"}
+                  </span>
+                </div>
               </div>
+
+              {/* Thumbnail Bar */}
+              {equipment.images && equipment.images.length > 1 && (
+                <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
+                  {equipment.images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedImageIndex(idx)}
+                      className={`w-20 h-16 rounded-xl overflow-hidden border-2 transition-all flex-shrink-0 cursor-pointer ${
+                        selectedImageIndex === idx
+                          ? "border-orange-500 ring-2 ring-orange-500/30 scale-105"
+                          : "border-[#223049] opacity-70 hover:opacity-100 hover:border-slate-400"
+                      }`}
+                    >
+                      <img src={img} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Title & Brand header */}
@@ -351,6 +374,84 @@ export default function EquipmentDetailPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Reviews & Ratings Section (UC_R11 Display) */}
+            <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
+                <div>
+                  <h2 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>⭐</span>
+                    <span>Đánh Giá Từ Khách Thuê</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Phản hồi thực tế từ những người đã trải nghiệm thiết bị này
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-black text-amber-400 flex items-center justify-end gap-1">
+                    <span>★</span>
+                    <span>{(equipment.rating || 5.0).toFixed(1)}</span>
+                    <span className="text-xs text-slate-400 font-normal">/ 5.0</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {equipment.reviews?.length || equipment.review_count || 0} lượt đánh giá
+                  </div>
+                </div>
+              </div>
+
+              {equipment.reviews && equipment.reviews.length > 0 ? (
+                <div className="space-y-3.5 divide-y divide-[#1e2a3f]">
+                  {equipment.reviews.map((rev) => (
+                    <div key={rev._id} className="pt-3.5 first:pt-0 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center font-bold text-xs text-white shadow-sm overflow-hidden">
+                            {rev.renterAvatar ? (
+                              <img src={rev.renterAvatar} alt={rev.renterName} className="w-full h-full object-cover" />
+                            ) : (
+                              (rev.renterName ? rev.renterName[0].toUpperCase() : "K")
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
+                              <span>{rev.renterName}</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-700/50">
+                                ✓ Đã thuê máy
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {rev.reviewedAt ? new Date(rev.reviewedAt).toLocaleDateString("vi-VN") : "Gần đây"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Stars */}
+                        <div className="flex text-amber-400 text-xs tracking-wider">
+                          {"★".repeat(Math.max(1, Math.min(5, rev.rating)))}
+                          {"☆".repeat(Math.max(0, 5 - Math.max(1, Math.min(5, rev.rating))))}
+                        </div>
+                      </div>
+
+                      {rev.comment && (
+                        <p className="text-xs text-slate-300 leading-relaxed pl-10">
+                          {rev.comment}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 bg-[#162032] border border-[#223049] rounded-xl text-center space-y-2">
+                  <div className="text-2xl text-slate-500">💬</div>
+                  <div className="text-xs font-semibold text-slate-300">
+                    Chưa có đánh giá nào cho thiết bị này
+                  </div>
+                  <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                    Thiết bị đang sẵn sàng! Hãy là người đầu tiên thuê và để lại nhận xét sau khi hoàn thành đơn.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

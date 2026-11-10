@@ -35,6 +35,9 @@ export interface Equipment {
   owner: EquipmentOwner;
   condition?: "like-new" | "good" | "fair";
   isFeatured?: boolean;
+  rating?: number;
+  review_count?: number;
+  reviews?: EquipmentReview[];
   createdAt: string;
   updatedAt: string;
 }
@@ -103,9 +106,19 @@ export interface RentalContract {
   agreedAt?: string;
 }
 
+export interface EquipmentReview {
+  _id: string;
+  rentalCode?: string;
+  rating: number;
+  comment: string;
+  reviewedAt: string;
+  renterName: string;
+  renterAvatar?: string;
+}
+
 export interface RentalPayment {
   isPaid?: boolean;
-  paymentStatus: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded";
+  paymentStatus: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded" | "refund_pending";
   paymentMethod?: "vnpay" | "momo" | "bank_transfer" | "wallet" | "payos_vietqr" | string;
   transactionId?: string;
   paidAt?: string;
@@ -142,10 +155,30 @@ export interface RentalDispute {
   status?: "open" | "investigating" | "resolved" | string;
 }
 
+export interface RentalRefundInfo {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  refundAmount?: number;
+  status?: "pending" | "processed" | "rejected";
+  processedAt?: string;
+  note?: string;
+}
+
 export interface RentalCancellation {
   cancelledBy?: string;
   reason?: string;
   cancelledAt?: string;
+  refundInfo?: RentalRefundInfo;
+}
+
+export interface RentalExtension {
+  extendedAt: string;
+  extraDays: number;
+  extraFee: number;
+  previousEndDate: string;
+  newEndDate: string;
+  note?: string;
 }
 
 export interface Rental {
@@ -188,6 +221,7 @@ export interface Rental {
   review?: RentalReview;
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
+  extensions?: RentalExtension[];
   deliveryAddress?: string;
   deliveryTime?: string;
   returnTime?: string;

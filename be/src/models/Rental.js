@@ -158,7 +158,7 @@ const rentalSchema = new mongoose.Schema(
       amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
-        enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded"],
+        enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded", "refund_pending"],
         default: "unpaid",
       },
       orderCode: { type: Number },
@@ -192,7 +192,26 @@ const rentalSchema = new mongoose.Schema(
       cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       reason: { type: String, trim: true },
       cancelledAt: { type: Date },
+      refundInfo: {
+        bankName: { type: String, trim: true },
+        accountNumber: { type: String, trim: true },
+        accountName: { type: String, trim: true },
+        refundAmount: { type: Number, default: 0 },
+        status: { type: String, enum: ["pending", "processed", "rejected"], default: "pending" },
+        processedAt: { type: Date },
+        note: { type: String, trim: true },
+      },
     },
+    extensions: [
+      {
+        extendedAt: { type: Date, default: Date.now },
+        extraDays: { type: Number, required: true },
+        extraFee: { type: Number, required: true },
+        previousEndDate: { type: Date, required: true },
+        newEndDate: { type: Date, required: true },
+        note: { type: String, trim: true },
+      },
+    ],
     dispute: {
       reason: { type: String, trim: true },
       description: { type: String, trim: true },
