@@ -447,17 +447,27 @@ async function getRentalRequests(req, res) {
     if (hubUser) ownerIds.push(hubUser._id);
   } catch (e) {}
 
-  // Tự động đồng bộ các đơn Rental (trạng thái chờ hoặc đã duyệt) của Owner vào RentalRequest nếu chưa có
+  // Tự động đồng bộ các đơn Rental của Owner vào RentalRequest nếu chưa có, giữ nguyên đồng nhất 2 model
   try {
     const Rental = require("../models/Rental");
-    const pendingRentals = await Rental.find({
+    const allOwnerRentals = await Rental.find({
       owner: { $in: ownerIds },
-      status: { $in: ["PENDING", "pending", "APPROVED", "approved", "CONTRACT_PENDING", "contract_pending"] },
     }).populate("renter equipment").lean();
 
-    for (const r of pendingRentals) {
+    for (const r of allOwnerRentals) {
+      if (!r.equipment?._id) continue;
       const exists = await RentalRequest.findOne({ request_code: r.rentalCode });
-      if (!exists && r.equipment?._id) {
+      const upperStatus = String(r.status || "").toUpperCase();
+      const mappedStatus =
+        upperStatus === "APPROVED" || upperStatus === "CONTRACT_SIGNED"
+          ? "approved"
+          : upperStatus === "CANCELLED" || upperStatus === "REJECTED"
+          ? "rejected"
+          : upperStatus === "PAID"
+          ? "confirmed"
+          : "pending";
+
+      if (!exists) {
         await RentalRequest.create({
           request_code: r.rentalCode,
           equipment_id: r.equipment._id,
@@ -471,12 +481,18 @@ async function getRentalRequests(req, res) {
           start_date: r.startDate,
           end_date: r.endDate,
           duration_days: r.totalDays || 1,
-          rental_fee: r.rentalFee,
+          rental_fee: r.rentalFee || r.totalAmount || 0,
           deposit_amount: 0,
           total_estimated_amount: r.totalAmount || r.rentalFee,
           renter_note: r.renterNote || r.notes || "",
-          status: String(r.status).toLowerCase() === "pending" ? "pending" : "approved",
+          status: mappedStatus,
         });
+      } else if (
+        exists.status !== mappedStatus &&
+        exists.status !== "contract_created" &&
+        exists.status !== "confirmed"
+      ) {
+        await RentalRequest.updateOne({ _id: exists._id }, { $set: { status: mappedStatus } });
       }
     }
   } catch (err) {
@@ -1992,6 +2008,57 @@ async function getOwnerRentals(req, res) {
   const ownerId = req.user._id;
   const { status, page = 1, limit = 20 } = req.query;
 
+  // Đảm bảo đồng bộ 2 chiều: Tự động tạo Rental từ RentalRequest nếu chưa có
+  try {
+    const ownerIds = [ownerId];
+    try {
+      const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
+      if (hubUser) ownerIds.push(hubUser._id);
+    } catch (e) {}
+
+    const reqs = await RentalRequest.find({ owner_id: { $in: ownerIds } })
+      .populate("equipment_id")
+      .lean();
+
+    for (const rq of reqs) {
+      if (!rq.equipment_id?._id) continue;
+      const exists = await Rental.findOne({ rentalCode: rq.request_code });
+      const upperStatus =
+        rq.status === "approved"
+          ? "APPROVED"
+          : rq.status === "rejected"
+          ? "CANCELLED"
+          : rq.status === "contract_created" || rq.status === "confirmed"
+          ? "APPROVED"
+          : "PENDING";
+
+      if (!exists) {
+        await Rental.create({
+          rentalCode: rq.request_code,
+          equipment: rq.equipment_id._id,
+          owner: rq.owner_id || ownerId,
+          renter: rq.renter_id,
+          startDate: rq.start_date,
+          endDate: rq.end_date,
+          dailyRate: Math.round((rq.rental_fee || 0) / (rq.duration_days || 1)) || 0,
+          totalDays: rq.duration_days || 1,
+          totalAmount: rq.total_estimated_amount || rq.rental_fee || 0,
+          depositAmount: rq.deposit_amount || 0,
+          rentalFee: rq.rental_fee || 0,
+          deliveryAddress: rq.delivery_address || "",
+          notes: rq.renter_note || "",
+          status: upperStatus,
+          payment: {
+            isPaid: false,
+            paymentStatus: "unpaid",
+          },
+        });
+      }
+    }
+  } catch (syncErr) {
+    console.warn("Lỗi đồng bộ RentalRequest sang Rental:", syncErr.message);
+  }
+
   const filter = { owner: ownerId };
   if (status && status !== "all") {
     filter.status = status;
@@ -2063,13 +2130,41 @@ async function respondOwnerRental(req, res) {
     rental.status = "APPROVED";
     await rental.save();
 
-    // Đồng bộ RentalRequest nếu có
+    // Đồng bộ RentalRequest: tìm hoặc tạo mới đảm bảo tính nhất quán 1-1 giữa 2 Model
+    let syncedRequest = null;
     try {
-      await RentalRequest.findOneAndUpdate(
+      syncedRequest = await RentalRequest.findOneAndUpdate(
         { request_code: rental.rentalCode },
-        { $set: { status: "approved", responded_at: new Date() } }
-      );
-    } catch (e) {}
+        { $set: { status: "approved", responded_at: new Date() } },
+        { new: true }
+      ).populate("equipment_id renter_id");
+
+      if (!syncedRequest) {
+        syncedRequest = await RentalRequest.create({
+          request_code: rental.rentalCode,
+          equipment_id: rental.equipment?._id || rental.equipment,
+          owner_id: rental.owner?._id || rental.owner || req.user._id,
+          renter_id: rental.renter?._id || rental.renter,
+          renter_name: rental.renter?.name || "Khách thuê SmartEquip",
+          renter_email: rental.renter?.email || "",
+          renter_phone: rental.renter?.phone || "",
+          delivery_address: rental.deliveryAddress || "",
+          rental_type: "daily",
+          start_date: rental.startDate,
+          end_date: rental.endDate,
+          duration_days: rental.totalDays || 1,
+          rental_fee: rental.rentalFee || rental.totalAmount || 0,
+          deposit_amount: rental.depositAmount || 0,
+          total_estimated_amount: rental.totalAmount || rental.rentalFee || 0,
+          renter_note: rental.renterNote || rental.notes || "",
+          status: "approved",
+          responded_at: new Date(),
+        });
+        syncedRequest = await RentalRequest.findById(syncedRequest._id).populate("equipment_id renter_id");
+      }
+    } catch (e) {
+      console.warn("Lỗi đồng bộ RentalRequest trong respondOwnerRental:", e.message);
+    }
 
     if (UserNotification && rental.renter?._id) {
       await UserNotification.create({
@@ -2107,6 +2202,7 @@ async function respondOwnerRental(req, res) {
       success: true,
       message: "Đã duyệt yêu cầu thuê! Khách thuê có thể Ký hợp đồng và Chuyển khoản thanh toán.",
       rental,
+      rentalRequest: syncedRequest,
     });
   } else {
     const equipmentId = rental.equipment?._id || rental.equipment;

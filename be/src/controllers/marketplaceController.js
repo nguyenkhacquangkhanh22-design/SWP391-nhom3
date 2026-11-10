@@ -141,6 +141,35 @@ async function requestRental(req, res) {
     status: "pending", // Gửi trực tiếp tới Owner theo sơ đồ luồng
   });
 
+  // Đồng bộ tạo bản ghi Rental tương ứng để thống nhất 2 Model
+  try {
+    const Rental = require("../models/Rental");
+    await Rental.create({
+      rentalCode: rentalReq.request_code,
+      equipment: equipment._id,
+      owner: equipment.owner_id || equipment.owner,
+      renter: renter._id,
+      startDate: startDate,
+      endDate: endDate,
+      dailyRate: isHourly
+        ? Math.round(equipment.pricing.price_per_hour * 24)
+        : equipment.pricing.price_per_day,
+      totalDays: diffDays || 1,
+      totalAmount: totalEstimatedAmount,
+      depositAmount: 0,
+      rentalFee: rentalFee,
+      deliveryAddress: deliveryAddress,
+      notes: renter_note || "",
+      status: "PENDING",
+      payment: {
+        isPaid: false,
+        paymentStatus: "unpaid",
+      },
+    });
+  } catch (syncErr) {
+    console.warn("Lỗi đồng bộ Rental từ RentalRequest:", syncErr.message);
+  }
+
   // Gửi thông báo trực tiếp đến Người thuê và Chủ máy (Owner)
   try {
     await UserNotification.insertMany([

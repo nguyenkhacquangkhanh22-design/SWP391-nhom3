@@ -208,7 +208,7 @@ export const ownerApi = {
     action: "approve" | "reject",
     rejection_reason?: string
   ) =>
-    request<{ success: boolean; message: string; rental: any }>(
+    request<{ success: boolean; message: string; rental: any; rentalRequest?: RentalRequest }>(
       `/api/owner/rentals/${rentalId}/respond`,
       { method: "PATCH", body: JSON.stringify({ action, rejection_reason }) },
       token

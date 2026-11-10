@@ -60,31 +60,37 @@ export default function OwnerRequestsTab({
     onError("");
     onSuccess("");
     try {
-      await ownerApi.respondOwnerRental(token, rental._id, "approve");
+      const res = await ownerApi.respondOwnerRental(token, rental._id, "approve");
       onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang mục Hợp đồng thuê để lập hợp đồng.`);
       await fetchDirectRentals();
       onRefresh();
 
-      // Chuyển sang tab Hợp đồng thuê ngay sau khi duyệt!
+      // Sử dụng RentalRequest chính thức được Backend đồng bộ và trả về trực tiếp từ DB
       const matchingReq = (requests || []).find(
         (rq) => rq.request_code === rental.rentalCode || String(rq._id) === String(rental._id)
       );
 
-      const requestObj: RentalRequest = matchingReq || ({
-        _id: rental._id,
-        request_code: rental.rentalCode,
-        renter_name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
-        renter_email: typeof rental.renter === "object" ? rental.renter?.email : "",
-        renter_phone: typeof rental.renter === "object" ? rental.renter?.phone : "",
-        equipment_id: typeof rental.equipment === "object" ? rental.equipment : ({ _id: rental.equipment, title: "Thiết bị thuê" } as any),
-        start_date: rental.startDate,
-        end_date: rental.endDate,
-        rental_fee: rental.totalAmount || rental.rentalFee || 0,
-        deposit_amount: 0,
-        status: "approved",
-        delivery_address: rental.deliveryAddress,
-        duration_days: rental.totalDays || 1,
-      } as any);
+      const requestObj: RentalRequest =
+        res?.rentalRequest ||
+        matchingReq ||
+        ({
+          _id: rental._id,
+          request_code: rental.rentalCode,
+          renter_name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
+          renter_email: typeof rental.renter === "object" ? rental.renter?.email : "",
+          renter_phone: typeof rental.renter === "object" ? rental.renter?.phone : "",
+          equipment_id:
+            typeof rental.equipment === "object"
+              ? rental.equipment
+              : ({ _id: rental.equipment, title: "Thiết bị thuê" } as any),
+          start_date: rental.startDate,
+          end_date: rental.endDate,
+          rental_fee: rental.totalAmount || rental.rentalFee || 0,
+          deposit_amount: 0,
+          status: "approved",
+          delivery_address: rental.deliveryAddress,
+          duration_days: rental.totalDays || 1,
+        } as any);
 
       if (onCreateContract) {
         onCreateContract(requestObj);
