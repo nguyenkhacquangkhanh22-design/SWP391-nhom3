@@ -257,6 +257,7 @@ export interface Dispute {
 }
 
 export interface SupportTicketReply {
+  sender_id?: string | { _id: string; name: string; role: string };
   sender_name: string;
   sender_role: string;
   message: string;
@@ -268,6 +269,14 @@ export interface SupportTicket {
   ticket_code: string;
   user_id: string;
   user_role: string;
+  rental?: string | { _id: string; rentalCode?: string; status?: string };
+  contract_id?: string | {
+    _id: string;
+    contract_code: string;
+    title?: string;
+    status?: string;
+    equipment_id?: { title: string };
+  };
   category: string;
   subject: string;
   message: string;

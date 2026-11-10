@@ -1,5 +1,6 @@
 const express = require("express");
 const rentalController = require("../controllers/rentalController");
+const complaintController = require("../controllers/complaintController");
 const verifyToken = require("../middleware/verifyToken");
 const AppError = require("../utils/AppError");
 const asyncHandler = require("../utils/asyncHandler");
@@ -15,5 +16,7 @@ function requireObjectBody(req, _res, next) {
 
 // UC_R15: POST /api/support/ticket (Gửi ticket hỗ trợ)
 router.post("/ticket", verifyToken, requireObjectBody, asyncHandler(rentalController.createSupportTicket));
+router.get("/complaints", verifyToken, asyncHandler(complaintController.listMyComplaints));
+router.post("/complaints", verifyToken, requireObjectBody, asyncHandler(complaintController.createComplaint));
 
 module.exports = router;

@@ -28,6 +28,11 @@ const supportTicketSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Rental",
     },
+    contract_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RentalContract",
+      index: true,
+    },
     related_record_id: {
       type: mongoose.Schema.Types.ObjectId,
     },

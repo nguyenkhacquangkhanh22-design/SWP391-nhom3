@@ -51,6 +51,33 @@ export interface ModeratorRentalRequest {
   moderator_id?: { _id: string; name: string; email: string };
 }
 
+export interface ModeratorComplaint {
+  _id: string;
+  ticket_code: string;
+  subject: string;
+  message: string;
+  status: "open" | "in_progress" | "resolved" | "closed";
+  createdAt: string;
+  user_id: { _id: string; name: string; email: string; phone?: string };
+  rental?: {
+    _id: string;
+    rentalCode?: string;
+    equipment?: { title?: string } | string;
+  };
+  contract_id?: {
+    _id: string;
+    contract_code: string;
+    title: string;
+    equipment_id?: { title?: string };
+  };
+  replies: {
+    sender_name: string;
+    sender_role: string;
+    message: string;
+    created_at: string;
+  }[];
+}
+
 export interface ModeratorPaymentRental {
   _id: string;
   rentalCode: string;
@@ -311,6 +338,17 @@ export const moderatorApi = {
     request<{ message: string; ticket: ModeratorTicket }>("/support-tickets", token, {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  getComplaints: (token: string) =>
+    request<{ complaints: ModeratorComplaint[] }>("/complaints", token),
+  replyToComplaint: (
+    token: string,
+    id: string,
+    body: { message: string; status: "in_progress" | "resolved" },
+  ) =>
+    request<{ message: string; complaint: ModeratorComplaint }>(`/complaints/${id}/reply`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   getKycSubmissions: (
     token: string,

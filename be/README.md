@@ -94,6 +94,20 @@ Passwords must contain at least 8 characters. Password reset links expire after
 response whether or not the account exists. Logout revokes all sessions for the
 account because the current JWT strategy tracks a per-user token version.
 
+### Rental Complaints
+
+Protected complaint routes require a signed-in renter. A complaint can only be
+created for a rental or rental contract that belongs to the renter and has been
+completed. Each completed rental can have one complaint thread; moderators'
+replies and the resolution status are visible in the renter's rental history.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/support/complaints` | Create a complaint (`rentalId` or `contractId`, `subject`, `message`) |
+| GET | `/api/support/complaints` | List the signed-in renter's complaint threads and replies |
+| GET | `/api/moderator/complaints` | List customer rental complaints (Rental Moderator / System Admin) |
+| PATCH | `/api/moderator/complaints/:id/reply` | Reply to a complaint and set `in_progress` or `resolved` |
+
 Registration requires sending an OTP, verifying the 6-digit code, then creating
 the account with the returned one-time verification token. OTP codes expire
 after 10 minutes, can be resent once per minute, and allow at most five

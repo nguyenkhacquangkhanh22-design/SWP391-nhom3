@@ -1,5 +1,6 @@
 import type { ApiErrorResponse, User } from "../types/auth";
 import type { Equipment, Rental, SystemInfo } from "../types/smartequip";
+import type { SupportTicket } from "../types/owner";
 
 export class ApiError extends Error {
   status: number;
@@ -252,6 +253,19 @@ export const smartEquipApi = {
   ) =>
     request<{ success: boolean; message: string; data: unknown }>(
       "/api/support/ticket",
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
+  getMyComplaints: (token: string) =>
+    request<{ complaints: SupportTicket[] }>("/api/support/complaints", {}, token),
+
+  submitComplaint: (
+    token: string,
+    data: { rentalId?: string; contractId?: string; subject: string; message: string },
+  ) =>
+    request<{ message: string; complaint: SupportTicket }>(
+      "/api/support/complaints",
       { method: "POST", body: JSON.stringify(data) },
       token,
     ),

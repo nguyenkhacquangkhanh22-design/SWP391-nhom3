@@ -7,7 +7,7 @@ import PaymentQRModal from "../components/PaymentQRModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
 import { ownerApi } from "../services/ownerApi";
-import type { RentalContract } from "../types/owner";
+import type { RentalContract, SupportTicket } from "../types/owner";
 
 type TabKey = "ALL" | "PENDING" | "CONTRACT_SIGNED" | "ACTIVE" | "RETURNED";
 
@@ -29,6 +29,7 @@ export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
+  const [complaints, setComplaints] = useState<SupportTicket[]>([]);
   const [signingMarketplaceContract, setSigningMarketplaceContract] = useState<RentalContract | null>(null);
   const [marketplaceSignature, setMarketplaceSignature] = useState("");
   const [marketplaceTermsAccepted, setMarketplaceTermsAccepted] = useState(false);
@@ -63,9 +64,10 @@ export default function RentalHistoryPage() {
   const [isReviewing, setIsReviewing] = useState(false);
 
   // Modal khiếu nại / Ticket (UC_R14, UC_R15)
-  const [disputingRentalId, setDisputingRentalId] = useState<string | null>(null);
-  const [disputeReason, setDisputeReason] = useState("");
-  const [isDisputing, setIsDisputing] = useState(false);
+  const [complaintTarget, setComplaintTarget] = useState<{ type: "rental" | "contract"; id: string } | null>(null);
+  const [complaintSubject, setComplaintSubject] = useState("");
+  const [complaintMessage, setComplaintMessage] = useState("");
+  const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
 
   // Modal hủy đơn (UC_R13)
   const [cancellingRentalId, setCancellingRentalId] = useState<string | null>(null);
@@ -75,10 +77,15 @@ export default function RentalHistoryPage() {
   const fetchHistory = () => {
     if (!token) return;
     setLoading(true);
-    Promise.all([smartEquipApi.getRentalHistory(token), ownerApi.getMyRentals(token)])
-      .then(([history, marketplace]) => {
+    Promise.all([
+      smartEquipApi.getRentalHistory(token),
+      ownerApi.getMyRentals(token),
+      smartEquipApi.getMyComplaints(token),
+    ])
+      .then(([history, marketplace, complaintData]) => {
         setRentals(history.data);
         setMarketplaceContracts(marketplace.contracts);
+        setComplaints(complaintData.complaints || []);
       })
       .catch((err) => setError(err.message || "Không thể tải lịch sử đơn thuê"))
       .finally(() => setLoading(false));
@@ -223,24 +230,28 @@ export default function RentalHistoryPage() {
     }
   };
 
-  // Gửi khiếu nại tranh chấp (UC_R14)
-  const handleDisputeSubmit = async (e: React.FormEvent) => {
+  const handleComplaintSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!disputingRentalId || !disputeReason.trim()) return;
-    setIsDisputing(true);
+    if (!complaintTarget || !complaintSubject.trim() || !complaintMessage.trim()) return;
+    setIsSubmittingComplaint(true);
     setError("");
     try {
-      const res = await smartEquipApi.submitDispute(token, disputingRentalId, {
-        reason: disputeReason.trim(),
+      const res = await smartEquipApi.submitComplaint(token, {
+        ...(complaintTarget.type === "rental"
+          ? { rentalId: complaintTarget.id }
+          : { contractId: complaintTarget.id }),
+        subject: complaintSubject.trim(),
+        message: complaintMessage.trim(),
       });
-      setNotice(res.message || "Đã gửi khiếu nại tới bộ phận hỗ trợ SmartEquip.");
-      setDisputingRentalId(null);
-      setDisputeReason("");
+      setNotice(res.message || "Đã gửi khiếu nại đến Rental Moderator.");
+      setComplaintTarget(null);
+      setComplaintSubject("");
+      setComplaintMessage("");
       fetchHistory();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể gửi khiếu nại");
+      setError(err instanceof Error ? err.message : "Không thể gửi khiếu nại.");
     } finally {
-      setIsDisputing(false);
+      setIsSubmittingComplaint(false);
     }
   };
 
@@ -410,6 +421,11 @@ export default function RentalHistoryPage() {
               {marketplaceContracts.map((contract) => {
                 const handover = contract.handover_records?.find((record) => record.record_type === "handover");
                 const isReceived = Boolean(handover?.renter_confirmed);
+                const hasComplaint = complaints.some((complaint) =>
+                  typeof complaint.contract_id === "object"
+                    ? complaint.contract_id?._id === contract._id
+                    : complaint.contract_id === contract._id,
+                );
                 return (
                   <div key={contract._id} className="flex flex-col gap-3 rounded-xl border border-[#273650] bg-[#0f1624] p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -424,7 +440,19 @@ export default function RentalHistoryPage() {
                         }
                       </p>
                     </div>
-                    {isReceived ? (
+                    {contract.status === "completed" ? (
+                      hasComplaint ? (
+                        <span className="text-xs text-amber-300">Đã gửi khiếu nại</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setComplaintTarget({ type: "contract", id: contract._id })}
+                          className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"
+                        >
+                          Gửi khiếu nại
+                        </button>
+                      )
+                    ) : isReceived ? (
                       <span className="text-sm font-semibold text-emerald-400">✓ Đã xác nhận nhận hàng</span>
                     ) : contract.status === "active" && handover ? (
                       <button
@@ -455,6 +483,46 @@ export default function RentalHistoryPage() {
                   </div>
                 );
               })}
+            </div>
+          </section>
+        )}
+
+        {complaints.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
+            <h2 className="mb-4 text-lg font-bold text-white">Khiếu nại và phản hồi từ Rental Moderator</h2>
+            <div className="space-y-4">
+              {complaints.map((complaint) => (
+                <article key={complaint._id} className="rounded-xl border border-[#273650] bg-[#0f1624] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold text-white">{complaint.subject}</h3>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      complaint.status === "resolved"
+                        ? "bg-emerald-500/10 text-emerald-300"
+                        : "bg-amber-500/10 text-amber-300"
+                    }`}>
+                      {complaint.status === "resolved"
+                        ? "Đã giải quyết"
+                        : complaint.status === "in_progress"
+                          ? "Đang xử lý"
+                          : complaint.status === "closed"
+                            ? "Đã đóng"
+                            : "Chờ tiếp nhận"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Mã {complaint.ticket_code} · {new Date(complaint.createdAt).toLocaleString("vi-VN")}
+                  </p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-slate-200">{complaint.message}</p>
+                  {complaint.replies?.map((reply, index) => (
+                    <div key={`${complaint._id}-${index}`} className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+                      <p className="text-xs font-semibold text-sky-300">
+                        {reply.sender_name} · {new Date(reply.created_at).toLocaleString("vi-VN")}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{reply.message}</p>
+                    </div>
+                  ))}
+                </article>
+              ))}
             </div>
           </section>
         )}
@@ -593,12 +661,12 @@ export default function RentalHistoryPage() {
                   upperStatus === "RETURN_REQUESTED" ||
                   upperStatus === "COMPLETED") &&
                 !r.review?.rating;
-              const canDispute =
-                upperStatus === "PAID" ||
-                upperStatus === "ACTIVE" ||
-                upperStatus === "CONFIRMED" ||
-                upperStatus === "IN_PROGRESS" ||
-                upperStatus === "RETURNED";
+              const hasComplaint = complaints.some((complaint) =>
+                typeof complaint.rental === "object"
+                  ? complaint.rental?._id === r._id
+                  : complaint.rental === r._id,
+              );
+              const canDispute = upperStatus === "COMPLETED" && !hasComplaint;
               const canCancel =
                 upperStatus === "PENDING" ||
                 upperStatus === "APPROVED" ||
@@ -793,7 +861,7 @@ export default function RentalHistoryPage() {
                     {/* Nút khiếu nại (UC_R14) */}
                     {canDispute && (
                       <button
-                        onClick={() => setDisputingRentalId(r._id)}
+                        onClick={() => setComplaintTarget({ type: "rental", id: r._id })}
                         className="px-3 py-1.5 bg-[#1e1722] hover:bg-red-950/40 text-rose-400 font-semibold rounded-xl text-xs border border-rose-900/40 text-center"
                       >
                         ⚠️ Khiếu nại
@@ -1000,26 +1068,35 @@ export default function RentalHistoryPage() {
         </div>
       )}
 
-      {/* Modal Khiếu nại (UC_R14) */}
-      {disputingRentalId && (
+      {/* Complaint form for completed rentals */}
+      {complaintTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#141d2d] border border-[#263550] w-full max-w-md rounded-2xl p-6 shadow-2xl relative space-y-4">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <span>⚠️</span> Gửi Khiếu Nại Đơn Thuê
             </h3>
             <p className="text-xs text-slate-400">
-              Đội ngũ SmartEquip sẽ tiếp nhận và tiến hành bảo vệ quyền lợi chính đáng cho bạn theo điều khoản hợp đồng.
+              Khiếu nại chỉ được gửi sau khi đơn thuê hoàn tất. Rental Moderator sẽ tiếp nhận và phản hồi tại lịch sử thuê.
             </p>
-            <form onSubmit={handleDisputeSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleComplaintSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-300 mb-1">
-                  Lý do khiếu nại cụ thể *
-                </label>
+                <label className="mb-1 block font-bold text-slate-300">Tiêu đề *</label>
+                <input
+                  value={complaintSubject}
+                  onChange={(e) => setComplaintSubject(e.target.value)}
+                  maxLength={160}
+                  className="w-full rounded-xl border border-[#2b3a56] bg-[#1b273d] p-3 text-white focus:border-rose-500 focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Mô tả khiếu nại *</label>
                 <textarea
-                  rows={3}
-                  placeholder="Mô tả sự cố (VD: Thiết bị thiếu phụ kiện, không đúng mô tả kỹ thuật...)"
-                  value={disputeReason}
-                  onChange={(e) => setDisputeReason(e.target.value)}
+                  rows={4}
+                  placeholder="Mô tả vấn đề bạn gặp phải..."
+                  value={complaintMessage}
+                  onChange={(e) => setComplaintMessage(e.target.value)}
+                  maxLength={5000}
                   className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-3 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
                   required
                 />
@@ -1028,18 +1105,18 @@ export default function RentalHistoryPage() {
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
                 <button
                   type="button"
-                  onClick={() => setDisputingRentalId(null)}
-                  disabled={isDisputing}
+                  onClick={() => setComplaintTarget(null)}
+                  disabled={isSubmittingComplaint}
                   className="px-4 py-2 bg-[#1c2436] text-slate-300 font-semibold rounded-xl text-xs"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  disabled={isDisputing || !disputeReason.trim()}
+                  disabled={isSubmittingComplaint || !complaintSubject.trim() || !complaintMessage.trim()}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs"
                 >
-                  {isDisputing ? "Đang gửi..." : "Gửi khiếu nại"}
+                  {isSubmittingComplaint ? "Đang gửi..." : "Gửi khiếu nại"}
                 </button>
               </div>
             </form>

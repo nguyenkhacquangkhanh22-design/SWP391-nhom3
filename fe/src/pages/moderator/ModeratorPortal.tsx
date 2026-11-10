@@ -10,6 +10,7 @@ import { moderatorApi } from "../../services/moderatorApi";
 import type {
   ContractTemplate,
   ModeratorContract,
+  ModeratorComplaint,
   ModeratorEquipment,
   ModeratorHandoverRecord,
   ModeratorPaymentRental,
@@ -27,6 +28,7 @@ type Tab =
   | "handover"
   | "status"
   | "templates"
+  | "complaints"
   | "support";
 
 function dateTime(value?: string) {
@@ -76,6 +78,9 @@ export default function ModeratorPortal() {
   const [records, setRecords] = useState<ModeratorHandoverRecord[]>([]);
   const [statusRequests, setStatusRequests] = useState<ModeratorStatusRequest[]>([]);
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
+  const [complaints, setComplaints] = useState<ModeratorComplaint[]>([]);
+  const [complaintReplies, setComplaintReplies] = useState<Record<string, string>>({});
+  const [complaintStatuses, setComplaintStatuses] = useState<Record<string, "in_progress" | "resolved">>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -122,7 +127,7 @@ export default function ModeratorPortal() {
     setLoading(true);
     setError("");
     try {
-      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData] =
+      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData, complaintData] =
         await Promise.all([
           moderatorApi.getPayments(token),
           moderatorApi.getRentalRequests(token),
@@ -133,6 +138,7 @@ export default function ModeratorPortal() {
           moderatorApi.getTemplates(token),
           moderatorApi.getKycSubmissions(token).catch(() => null),
           moderatorApi.getPayoutRequests(token).catch(() => ({ payouts: [] })),
+          moderatorApi.getComplaints(token),
         ]);
       setPayments(paymentData.payments || []);
       setRentalRequests(reqData.rentalRequests || []);
@@ -141,6 +147,7 @@ export default function ModeratorPortal() {
       setRecords(recordData.records);
       setStatusRequests(statusData.requests);
       setTemplates(templateData.templates);
+      setComplaints(complaintData.complaints || []);
       if (kycData) {
         setKycSubmissions(kycData.submissions || []);
         setKycStats(kycData.stats || { pending: 0, verified: 0, rejected: 0, unverified: 0, total_active: 0 });
@@ -193,10 +200,33 @@ export default function ModeratorPortal() {
           : "";
       setSuccess(notificationWarning ? `${message} ${notificationWarning}` : message);
       await loadData();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể hoàn tất thao tác.");
+      return false;
     } finally {
       setBusyId("");
+    }
+  }
+
+  async function handleReplyToComplaint(complaint: ModeratorComplaint) {
+    if (!token) return;
+    const message = complaintReplies[complaint._id]?.trim();
+    if (!message) {
+      setError("Vui lòng nhập nội dung phản hồi cho khách hàng.");
+      return;
+    }
+
+    const status = complaintStatuses[complaint._id] || "in_progress";
+    const succeeded = await performAction(
+      complaint._id,
+      () => moderatorApi.replyToComplaint(token, complaint._id, { message, status }),
+      status === "resolved"
+        ? "Đã phản hồi và đánh dấu khiếu nại đã giải quyết."
+        : "Đã gửi phản hồi cho khách hàng.",
+    );
+    if (succeeded) {
+      setComplaintReplies((current) => ({ ...current, [complaint._id]: "" }));
     }
   }
 
@@ -335,6 +365,11 @@ export default function ModeratorPortal() {
     { id: "handover", label: "🤝 Bàn giao / hoàn trả" },
     { id: "status", label: "🔄 Yêu cầu trạng thái" },
     { id: "templates", label: "📄 Mẫu hợp đồng" },
+    {
+      id: "complaints",
+      label: "⚠️ Khiếu nại khách hàng",
+      badge: complaints.filter((complaint) => ["open", "in_progress"].includes(complaint.status)).length,
+    },
     { id: "support", label: "🛟 Gửi yêu cầu hỗ trợ" },
   ];
 
@@ -1972,6 +2007,88 @@ export default function ModeratorPortal() {
               {busyId === "ticket" ? "Đang gửi..." : "Gửi yêu cầu"}
             </button>
           </form>
+        )}
+
+        {!loading && activeTab === "complaints" && (
+          <section className="owner-contracts-list">
+            <div className="owner-section-card">
+              <h2 style={{ marginTop: 0 }}>Khiếu nại sau khi thuê</h2>
+              <p style={{ color: "var(--muted)", marginBottom: 0 }}>
+                Tiếp nhận khiếu nại từ khách hàng sau khi hợp đồng hoặc đơn thuê đã hoàn tất; phản hồi sẽ được lưu và hiển thị trong lịch sử thuê của khách.
+              </p>
+            </div>
+            {complaints.map((complaint) => (
+              <article key={complaint._id} className="owner-section-card">
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <h3 style={{ margin: 0, color: "#fff" }}>{complaint.subject}</h3>
+                    <p style={{ margin: "6px 0", color: "var(--muted)", fontSize: "0.85rem" }}>
+                      #{complaint.ticket_code} · {complaint.user_id?.name} ({complaint.user_id?.email}) · {dateTime(complaint.createdAt)}
+                    </p>
+                    <p style={{ margin: "6px 0", color: "#cbd5e1", fontSize: "0.9rem" }}>
+                      Thiết bị: {
+                        complaint.contract_id?.equipment_id?.title ||
+                        (typeof complaint.rental?.equipment === "object" ? complaint.rental.equipment?.title : undefined) ||
+                        "—"
+                      }
+                      {complaint.contract_id?.contract_code ? ` · Hợp đồng ${complaint.contract_id.contract_code}` : ""}
+                      {complaint.rental?.rentalCode ? ` · Đơn ${complaint.rental.rentalCode}` : ""}
+                    </p>
+                  </div>
+                  <span className={`status-tag ${complaint.status === "resolved" ? "status-tag-active" : "status-tag-pending"}`}>
+                    {complaint.status === "resolved" ? "Đã giải quyết" : complaint.status === "in_progress" ? "Đang xử lý" : "Chờ xử lý"}
+                  </span>
+                </div>
+                <div style={{ whiteSpace: "pre-wrap", borderRadius: 10, background: "#0f1724", padding: 12, color: "#e2e8f0" }}>
+                  {complaint.message}
+                </div>
+                {complaint.replies?.map((reply, index) => (
+                  <div key={`${complaint._id}-${index}`} style={{ marginTop: 10, borderLeft: "3px solid #38bdf8", padding: "8px 12px", background: "#0f1724", borderRadius: 8 }}>
+                    <strong style={{ color: "#7dd3fc" }}>{reply.sender_name} · {dateTime(reply.created_at)}</strong>
+                    <p style={{ margin: "5px 0 0", whiteSpace: "pre-wrap", color: "#cbd5e1" }}>{reply.message}</p>
+                  </div>
+                ))}
+                {complaint.status !== "resolved" && complaint.status !== "closed" && (
+                  <div className="moderator-form" style={{ marginTop: 14 }}>
+                    <label className="field-label">
+                      Phản hồi khách hàng
+                      <textarea
+                        className="input-field"
+                        rows={3}
+                        maxLength={5000}
+                        value={complaintReplies[complaint._id] || ""}
+                        onChange={(event) => setComplaintReplies((current) => ({ ...current, [complaint._id]: event.target.value }))}
+                        placeholder="Nhập nội dung giải thích hoặc kết quả xử lý..."
+                      />
+                    </label>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <select
+                        className="input-field"
+                        style={{ width: "auto" }}
+                        value={complaintStatuses[complaint._id] || "in_progress"}
+                        onChange={(event) => setComplaintStatuses((current) => ({
+                          ...current,
+                          [complaint._id]: event.target.value as "in_progress" | "resolved",
+                        }))}
+                      >
+                        <option value="in_progress">Đang xử lý</option>
+                        <option value="resolved">Đã giải quyết</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        disabled={busyId === complaint._id || !(complaintReplies[complaint._id] || "").trim()}
+                        onClick={() => void handleReplyToComplaint(complaint)}
+                      >
+                        {busyId === complaint._id ? "Đang gửi..." : "Gửi phản hồi"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+            {complaints.length === 0 && <div className="owner-section-card">Chưa có khiếu nại nào từ khách hàng.</div>}
+          </section>
         )}
       </main>
     </div>
