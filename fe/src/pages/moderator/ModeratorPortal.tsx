@@ -7,13 +7,14 @@ import type { AdminKycSubmission, AdminKycStats } from "../../types/admin";
 import Brand from "../../components/Brand";
 import Feedback from "../../components/Feedback";
 import { moderatorApi } from "../../services/moderatorApi";
+import { openContractPdfPreview } from "../../utils/contractPdfGenerator";
 import type {
   ContractTemplate,
   ModeratorContract,
-  ModeratorComplaint,
+  ModeratorPaymentRental,
   ModeratorEquipment,
   ModeratorHandoverRecord,
-  ModeratorPaymentRental,
+  ModeratorComplaint,
   ModeratorRentalRequest,
   ModeratorStatusRequest,
 } from "../../services/moderatorApi";
@@ -88,6 +89,8 @@ export default function ModeratorPortal() {
   const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
   const [forwardNotes, setForwardNotes] = useState<Record<string, string>>({});
   const [contractReasons, setContractReasons] = useState<Record<string, string>>({});
+  const [paymentReasons, setPaymentReasons] = useState<Record<string, string>>({});
+  const [enlargedReceipt, setEnlargedReceipt] = useState<string | null>(null);
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
   const [requestNotes, setRequestNotes] = useState<Record<string, string>>({});
   const [equipmentSearch, setEquipmentSearch] = useState("");
@@ -127,9 +130,9 @@ export default function ModeratorPortal() {
     setLoading(true);
     setError("");
     try {
-      const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData, complaintData] =
+const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData, complaintData] =
         await Promise.all([
-          moderatorApi.getPayments(token),
+          moderatorApi.getPayments(token).catch(() => ({ payments: [] })),
           moderatorApi.getRentalRequests(token),
           moderatorApi.getContracts(token),
           moderatorApi.getEquipments(token),
@@ -143,6 +146,7 @@ export default function ModeratorPortal() {
       setPayments(paymentData.payments || []);
       setRentalRequests(reqData.rentalRequests || []);
       setContracts(contractData.contracts);
+      setPayments(paymentData.payments || []);
       setEquipments(equipmentData.equipments);
       setRecords(recordData.records);
       setStatusRequests(statusData.requests);
@@ -305,7 +309,8 @@ export default function ModeratorPortal() {
       payments.filter(
         (p) =>
           String(p.status || "").toUpperCase() === "PAYMENT_VERIFYING" ||
-          p.payment?.paymentStatus === "verifying"
+          p.payment?.paymentStatus === "verifying" ||
+          p.payment?.paymentStatus === "pending_confirmation"
       ),
     [payments]
   );
@@ -336,7 +341,7 @@ export default function ModeratorPortal() {
   );
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
-    {
+{
       id: "kyc",
       label: "🪪 Xác nhận Danh tính (KYC)",
       badge: kycStats.pending,
@@ -426,6 +431,12 @@ export default function ModeratorPortal() {
               {pendingContracts.length}
             </strong>
             <span>Hợp đồng chờ duyệt</span>
+          </div>
+<div style={{ cursor: "pointer" }} onClick={() => setActiveTab("payments")}>
+            <strong style={{ color: pendingPayments.length > 0 ? "#10b981" : undefined }}>
+              {pendingPayments.length}
+            </strong>
+            <span>Giao dịch chuyển khoản chờ duyệt</span>
           </div>
           <div style={{ cursor: "pointer" }} onClick={() => setActiveTab("handover")}>
             <strong>
@@ -1399,6 +1410,68 @@ export default function ModeratorPortal() {
           </section>
         )}
 
+        {!loading && activeTab === "complaints" && (
+          <section className="moderator-list">
+            {complaints.map((complaint) => (
+              <article key={complaint._id} className="owner-section-card moderator-card">
+                <div className="moderator-card-heading">
+                  <div>
+                    <span className="contract-code-tag">#{complaint.ticket_code}</span>
+                    <h2>{complaint.subject}</h2>
+                    <p>{complaint.user_id?.name} ({complaint.user_id?.email}) · {dateTime(complaint.createdAt)}</p>
+                  </div>
+                  <span className={`status-badge status-${complaint.status}`}>{complaint.status}</span>
+                </div>
+                <p style={{ whiteSpace: "pre-wrap" }}>{complaint.message}</p>
+                {complaint.replies?.map((reply, index) => (
+                  <div key={`${complaint._id}-${index}`} className="moderator-warning">
+                    <strong>{reply.sender_name} · {dateTime(reply.created_at)}</strong>
+                    <p>{reply.message}</p>
+                  </div>
+                ))}
+                {complaint.status !== "resolved" && complaint.status !== "closed" && (
+                  <div className="moderator-form">
+                    <textarea
+                      className="input-field"
+                      rows={3}
+                      maxLength={5000}
+                      value={complaintReplies[complaint._id] || ""}
+                      onChange={(event) =>
+                        setComplaintReplies((current) => ({ ...current, [complaint._id]: event.target.value }))
+                      }
+                      placeholder="Nhập nội dung phản hồi..."
+                    />
+                    <div className="moderator-actions">
+                      <select
+                        className="input-field"
+                        value={complaintStatuses[complaint._id] || "in_progress"}
+                        onChange={(event) =>
+                          setComplaintStatuses((current) => ({
+                            ...current,
+                            [complaint._id]: event.target.value as "in_progress" | "resolved",
+                          }))
+                        }
+                      >
+                        <option value="in_progress">Đang xử lý</option>
+                        <option value="resolved">Đã giải quyết</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        disabled={busyId === complaint._id || !(complaintReplies[complaint._id] || "").trim()}
+                        onClick={() => void handleReplyToComplaint(complaint)}
+                      >
+                        {busyId === complaint._id ? "Đang gửi..." : "Gửi phản hồi"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+            {complaints.length === 0 && <div className="owner-section-card">Chưa có khiếu nại nào.</div>}
+          </section>
+        )}
+
         {/* TAB 1: YÊU CẦU THUÊ TỪ RENTER -> QUẢN LÝ WEB GỬI CHO OWNER DUYỆT */}
         {!loading && activeTab === "requests" && (
           <section className="moderator-list">
@@ -1661,6 +1734,171 @@ export default function ModeratorPortal() {
                         }
                       >
                         ✕ Từ chối (Yêu cầu Owner sửa)
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        )}
+
+
+        {/* TAB 3: XÁC NHẬN GIAO DỊCH CHUYỂN KHOẢN VIETQR MB BANK */}
+        {!loading && activeTab === "payments" && (
+          <section className="moderator-list">
+            <div className="owner-section-card" style={{ background: "#0c1527", borderColor: "#1d2e4d" }}>
+              <h3 style={{ margin: "0 0 6px", color: "#38bdf8", fontSize: "1.05rem" }}>
+                💳 Quản lý & Xác nhận Giao dịch Chuyển khoản VietQR (MB Bank)
+              </h3>
+              <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
+                Tài khoản nhận tiền: <strong>MB Bank • 111105056666 • NGUYEN KHAC QUANG KHANH</strong>.
+                Quản lý web kiểm tra tài khoản ngân hàng thực tế, nếu nhận đủ tiền thì nhấn <strong>"Xác nhận đã nhận tiền"</strong> để ghi nhận đơn thuê thành công cho khách nhận máy.
+              </p>
+            </div>
+
+            {payments.length === 0 && (
+              <div className="owner-section-card">Chưa có giao dịch chuyển khoản nào cần xử lý.</div>
+            )}
+
+            {payments.map((p) => {
+              const isPending = p.payment?.paymentStatus === "pending_confirmation";
+              const isPaid = p.payment?.paymentStatus === "paid" || p.status === "PAID";
+
+              return (
+                <article className="owner-section-card moderator-card" key={p._id}>
+                  <div className="moderator-card-heading">
+                    <div>
+                      <span className="contract-code-tag">{p.rentalCode}</span>
+                      <strong style={{ fontSize: "1.05rem", marginLeft: 8 }}>
+                        {p.equipment?.title || "Thiết bị thuê"}
+                      </strong>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        background: isPaid ? "#064e3b" : isPending ? "#78350f" : "#4c0519",
+                        color: isPaid ? "#34d399" : isPending ? "#fbbf24" : "#f43f5e",
+                        border: `1px solid ${isPaid ? "#059669" : isPending ? "#d97706" : "#e11d48"}`,
+                      }}
+                    >
+                      {isPaid
+                        ? "✓ Đã xác nhận thành công"
+                        : isPending
+                        ? "⏳ Chờ Quản lý xác nhận chuyển khoản"
+                        : "✕ Đã từ chối"}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => openContractPdfPreview(p as any)}
+                      className="button button-secondary"
+                      style={{ background: "#1e293b", color: "#fb923c", borderColor: "#334155", fontSize: "0.82rem", padding: "4px 12px" }}
+                    >
+                      📄 Xem & Tải Hợp Đồng PDF
+                    </button>
+                  </div>
+
+                  <div className="moderator-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+                    <div>
+                      <small>KHÁCH THUÊ (NGƯỜI CHUYỂN)</small>
+                      <p><b>{p.renter?.name || "Khách thuê"}</b></p>
+                      <p style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{p.renter?.email} • {p.renter?.phone || "Chưa có SĐT"}</p>
+                    </div>
+                    <div>
+                      <small>CHỦ SỞ HỮU (OWNER)</small>
+                      <p><b>{p.owner?.name || "Chủ máy"}</b></p>
+                      <p style={{ fontSize: "0.85rem", color: "var(--muted)" }}>{p.owner?.email}</p>
+                    </div>
+                    <div>
+                      <small>SỐ TIỀN THANH TOÁN (VIETQR)</small>
+                      <p style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fb923c" }}>
+                        {(p.payment?.amountPaid || p.totalAmount).toLocaleString("vi-VN")} đ
+                      </p>
+                      <p style={{ fontSize: "0.8rem", color: "#34d399" }}>Miễn phí cọc • Chỉ tính phí thuê</p>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 8, background: "#111827", border: "1px solid var(--border)", fontSize: "0.88rem" }}>
+                    <p style={{ margin: "0 0 4px" }}>
+                      <b>Cú pháp chuyển khoản yêu cầu:</b>{" "}
+                      <code style={{ background: "#1e293b", padding: "2px 6px", borderRadius: 4, color: "#38bdf8" }}>
+                        THUE {p.contract?.contractNumber || p.rentalCode}
+                      </code>
+                    </p>
+                    <p style={{ margin: "0 0 4px" }}>
+                      <b>Thời gian thông báo chuyển:</b> {dateTime(p.payment?.transferNotifiedAt || p.updatedAt)}
+                    </p>
+                    {p.deliveryAddress && (
+                      <p style={{ margin: "0 0 4px" }}><b>Địa chỉ giao nhận máy:</b> {p.deliveryAddress}</p>
+                    )}
+                    {(p.deliveryTime || p.deliveryMethod) && (
+                      <p style={{ margin: "0 0 4px", color: "#38bdf8" }}>
+                        <b>Giao nhận:</b> {p.deliveryTime || "09:00"} (PT: {p.deliveryMethod || "motorcycle"}) ➔ Trả máy: {p.returnTime || "17:00"} (PT: {p.returnMethod || "motorcycle"}) {p.shippingFee ? `• Phí ship: ${p.shippingFee.toLocaleString("vi-VN")} đ` : ""}
+                      </p>
+                    )}
+                    {p.payment?.receiptImage && (
+                      <div style={{ marginTop: 8, padding: 8, background: "#0b1320", borderRadius: 8, border: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 12 }}>
+                        <img
+                          src={p.payment.receiptImage}
+                          alt="Biên lai chuyển khoản"
+                          style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "2px solid #059669", cursor: "pointer" }}
+                          onClick={() => setEnlargedReceipt(p.payment!.receiptImage!)}
+                          title="Nhấp để phóng to ảnh biên lai"
+                        />
+                        <div>
+                          <b style={{ color: "#34d399", fontSize: "0.82rem" }}>✓ Khách đã đính kèm ảnh chụp biên lai ngân hàng</b>
+                          <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>Nhấp vào ảnh nhỏ bên cạnh để phóng to đối soát</p>
+                        </div>
+                      </div>
+                    )}
+                    {p.payment?.rejectionReason && (
+                      <p style={{ margin: "6px 0 0", color: "#f43f5e" }}>
+                        <b>Lý do từ chối trước đó:</b> {p.payment.rejectionReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {isPending && (
+                    <div className="moderator-actions" style={{ marginTop: 14 }}>
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        placeholder="Nhập ghi chú nếu từ chối (VD: Chưa thấy biến động số dư tài khoản MB, chuyển thiếu tiền...)"
+                        value={paymentReasons[p._id] || ""}
+                        onChange={(e) => setPaymentReasons((curr) => ({ ...curr, [p._id]: e.target.value }))}
+                      />
+                      <button
+                        className="button button-primary"
+                        style={{ background: "#059669" }}
+                        disabled={busyId === p._id}
+                        onClick={() =>
+                          void performAction(
+                            p._id,
+                            () => moderatorApi.reviewPayment(token!, p._id, "approve"),
+                            `Đã xác nhận thanh toán chuyển khoản thành công cho đơn ${p.rentalCode}!`
+                          )
+                        }
+                      >
+                        ✅ Xác nhận ĐÃ NHẬN ĐỦ TIỀN (Ghi nhận thành công)
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        disabled={busyId === p._id}
+                        onClick={() =>
+                          void performAction(
+                            p._id,
+                            () => moderatorApi.reviewPayment(token!, p._id, "reject", paymentReasons[p._id]),
+                            `Đã từ chối xác nhận thanh toán cho đơn ${p.rentalCode}.`
+                          )
+                        }
+                      >
+                        ✕ Từ chối xác nhận (Báo sai tiền / Chưa nhận)
                       </button>
                     </div>
                   )}
@@ -2009,86 +2247,65 @@ export default function ModeratorPortal() {
           </form>
         )}
 
-        {!loading && activeTab === "complaints" && (
-          <section className="owner-contracts-list">
-            <div className="owner-section-card">
-              <h2 style={{ marginTop: 0 }}>Khiếu nại sau khi thuê</h2>
-              <p style={{ color: "var(--muted)", marginBottom: 0 }}>
-                Tiếp nhận khiếu nại từ khách hàng sau khi hợp đồng hoặc đơn thuê đã hoàn tất; phản hồi sẽ được lưu và hiển thị trong lịch sử thuê của khách.
-              </p>
+        {enlargedReceipt && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.85)",
+              zIndex: 9999,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+            }}
+            onClick={() => setEnlargedReceipt(null)}
+          >
+            <div
+              style={{
+                position: "relative",
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                background: "#111827",
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #374151",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: 8, alignItems: "center" }}>
+                <span style={{ color: "#f3f4f6", fontWeight: 600 }}>Ảnh biên lai chuyển khoản (Đối soát)</span>
+                <button
+                  type="button"
+                  onClick={() => setEnlargedReceipt(null)}
+                  style={{
+                    background: "#374151",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕ Đóng
+                </button>
+              </div>
+              <img
+                src={enlargedReceipt}
+                alt="Biên lai phóng to"
+                style={{
+                  maxWidth: "85vw",
+                  maxHeight: "75vh",
+                  objectFit: "contain",
+                  borderRadius: 8,
+                }}
+              />
             </div>
-            {complaints.map((complaint) => (
-              <article key={complaint._id} className="owner-section-card">
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <div>
-                    <h3 style={{ margin: 0, color: "#fff" }}>{complaint.subject}</h3>
-                    <p style={{ margin: "6px 0", color: "var(--muted)", fontSize: "0.85rem" }}>
-                      #{complaint.ticket_code} · {complaint.user_id?.name} ({complaint.user_id?.email}) · {dateTime(complaint.createdAt)}
-                    </p>
-                    <p style={{ margin: "6px 0", color: "#cbd5e1", fontSize: "0.9rem" }}>
-                      Thiết bị: {
-                        complaint.contract_id?.equipment_id?.title ||
-                        (typeof complaint.rental?.equipment === "object" ? complaint.rental.equipment?.title : undefined) ||
-                        "—"
-                      }
-                      {complaint.contract_id?.contract_code ? ` · Hợp đồng ${complaint.contract_id.contract_code}` : ""}
-                      {complaint.rental?.rentalCode ? ` · Đơn ${complaint.rental.rentalCode}` : ""}
-                    </p>
-                  </div>
-                  <span className={`status-tag ${complaint.status === "resolved" ? "status-tag-active" : "status-tag-pending"}`}>
-                    {complaint.status === "resolved" ? "Đã giải quyết" : complaint.status === "in_progress" ? "Đang xử lý" : "Chờ xử lý"}
-                  </span>
-                </div>
-                <div style={{ whiteSpace: "pre-wrap", borderRadius: 10, background: "#0f1724", padding: 12, color: "#e2e8f0" }}>
-                  {complaint.message}
-                </div>
-                {complaint.replies?.map((reply, index) => (
-                  <div key={`${complaint._id}-${index}`} style={{ marginTop: 10, borderLeft: "3px solid #38bdf8", padding: "8px 12px", background: "#0f1724", borderRadius: 8 }}>
-                    <strong style={{ color: "#7dd3fc" }}>{reply.sender_name} · {dateTime(reply.created_at)}</strong>
-                    <p style={{ margin: "5px 0 0", whiteSpace: "pre-wrap", color: "#cbd5e1" }}>{reply.message}</p>
-                  </div>
-                ))}
-                {complaint.status !== "resolved" && complaint.status !== "closed" && (
-                  <div className="moderator-form" style={{ marginTop: 14 }}>
-                    <label className="field-label">
-                      Phản hồi khách hàng
-                      <textarea
-                        className="input-field"
-                        rows={3}
-                        maxLength={5000}
-                        value={complaintReplies[complaint._id] || ""}
-                        onChange={(event) => setComplaintReplies((current) => ({ ...current, [complaint._id]: event.target.value }))}
-                        placeholder="Nhập nội dung giải thích hoặc kết quả xử lý..."
-                      />
-                    </label>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <select
-                        className="input-field"
-                        style={{ width: "auto" }}
-                        value={complaintStatuses[complaint._id] || "in_progress"}
-                        onChange={(event) => setComplaintStatuses((current) => ({
-                          ...current,
-                          [complaint._id]: event.target.value as "in_progress" | "resolved",
-                        }))}
-                      >
-                        <option value="in_progress">Đang xử lý</option>
-                        <option value="resolved">Đã giải quyết</option>
-                      </select>
-                      <button
-                        type="button"
-                        className="button button-primary"
-                        disabled={busyId === complaint._id || !(complaintReplies[complaint._id] || "").trim()}
-                        onClick={() => void handleReplyToComplaint(complaint)}
-                      >
-                        {busyId === complaint._id ? "Đang gửi..." : "Gửi phản hồi"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </article>
-            ))}
-            {complaints.length === 0 && <div className="owner-section-card">Chưa có khiếu nại nào từ khách hàng.</div>}
-          </section>
+          </div>
         )}
       </main>
     </div>

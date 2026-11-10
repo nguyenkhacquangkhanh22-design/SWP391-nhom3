@@ -69,25 +69,39 @@ const rentalSchema = new mongoose.Schema(
       enum: [
         "PENDING",
         "APPROVED",
+        "CONTRACT_PENDING",
         "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
         "PAYMENT_VERIFYING",
         "PAYMENT_REJECTED",
         "PAID",
+        "CONFIRMED",
         "ACTIVE",
+        "IN_PROGRESS",
+        "RETURN_REQUESTED",
+        "RETURN_PENDING",
         "RETURNED",
         "COMPLETED",
         "CANCELLED",
         "DISPUTED",
-        // Hỗ trợ thêm cho tương thích ngược
+        "PENDING_MODERATOR",
+        "MODERATOR_REJECTED",
+        "MODERATOR_APPROVED",
+        // Hỗ trợ thêm cho tương thích ngược chữ thường
         "pending",
         "approved",
         "contract_pending",
+        "contract_signed",
         "payment_pending",
         "payment_verifying",
         "payment_rejected",
+        "paid",
         "confirmed",
+        "active",
         "in_progress",
         "return_requested",
+        "return_pending",
+        "returned",
         "completed",
         "cancelled",
         "disputed",
@@ -95,10 +109,30 @@ const rentalSchema = new mongoose.Schema(
       default: "PENDING",
       index: true,
     },
-    deliveryAddress: {
+        deliveryAddress: {
       type: String,
       trim: true,
       default: "",
+    },
+    deliveryTime: {
+      type: String,
+      default: "09:00",
+    },
+    returnTime: {
+      type: String,
+      default: "17:00",
+    },
+    deliveryMethod: {
+      type: String,
+      default: "motorcycle",
+    },
+    returnMethod: {
+      type: String,
+      default: "motorcycle",
+    },
+    shippingFee: {
+      type: Number,
+      default: 0,
     },
     renterNote: {
       type: String,
@@ -118,10 +152,24 @@ const rentalSchema = new mongoose.Schema(
       renterSignature: { type: String, trim: true },
       digitalSignature: { type: String, trim: true },
       contractUrl: { type: String, trim: true },
+      agreedToSign: { type: Boolean, default: false },
+      agreedAt: { type: Date },
       moderatorApproved: { type: Boolean, default: false },
       moderatorStatus: {
         type: String,
-        enum: ["none", "draft", "pending_renter_signature", "pending_approval", "moderator_rejected", "moderator_approved", "signed"],
+        enum: [
+          "none",
+          "draft",
+          "pending_renter_signature",
+          "approved",
+          "confirmed",
+          "sent_to_renter",
+          "renter_rejected",
+          "pending_approval",
+          "moderator_rejected",
+          "moderator_approved",
+          "signed",
+        ],
         default: "none",
       },
       ownerSigned: { type: Boolean, default: false },
@@ -138,9 +186,16 @@ const rentalSchema = new mongoose.Schema(
       amountPaid: { type: Number, default: 0 },
       paymentStatus: {
         type: String,
-        enum: ["unpaid", "verifying", "paid", "rejected", "refunded"],
+        enum: ["unpaid", "pending_confirmation", "verifying", "paid", "rejected", "refunded", "refund_pending"],
         default: "unpaid",
       },
+      orderCode: { type: Number },
+      paymentLinkId: { type: String, trim: true },
+      checkoutUrl: { type: String, trim: true },
+      transferNotifiedAt: { type: Date },
+      confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      rejectionReason: { type: String, default: "" },
+      receiptImage: { type: String, default: "" },
       verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       verifiedAt: { type: Date },
       moderatorNote: { type: String, trim: true, default: "" },
@@ -164,11 +219,41 @@ const rentalSchema = new mongoose.Schema(
       createdAt: { type: Date },
       reviewedAt: { type: Date },
     },
+    ownerReview: {
+      rating: { type: Number, min: 1, max: 5 },
+      trustScoreDelta: { type: Number, default: 0 },
+      equipmentPreservation: { type: String, enum: ["excellent", "good", "fair", "poor"], default: "good" },
+      onTimeReturn: { type: Boolean, default: true },
+      comment: { type: String, trim: true, default: "" },
+      reviewedAt: { type: Date },
+    },
     cancellation: {
       cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       reason: { type: String, trim: true },
       cancelledAt: { type: Date },
+      refundAmount: { type: Number, default: 0 },
+      refundStatus: { type: String, default: "completed" },
+      isOwnerCancelled: { type: Boolean, default: false },
+      refundInfo: {
+        bankName: { type: String, trim: true },
+        accountNumber: { type: String, trim: true },
+        accountName: { type: String, trim: true },
+        refundAmount: { type: Number, default: 0 },
+        status: { type: String, enum: ["pending", "processed", "rejected"], default: "pending" },
+        processedAt: { type: Date },
+        note: { type: String, trim: true },
+      },
     },
+    extensions: [
+      {
+        extendedAt: { type: Date, default: Date.now },
+        extraDays: { type: Number, required: true },
+        extraFee: { type: Number, required: true },
+        previousEndDate: { type: Date, required: true },
+        newEndDate: { type: Date, required: true },
+        note: { type: String, trim: true },
+      },
+    ],
     dispute: {
       reason: { type: String, trim: true },
       description: { type: String, trim: true },
@@ -191,12 +276,14 @@ rentalSchema.pre("save", function (next) {
     this.renterNote = this.notes;
   }
 
-  // Đồng bộ chữ ký
+  // Đồng bộ chữ ký (Không ghi đè ảnh base64 vào tên người ký)
   if (this.contract) {
     if (this.contract.renterSignature && !this.contract.digitalSignature) {
       this.contract.digitalSignature = this.contract.renterSignature;
     } else if (this.contract.digitalSignature && !this.contract.renterSignature) {
-      this.contract.renterSignature = this.contract.digitalSignature;
+      if (!this.contract.digitalSignature.startsWith("data:image")) {
+        this.contract.renterSignature = this.contract.digitalSignature;
+      }
     }
   }
 

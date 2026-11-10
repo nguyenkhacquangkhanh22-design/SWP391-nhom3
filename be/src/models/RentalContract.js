@@ -58,6 +58,53 @@ const rentalContractSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    delivery_address: {
+      type: String,
+      default: "",
+    },
+    delivery_time: {
+      type: String,
+      default: "09:00",
+    },
+    return_time: {
+      type: String,
+      default: "17:00",
+    },
+    delivery_method: {
+      type: String,
+      default: "motorcycle",
+    },
+    return_method: {
+      type: String,
+      default: "motorcycle",
+    },
+    shipping_fee: {
+      type: Number,
+      default: 0,
+    },
+    receipt_image: {
+      type: String,
+      default: "",
+    },
+    payment_method: {
+      type: String,
+      enum: ["vietqr", "bank_transfer", "vnpay", "cash", "wallet"],
+      default: "vietqr",
+    },
+    payment_confirmed_by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    payment_rejection_reason: { type: String, default: "" },
+    payment_status: {
+      type: String,
+      enum: ["unpaid", "pending_confirmation", "paid", "rejected", "refunded"],
+      default: "unpaid",
+    },
+    payment_amount: {
+      type: Number,
+      default: 0,
+    },
+    paid_at: {
+      type: Date,
+    },
     special_conditions: {
       type: String,
       default: "",
@@ -90,9 +137,22 @@ const rentalContractSchema = new mongoose.Schema(
         "moderator_rejected",    // Quản lý web từ chối / trả về chỉnh sửa
         "moderator_approved",    // Quản lý web đã duyệt & gửi cho Người thuê (Renter) ký tên
         "signed",                // Người thuê đã ký tên hoàn tất
+        "contract_signed",
+        "payment_pending",
+        "paid",
         "active",                // Đang trong thời gian thuê (đã bàn giao)
+        "returned",
         "completed",             // Đã kết thúc thuê
         "cancelled",             // Hủy
+        "DRAFT",
+        "SIGNED",
+        "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
+        "PAID",
+        "ACTIVE",
+        "RETURNED",
+        "COMPLETED",
+        "CANCELLED",
       ],
       default: "draft",
       index: true,
@@ -137,6 +197,20 @@ const rentalContractSchema = new mongoose.Schema(
       signature_image: { type: String, default: "" },
       signature_type: { type: String, enum: ["drawn", "typed"], default: "typed" },
       certificate_code: { type: String, default: "" },
+    },
+    owner_review: {
+      rating: { type: Number, min: 1, max: 5 },
+      equipment_preservation: { type: String, default: "good" },
+      on_time_return: { type: Boolean, default: true },
+      comment: { type: String, default: "" },
+      reviewed_at: { type: Date },
+    },
+    cancellation: {
+      cancelled_by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reason: { type: String, default: "" },
+      cancelled_at: { type: Date },
+      refund_amount: { type: Number, default: 0 },
+      is_owner_cancelled: { type: Boolean, default: false },
     },
   },
   {

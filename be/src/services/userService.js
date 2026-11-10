@@ -119,6 +119,26 @@ class UserService {
     await user.save();
     return this.toProfileResponse(user);
   }
+
+  async quickVerifyKyc(userId) {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new AppError(404, "User not found");
+    }
+
+    user.kycStatus = "verified";
+    user.kycDocument = {
+      idNumber: user.kycDocument?.idNumber || "079201008899",
+      idCardFront: user.kycDocument?.idCardFront || "https://dummyimage.com/600x400/1e293b/38bdf8&text=CCCD+Mat+Truoc",
+      idCardBack: user.kycDocument?.idCardBack || "https://dummyimage.com/600x400/1e293b/38bdf8&text=CCCD+Mat+Sau",
+      selfiePhoto: user.kycDocument?.selfiePhoto || "https://dummyimage.com/400x400/1e293b/34d399&text=Selfie+Xac+Thuc",
+      submittedAt: new Date(),
+      verifiedAt: new Date(),
+    };
+
+    await user.save();
+    return this.toProfileResponse(user);
+  }
 }
 
 module.exports = new UserService();

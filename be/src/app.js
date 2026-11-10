@@ -12,6 +12,7 @@ const ownerRoutes = require("./routes/ownerRoutes");
 const marketplaceRoutes = require("./routes/marketplaceRoutes");
 const ownerRegistrationRoutes = require("./routes/ownerRegistrationRoutes");
 const moderatorRoutes = require("./routes/moderatorRoutes");
+const chatRoutes = require("./routes/chatRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const handleError = require("./middleware/handleError");
 
@@ -76,9 +77,11 @@ app.use("/api/user", userRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/owner", ownerRoutes);
+app.use("/api/owners", ownerRoutes);
 app.use("/api/equipments", marketplaceRoutes);
 app.use("/api/owner-registration", ownerRegistrationRoutes);
 app.use("/api/moderator", moderatorRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/payments", paymentRoutes);
 
 app.use(handleError);

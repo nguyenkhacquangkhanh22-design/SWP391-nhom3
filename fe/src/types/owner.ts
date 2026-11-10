@@ -124,6 +124,8 @@ export interface RentalContract {
   }[];
   owner_signature?: ContractSignature;
   renter_signature?: ContractSignature;
+  payment_status?: "unpaid" | "pending_confirmation" | "paid" | "rejected" | "refunded" | string;
+  payment_amount?: number;
   handover_records?: HandoverRecord[];
   createdAt: string;
 }

@@ -115,8 +115,9 @@ async function requestRental(req, res) {
     ? diffHours * equipment.pricing.price_per_hour
     : diffDays * equipment.pricing.price_per_day;
 
-  const depositAmount = 0;
+  const depositAmount = 0; // Không cần tiền cọc theo chính sách mới
   const totalEstimatedAmount = rentalFee;
+  const deliveryAddress = req.body.delivery_address || req.body.deliveryAddress || "";
 
   const rentalReq = await RentalRequest.create({
     request_code: generateCode("YC"),
@@ -126,35 +127,66 @@ async function requestRental(req, res) {
     renter_name: renter.name,
     renter_email: renter.email,
     renter_phone: req.body.renter_phone || "",
+    delivery_address: deliveryAddress,
     rental_type: isHourly ? "hourly" : "daily",
     start_date: startDate,
     end_date: endDate,
     duration_days: diffDays,
     duration_hours: diffHours,
     rental_fee: rentalFee,
-    deposit_amount: depositAmount,
+    deposit_amount: 0,
     total_estimated_amount: totalEstimatedAmount,
     renter_note: renter_note || "",
     status: "pending",
   });
 
+  // Đồng bộ tạo bản ghi Rental tương ứng để thống nhất 2 Model
+  try {
+    const Rental = require("../models/Rental");
+    await Rental.create({
+      rentalCode: rentalReq.request_code,
+      equipment: equipment._id,
+      owner: equipment.owner_id || equipment.owner,
+      renter: renter._id,
+      startDate: startDate,
+      endDate: endDate,
+      dailyRate: isHourly
+        ? Math.round(equipment.pricing.price_per_hour * 24)
+        : equipment.pricing.price_per_day,
+      totalDays: diffDays || 1,
+      totalAmount: totalEstimatedAmount,
+      depositAmount: 0,
+      rentalFee: rentalFee,
+      deliveryAddress: deliveryAddress,
+      notes: renter_note || "",
+      status: "PENDING",
+      payment: {
+        isPaid: false,
+        paymentStatus: "unpaid",
+      },
+    });
+  } catch (syncErr) {
+    console.warn("Lỗi đồng bộ Rental từ RentalRequest:", syncErr.message);
+  }
+
+  // Gửi thông báo trực tiếp đến Người thuê và Chủ máy (Owner)
   try {
     await UserNotification.insertMany([
       {
         user_id: renter._id,
-        title: `✅ Đã tiếp nhận yêu cầu thuê #${rentalReq.request_code}`,
-        message: `Yêu cầu thuê "${equipment.title}" đã được gửi trực tiếp tới Chủ thiết bị để xem xét.`,
+        title: `✅ Đã gửi yêu cầu thuê #${rentalReq.request_code}`,
+        message: `Yêu cầu thuê "${equipment.title}" đã được gửi trực tiếp đến Chủ máy để kiểm tra & duyệt.`,
         related_record_id: rentalReq._id,
       },
       {
         user_id: equipment.owner_id,
-        title: `📬 Có yêu cầu thuê mới #${rentalReq.request_code}`,
-        message: `Khách ${renter.name} vừa gửi yêu cầu thuê "${equipment.title}". Vui lòng xem xét yêu cầu trong Cổng Owner.`,
+        title: `📬 Yêu cầu thuê mới #${rentalReq.request_code} từ ${renter.name}`,
+        message: `Khách thuê ${renter.name} vừa gửi yêu cầu thuê thiết bị "${equipment.title}". Vui lòng kiểm tra thiết bị và duyệt đơn.`,
         related_record_id: rentalReq._id,
       },
     ]);
   } catch (err) {
-    console.error("Failed to notify users about new rental request:", err);
+    console.error("Failed to notify users of rental request:", err);
   }
 
   res.status(201).json({
@@ -297,17 +329,20 @@ async function signMyContract(req, res) {
     throw new AppError(400, "Bạn đã ký tên vào hợp đồng này rồi.");
   }
 
+  const sigData = req.body.signature_image || req.body.signature_data || signature_note;
+
   contract.renter_signature = {
     signed: true,
     signed_at: new Date(),
-    signature_data: signature_note
-      ? `${signature_note.trim()} (RENTER_SIG_${req.user._id}_${Date.now()})`
-      : `RENTER_SIG_${req.user._id}_${Date.now()}`,
+    signature_data: sigData,
     signer_name: req.user.name,
   };
 
-  // Ensure contract status transitions to 'signed' once Renter signs
   contract.status = "signed";
+  contract.payment_method = payment_method || "vietqr";
+  contract.payment_status = "paid";
+  contract.payment_amount = contract.rental_price;
+  contract.paid_at = new Date();
   await contract.save();
 
   // Also update related RentalRequest status if needed

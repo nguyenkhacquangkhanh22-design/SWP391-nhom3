@@ -2,6 +2,17 @@ const rentalService = require("../services/rentalService");
 
 class RentalController {
   /**
+   * POST /api/rentals/:id/agree-contract (Đồng ý thỏa thuận điều khoản hợp đồng)
+   */
+  async agreeContract(req, res) {
+    const rental = await rentalService.agreeContract(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: "Đã xác nhận thỏa thuận điều khoản hợp đồng! Bạn có thể tiến hành Ký hợp đồng & Thanh toán.",
+      data: rental,
+    });
+  }
+  /**
    * UC_R07: POST /api/rentals/request (Tạo yêu cầu thuê & check availability)
    */
   async createRentalRequest(req, res) {
@@ -64,6 +75,19 @@ class RentalController {
   /**
    * UC_R12: GET /api/rentals/history (Lịch sử yêu cầu thuê & hợp đồng)
    */
+
+  /**
+   * POST /api/rentals/reset-history (Xóa toàn bộ lịch sử thuê của Renter)
+   */
+  async resetRentalHistory(req, res) {
+    const result = await rentalService.resetRentalHistory(req.user);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  }
+
   async getRentalHistory(req, res) {
     const result = await rentalService.getRentalHistory(req.user._id, req.query);
     res.status(200).json({
@@ -79,6 +103,18 @@ class RentalController {
    */
   async cancelRental(req, res) {
     const result = await rentalService.cancelRental(req.params.id, req.user, req.body);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.rental,
+    });
+  }
+
+  /**
+   * UC_R10_EXT: POST /api/rentals/:id/extend (Gia hạn thời gian thuê)
+   */
+  async extendRental(req, res) {
+    const result = await rentalService.extendRental(req.params.id, req.user, req.body);
     res.status(200).json({
       success: true,
       message: result.message,
@@ -111,13 +147,14 @@ class RentalController {
   }
 
   /**
-   * Owner duyệt yêu cầu thuê
+   * Phê duyệt đơn thuê (Owner / Moderator / Dev Test)
+   * POST /api/rentals/:id/approve
    */
   async approveRental(req, res) {
-    const rental = await rentalService.approveRental(req.params.id, req.user);
+    const rental = await rentalService.approveRental(req.params.id, req.user, req.body);
     res.status(200).json({
       success: true,
-      message: "Phê duyệt yêu cầu thuê thành công. Khách thuê có thể ký hợp đồng.",
+      message: "Đơn thuê đã được phê duyệt thành công. Khách thuê có thể ký hợp đồng.",
       data: rental,
     });
   }
@@ -134,6 +171,11 @@ class RentalController {
     });
   }
 
+  async getContractHtml(req, res) {
+    const html = await rentalService.getContractHtml(req.params.id);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  }
 }
 
 module.exports = new RentalController();

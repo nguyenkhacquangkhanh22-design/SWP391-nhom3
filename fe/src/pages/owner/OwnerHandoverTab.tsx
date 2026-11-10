@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import type { RentalContract, HandoverRecord, Settlement } from "../../types/owner";
 import { VIETNAM_BANKS, generateVietQrUrl } from "../../constants/vietnamBanks";
 import { ownerApi } from "../../services/ownerApi";
+import OwnerCancelRentalModal from "../../components/OwnerCancelRentalModal";
+import OwnerReviewRenterModal from "../../components/OwnerReviewRenterModal";
 
 interface Props {
   contracts: RentalContract[];
@@ -78,6 +80,8 @@ export default function OwnerHandoverTab({
   const [payoutSettlement, setPayoutSettlement] = useState<Settlement | null>(null);
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
   const [previewHandoverQr, setPreviewHandoverQr] = useState<string | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   useEffect(() => {
     if (activeContractId) {
@@ -98,6 +102,9 @@ export default function OwnerHandoverTab({
   }
 
   const currentContract = contracts.find((c) => c._id === activeContractId);
+  const isContractPaid =
+    currentContract?.payment_status === "paid" ||
+    (currentContract as any)?.payment_status === "PAID";
   const handoverRecord = records.find((r) => r.record_type === "handover");
   const returnRecord = records.find((r) => r.record_type === "return");
 
@@ -206,6 +213,11 @@ export default function OwnerHandoverTab({
     e.preventDefault();
     if (!activeContractId) return;
 
+    if (!editingRecord && !isContractPaid) {
+      onError("Không thể lập Biên bản bàn giao! Khách thuê chưa thanh toán phí thuê (Đơn chưa ở trạng thái PAID). Vui lòng chờ khách chuyển khoản trước khi xuất kho bàn giao máy.");
+      return;
+    }
+
     setIsSubmitting(true);
     onError("");
     onSuccess("");
@@ -305,15 +317,64 @@ export default function OwnerHandoverTab({
               onChange={(e) => setActiveContractId(e.target.value)}
               style={{ width: "auto" }}
             >
-              {eligibleContracts.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.contract_code} • {c.renter_id?.name || "Renter"} • {c.equipment_id?.title}
-                </option>
-              ))}
+              {eligibleContracts.map((c) => {
+                const cPaid =
+                  c.payment_status === "paid" || (c as any).payment_status === "PAID";
+                return (
+                  <option key={c._id} value={c._id}>
+                    {c.contract_code} • {c.renter_id?.name || "Renter"} • {c.equipment_id?.title} •{" "}
+                    {cPaid ? "✅ Đã thanh toán (PAID)" : "⚠️ Chưa thanh toán"}
+                  </option>
+                );
+              })}
             </select>
           </div>
         )}
       </div>
+
+      {/* Contract Quick Status Card */}
+      {currentContract && (
+        <div
+          style={{
+            background: "#111827",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            padding: "12px 16px",
+            marginBottom: "18px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: "12px",
+            fontSize: "0.84rem",
+          }}
+        >
+          <div>
+            <span style={{ color: "var(--muted)", display: "block" }}>Thiết bị bàn giao:</span>
+            <strong style={{ color: "#fff" }}>{currentContract.equipment_id?.title}</strong>
+          </div>
+          <div>
+            <span style={{ color: "var(--muted)", display: "block" }}>Khách thuê (Bên B):</span>
+            <strong style={{ color: "#38bdf8" }}>
+              {currentContract.renter_id?.name} ({currentContract.renter_id?.phone || "N/A"})
+            </strong>
+          </div>
+          <div>
+            <span style={{ color: "var(--muted)", display: "block" }}>Tiền thuê / Cọc:</span>
+            <strong style={{ color: "#10b981" }}>
+              {(currentContract.rental_price || 0).toLocaleString("vi-VN")} đ
+            </strong>
+          </div>
+          <div>
+            <span style={{ color: "var(--muted)", display: "block" }}>Trạng thái thanh toán:</span>
+            <strong style={{ color: isContractPaid ? "#10b981" : "#ef4444" }}>
+              {isContractPaid
+                ? "✅ ĐÃ THANH TOÁN (PAID)"
+                : currentContract.payment_status === "pending_confirmation"
+                ? "⏳ CHỜ XÁC NHẬN CHUYỂN KHOẢN"
+                : "⚠️ CHƯA THANH TOÁN (UNPAID)"}
+            </strong>
+          </div>
+        </div>
+      )}
 
       {!currentContract ? (
         <div className="owner-section-card owner-empty-state">
@@ -331,6 +392,37 @@ export default function OwnerHandoverTab({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
           {/* Column 1: Biên bản bàn giao thiết bị (UC_O08) */}
           <div className="owner-section-card">
+            {/* Banner cảnh báo nếu chưa thanh toán */}
+            {!isContractPaid && !handoverRecord && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  color: "#fca5a5",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  fontSize: "0.84rem",
+                  marginBottom: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <span style={{ fontSize: "1.3rem" }}>⛔</span>
+                <div>
+                  <strong style={{ color: "#ef4444" }}>Chưa thể bàn giao thiết bị:</strong> Khách thuê
+                  chưa thanh toán tiền thuê cho đơn hàng này (Trạng thái:{" "}
+                  <span style={{ textTransform: "uppercase", fontWeight: "bold", color: "#f87171" }}>
+                    {currentContract?.payment_status === "pending_confirmation"
+                      ? "Chờ xác nhận chuyển khoản"
+                      : "Chưa thanh toán (UNPAID)"}
+                  </span>
+                  ). Nút lập biên bản bàn giao tạm thời bị khóa cứng cho đến khi đơn chuyển sang
+                  trạng thái <strong>ĐÃ THANH TOÁN (PAID)</strong>.
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <h3 style={{ margin: 0, color: "#fff", fontSize: "1.1rem" }}>
                 1️⃣ Biên bản bàn giao thiết bị (UC_O08)
@@ -346,13 +438,50 @@ export default function OwnerHandoverTab({
                   </span>
                 )
               ) : (
-                <button
-                  className="button button-primary"
-                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  onClick={() => setShowHandoverModal(true)}
-                >
-                  + Lập biên bản bàn giao (UC_O08)
-                </button>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    className="button button-primary"
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "6px 12px",
+                      opacity: isContractPaid ? 1 : 0.45,
+                      cursor: isContractPaid ? "pointer" : "not-allowed",
+                      background: isContractPaid ? undefined : "#334155",
+                      borderColor: isContractPaid ? undefined : "#475569",
+                    }}
+                    disabled={!isContractPaid}
+                    title={
+                      isContractPaid
+                        ? "Lập biên bản bàn giao thiết bị"
+                        : "Khóa bàn giao: Khách thuê chưa thanh toán phí thuê (Chưa PAID)"
+                    }
+                    onClick={() => {
+                      if (!isContractPaid) {
+                        onError(
+                          "Khách thuê chưa thanh toán phí thuê! Bạn chỉ được phép bàn giao máy khi đơn đã ở trạng thái ĐÃ THANH TOÁN (PAID)."
+                        );
+                        return;
+                      }
+                      setShowHandoverModal(true);
+                    }}
+                  >
+                    {isContractPaid ? "+ Lập biên bản bàn giao (UC_O08)" : "🔒 Khóa bàn giao (Chờ thanh toán)"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-quiet"
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "6px 10px",
+                      color: "#f87171",
+                      borderColor: "rgba(239, 68, 68, 0.4)",
+                    }}
+                    onClick={() => setShowCancelModal(true)}
+                    title="Chủ máy chủ động hủy đơn trước khi giao máy nếu thiết bị gặp sự cố bất ngờ"
+                  >
+                    🚫 Hủy đơn / Sự cố
+                  </button>
+                </div>
               )}
             </div>
 
@@ -457,9 +586,42 @@ export default function OwnerHandoverTab({
                     Bổ sung theo yêu cầu
                   </button>
                 ) : (
-                  <span className="status-badge status-completed">
-                    {returnRecord.moderator_review?.status === "verified" ? "✓ Đã xác minh" : "Đã kiểm tra trả • Chờ xác minh"}
-                  </span>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="status-badge status-completed">
+                      {returnRecord.moderator_review?.status === "verified" ? "✓ Đã xác minh" : "Đã kiểm tra trả • Chờ xác minh"}
+                    </span>
+                    {(currentContract as any)?.owner_review ? (
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          fontSize: "0.75rem",
+                          background: "rgba(245, 158, 11, 0.15)",
+                          border: "1px solid #f59e0b",
+                          color: "#fbbf24",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ⭐ Đã đánh giá: {(currentContract as any).owner_review.rating}/5★
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button"
+                        style={{
+                          fontSize: "0.8rem",
+                          padding: "5px 12px",
+                          background: "#f59e0b",
+                          color: "#111827",
+                          fontWeight: "bold",
+                          border: "none",
+                        }}
+                        onClick={() => setShowReviewModal(true)}
+                      >
+                        ⭐ Đánh giá Người thuê
+                      </button>
+                    )}
+                  </div>
                 )
               ) : handoverRecord ? (
                 <button
@@ -971,6 +1133,44 @@ export default function OwnerHandoverTab({
             </form>
           </div>
         </div>
+      )}
+      {/* MODAL HỦY ĐƠN / SỰ CỐ THIẾT BỊ TRƯỚC BÀN GIAO */}
+      {showCancelModal && currentContract && (
+        <OwnerCancelRentalModal
+          isOpen={showCancelModal}
+          rentalId={currentContract._id}
+          rentalCode={currentContract.contract_code}
+          equipmentTitle={currentContract.equipment_id?.title || "Thiết bị"}
+          renterName={currentContract.renter_id?.name || "Khách thuê"}
+          isPaid={isContractPaid}
+          totalAmount={currentContract.rental_price || 0}
+          token={token}
+          onClose={() => setShowCancelModal(false)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            onRefreshContracts();
+          }}
+          onError={onError}
+        />
+      )}
+
+      {/* MODAL ĐÁNH GIÁ KHÁCH THUÊ & CHẤM ĐIỂM UY TÍN (TRUST SCORE) */}
+      {showReviewModal && currentContract && (
+        <OwnerReviewRenterModal
+          isOpen={showReviewModal}
+          rentalId={currentContract._id}
+          rentalCode={currentContract.contract_code}
+          equipmentTitle={currentContract.equipment_id?.title || "Thiết bị"}
+          renterName={currentContract.renter_id?.name || "Khách thuê"}
+          token={token}
+          initialReview={(currentContract as any)?.owner_review}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            onRefreshContracts();
+          }}
+          onError={onError}
+        />
       )}
     </div>
   );

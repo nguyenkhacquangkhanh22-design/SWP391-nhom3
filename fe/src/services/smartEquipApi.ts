@@ -98,6 +98,14 @@ export const smartEquipApi = {
       token,
     ),
 
+  // Xác thực nhanh KYC (Dành cho test / dev)
+  quickVerifyKyc: (token: string) =>
+    request<{ success: boolean; message: string; user: User }>(
+      "/api/user/kyc/quick-verify",
+      { method: "POST", body: JSON.stringify({}) },
+      token,
+    ),
+
   // UC_R03: Nộp hồ sơ KYC
   submitKyc: (
     token: string,
@@ -116,6 +124,10 @@ export const smartEquipApi = {
       equipmentId: string;
       startDate: string;
       endDate: string;
+      deliveryTime?: string;
+      returnTime?: string;
+      deliveryMethod?: string;
+      returnMethod?: string;
       deliveryAddress?: string;
       renterNote?: string;
       notes?: string;
@@ -127,11 +139,11 @@ export const smartEquipApi = {
       token,
     ),
 
-  // Owner phê duyệt yêu cầu thuê
-  approveRental: (token: string, rentalId: string) =>
+  // Phê duyệt đơn thuê (Chủ máy / Quản lý)
+  approveRental: (token: string, rentalId: string, note?: string) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/approve`,
-      { method: "PATCH" },
+      { method: "POST", body: JSON.stringify({ note }) },
       token,
     ),
 
@@ -139,7 +151,15 @@ export const smartEquipApi = {
   rejectRental: (token: string, rentalId: string, reason: string) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/reject`,
-      { method: "PATCH", body: JSON.stringify({ reason }) },
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token,
+    ),
+
+  // Đồng ý thỏa thuận điều khoản để mở quyền Ký hợp đồng & Thanh toán
+  agreeToSignContract: (token: string, rentalId: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/agree-contract`,
+      { method: "POST" },
       token,
     ),
 
@@ -147,7 +167,7 @@ export const smartEquipApi = {
   confirmContract: (
     token: string,
     rentalId: string,
-    data: { termsAccepted: boolean; digitalSignature?: string; renterSignature?: string },
+    data: { termsAccepted: boolean; digitalSignature?: string; renterSignature?: string; signatureImage?: string },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/confirm-contract`,
@@ -161,6 +181,9 @@ export const smartEquipApi = {
     rentalId: string,
     data: {
       paymentMethod?: string;
+      receiptImage?: string;
+      digitalSignature?: string;
+      renterSignature?: string;
       transactionId?: string;
       transferNote?: string;
       senderName?: string;
@@ -205,6 +228,14 @@ export const smartEquipApi = {
       token,
     ),
 
+  // Xóa toàn bộ lịch sử thuê của tài khoản Renter (Reset test)
+  resetRentalHistory: (token: string) =>
+    request<{ success: boolean; message: string; data: any }>(
+      "/api/rentals/reset-history",
+      { method: "POST" },
+      token,
+    ),
+
   // UC_R12: Xem lịch sử thuê
   getRentalHistory: (
     token: string,
@@ -222,11 +253,28 @@ export const smartEquipApi = {
     }>(`/api/rentals/history${qs ? `?${qs}` : ""}`, {}, token);
   },
 
+  // UC_R10_EXT: Gia hạn thời gian thuê thiết bị
+  extendRental: (
+    token: string,
+    rentalId: string,
+    data: { extraDays: number; note?: string },
+  ) =>
+    request<{ success: boolean; message: string; rental: Rental }>(
+      `/api/rentals/${rentalId}/extend`,
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
   // UC_R13: Hủy yêu cầu thuê
   cancelRental: (
     token: string,
     rentalId: string,
-    data: { reason: string },
+    data: {
+      reason: string;
+      bankName?: string;
+      accountNumber?: string;
+      accountName?: string;
+    },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/cancel`,
@@ -269,4 +317,79 @@ export const smartEquipApi = {
       { method: "POST", body: JSON.stringify(data) },
       token,
     ),
+
+  // Chat Box giữa Owner & Khách thuê (gửi tin nhắn & gửi hợp đồng)
+  getChatMessages: (
+    token: string,
+    params: { rentalId?: string; otherUserId?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.rentalId) qs.set("rentalId", params.rentalId);
+    if (params.otherUserId) qs.set("otherUserId", params.otherUserId);
+    return request<{ success: boolean; data: any[] }>(
+      `/api/chat/messages?${qs.toString()}`,
+      {},
+      token,
+    );
+  },
+
+  sendChatMessage: (
+    token: string,
+    data: {
+      receiverId: string;
+      rentalId?: string;
+      message?: string;
+      messageType?: "text" | "contract" | "image";
+      fileUrl?: string;
+      contractData?: any;
+    },
+  ) =>
+    request<{ success: boolean; data: any }>(
+      "/api/chat/send",
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
+  uploadChatImage: async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch("/api/chat/upload-image", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Không thể tải ảnh lên");
+    return data as { success: boolean; url: string; filename: string };
+  },
+
+  markChatAsRead: (token: string, data: { senderId?: string; rentalId?: string }) =>
+    request<{ success: boolean; message: string }>(
+      "/api/chat/read",
+      { method: "PATCH", body: JSON.stringify(data) },
+      token,
+    ),
+
+  // AI-powered Product Filter & Assistant
+  aiFilterEquipment: (data: {
+    prompt: string;
+    category?: string;
+    maxPrice?: number;
+    minPrice?: number;
+  }) =>
+    request<{
+      success: boolean;
+      data: Equipment[];
+      matchedItems?: Array<{ equipment: Equipment; matchScore: number; matchReason: string }>;
+      aiAdvice: string;
+      purpose: string;
+      tags: string[];
+      suggestedAddons: string[];
+      detectedCriteria: any;
+    }>("/api/equipment/ai-filter", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

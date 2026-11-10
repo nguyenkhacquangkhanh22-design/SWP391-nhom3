@@ -63,6 +63,14 @@ async function startServer() {
 
   startRentalReminderService();
   await startMembershipExpiryService();
+
+  try {
+    const { seedEquipment } = require("./seedEquipment");
+    await seedEquipment();
+  } catch (seedErr) {
+    console.warn("Seed equipment notice:", seedErr.message);
+  }
+
   if (typeof app.setServerReady === "function") {
     app.setServerReady(true);
   }

@@ -8,8 +8,8 @@ const ownerRegistrationController = require("../controllers/ownerRegistrationCon
 
 const router = express.Router();
 
-// Require authenticated user with 'systemadmin' role
-router.use(authenticate, authorize("systemadmin", "Systemadmin"));
+// Require authenticated user with 'systemadmin' or 'admin' role
+router.use(authenticate, authorize("systemadmin", "Systemadmin", "admin", "Admin"));
 
 router.get("/overview", asyncHandler(adminController.getOverview));
 router.patch("/users/:userId/role", asyncHandler(adminController.updateUserRole));
@@ -40,5 +40,15 @@ router.patch("/kyc-submissions/:userId/review", asyncHandler(adminController.rev
 
 // Audit logs lookup (UC_A21)
 router.get("/audit-logs", asyncHandler(adminController.listAuditLogs));
+
+// Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
+const walletController = require("../controllers/walletController");
+router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
+router.put("/bank-accounts/:userId/:accountId/approve", asyncHandler(walletController.approveBankAccount));
+router.put("/bank-accounts/:userId/:accountId/reject", asyncHandler(walletController.rejectBankAccount));
+
+router.get("/withdraw/pending", asyncHandler(walletController.getAdminWithdrawals));
+router.put("/withdraw/:id/approve", asyncHandler(walletController.approveWithdrawal));
+router.put("/withdraw/:id/reject", asyncHandler(walletController.rejectWithdrawal));
 
 module.exports = router;

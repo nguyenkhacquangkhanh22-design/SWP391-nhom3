@@ -1,124 +1,219 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { RentalRequest } from "../../types/owner";
+import type { Rental } from "../../types/smartequip";
 import { ownerApi } from "../../services/ownerApi";
+import RentalChatModal from "../../components/RentalChatModal";
+import ContractPdfModal from "../../components/ContractPdfModal";
+import OwnerEditContractModal from "../../components/OwnerEditContractModal";
+import OwnerCancelRentalModal from "../../components/OwnerCancelRentalModal";
+import OwnerReviewRenterModal from "../../components/OwnerReviewRenterModal";
 
 interface Props {
-  requests: RentalRequest[];
+  requests?: RentalRequest[];
   token: string;
   onRefresh: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
+  onCreateContract?: (req: RentalRequest) => void;
 }
 
 export default function OwnerRequestsTab({
-  requests,
+  requests = [],
   token,
   onRefresh,
   onError,
   onSuccess,
+  onCreateContract,
 }: Props) {
-  const [selectedRequest, setSelectedRequest] = useState<RentalRequest | null>(null);
-  const [viewingRequest, setViewingRequest] = useState<RentalRequest | null>(null);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const filteredRequests = requests.filter((r) => {
-    if (statusFilter === "all") return true;
-    if (statusFilter === "approved") return r.status === "approved" || r.status === "contract_created";
-    if (statusFilter === "rejected") return r.status === "rejected" || r.status === "moderator_rejected";
-    if (statusFilter === "pending") return r.status === "pending" || r.status === "pending_moderator";
-    return r.status === statusFilter;
-  });
+  // Direct Rentals State
+  const [directRentals, setDirectRentals] = useState<Rental[]>([]);
+  const [directLoading, setDirectLoading] = useState(false);
+  const [chatRental, setChatRental] = useState<Rental | null>(null);
+  const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
+  const [editingContractRental, setEditingContractRental] = useState<Rental | null>(null);
+  const [previewBillUrl, setPreviewBillUrl] = useState<string | null>(null);
+  const [cancellingRental, setCancellingRental] = useState<Rental | null>(null);
+  const [reviewingRental, setReviewingRental] = useState<Rental | null>(null);
 
-  async function handleApprove(req: RentalRequest) {
+  const fetchDirectRentals = async (): Promise<Rental[] | undefined> => {
+    if (!token) return;
+    setDirectLoading(true);
+    try {
+      const res = await ownerApi.getOwnerRentals(token);
+      if (res && Array.isArray(res.data)) {
+        setDirectRentals(res.data);
+        return res.data;
+      }
+    } catch (e: any) {
+      console.warn("Không thể tải danh sách đơn thuê trực tiếp:", e?.message);
+    } finally {
+      setDirectLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchDirectRentals();
+  }, [token]);
+
+  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Tự động chuyển sang tab Hợp đồng thuê để lập hợp đồng)
+  async function handleApproveDirectRental(rental: Rental) {
     setIsProcessing(true);
     onError("");
     onSuccess("");
     try {
-      await ownerApi.respondRentalRequest(token, req._id, "approve");
+      const res = await ownerApi.respondOwnerRental(token, rental._id, "approve");
+      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang mục Hợp đồng thuê để lập hợp đồng.`);
+      await fetchDirectRentals();
       onRefresh();
-      onSuccess(`Đã phê duyệt yêu cầu thuê "${req.request_code}" thành công!`);
-      if (viewingRequest && viewingRequest._id === req._id) {
-        setViewingRequest({ ...viewingRequest, status: "approved" });
+
+      // Sử dụng RentalRequest chính thức được Backend đồng bộ và trả về trực tiếp từ DB
+      const matchingReq = (requests || []).find(
+        (rq) => rq.request_code === rental.rentalCode || String(rq._id) === String(rental._id)
+      );
+
+      const requestObj: RentalRequest =
+        res?.rentalRequest ||
+        matchingReq ||
+        ({
+          _id: rental._id,
+          request_code: rental.rentalCode,
+          renter_name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
+          renter_email: typeof rental.renter === "object" ? rental.renter?.email : "",
+          renter_phone: typeof rental.renter === "object" ? rental.renter?.phone : "",
+          equipment_id:
+            typeof rental.equipment === "object"
+              ? rental.equipment
+              : ({ _id: rental.equipment, title: "Thiết bị thuê" } as any),
+          start_date: rental.startDate,
+          end_date: rental.endDate,
+          rental_fee: rental.totalAmount || rental.rentalFee || 0,
+          deposit_amount: 0,
+          status: "approved",
+          delivery_address: rental.deliveryAddress,
+          duration_days: rental.totalDays || 1,
+        } as any);
+
+      if (onCreateContract) {
+        onCreateContract(requestObj);
       }
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Phê duyệt yêu cầu thất bại.");
+      onError(err instanceof Error ? err.message : "Duyệt đơn thuê thất bại.");
     } finally {
       setIsProcessing(false);
     }
   }
 
-  async function handleConfirmReject() {
-    if (!selectedRequest) return;
-    if (!rejectionReason.trim()) {
-      onError("Vui lòng nhập lý do từ chối yêu cầu.");
-      return;
-    }
-
+  // Thao tác xác nhận đã nhận tiền chuyển khoản của khách (Bắt đầu gửi hàng)
+  async function handleConfirmDirectPayment(rentalId: string, rentalCode: string) {
     setIsProcessing(true);
     onError("");
     onSuccess("");
     try {
-      await ownerApi.respondRentalRequest(token, selectedRequest._id, "reject", rejectionReason);
-      onSuccess(`Đã từ chối yêu cầu thuê "${selectedRequest.request_code}" và ghi nhận lý do.`);
-      setShowRejectModal(false);
-      setSelectedRequest(null);
-      setRejectionReason("");
+      await ownerApi.confirmOwnerRentalPayment(token, rentalId, "approve");
+      onSuccess(`🎉 Đã xác nhận nhận tiền thành công cho đơn #${rentalCode}! Hợp đồng chính thức có hiệu lực, bạn hãy bắt đầu chuẩn bị và gửi hàng cho Khách thuê.`);
+      await fetchDirectRentals();
       onRefresh();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Từ chối yêu cầu thất bại.");
+      onError(err instanceof Error ? err.message : "Xác nhận tiền chuyển khoản thất bại.");
     } finally {
       setIsProcessing(false);
     }
   }
+
+  const filteredDirectRentals = directRentals.filter((r: any) => {
+    if (statusFilter === "all") return true;
+    const upperStatus = String(r.status || "").toUpperCase();
+    const isPendingOwner = upperStatus === "PENDING" || upperStatus === "CONTRACT_PENDING";
+    const isApproved = upperStatus === "APPROVED" || upperStatus === "CONTRACT_SIGNED";
+    const isWaitingPayment = upperStatus === "PAYMENT_PENDING" || r.payment?.paymentStatus === "pending_confirmation";
+    const isPaid = upperStatus === "PAID" || r.payment?.isPaid === true || r.payment?.paymentStatus === "paid";
+    const isReturned = upperStatus === "RETURNED" || upperStatus === "RETURN_REQUESTED";
+
+    if (statusFilter === "pending") return isPendingOwner;
+    if (statusFilter === "approved") return isApproved;
+    if (statusFilter === "waiting_payment") return isWaitingPayment;
+    if (statusFilter === "paid") return isPaid && !isReturned;
+    if (statusFilter === "returned") return isReturned;
+    return true;
+  });
 
   return (
     <div className="owner-tab-content">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+      {/* Header & Filter Bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
-            📬 Quản lý Yêu cầu thuê (UC_O07)
+          <h2 style={{ margin: 0, fontSize: "1.35rem", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>📦</span> Quản Lý Đơn Thuê & Xác Nhận Chuyển Khoản
+            <span style={{ fontSize: "0.8rem", background: "rgba(234, 88, 12, 0.2)", border: "1px solid #ea580c", color: "#fb923c", padding: "2px 10px", borderRadius: "999px" }}>
+              {directRentals.length} đơn
+            </span>
           </h2>
-          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-            Quy trình:{" "}
-            <strong style={{ color: "#38bdf8" }}>1. Người thuê gửi yêu cầu trực tiếp</strong> ➔{" "}
-            <strong style={{ color: "#10b981" }}>2. Owner xem xét Phê duyệt hoặc Từ chối</strong>.
+          <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: "0.88rem" }}>
+            Luồng trực tiếp: <strong style={{ color: "#fb923c" }}>1. Khách đặt thuê</strong> ➔{" "}
+            <strong style={{ color: "#38bdf8" }}>2. Chủ máy duyệt & Lập/Sửa HĐ</strong> ➔{" "}
+            <strong style={{ color: "#a855f7" }}>3. Khách ký & Chuyển khoản QR</strong> ➔{" "}
+            <strong style={{ color: "#10b981" }}>4. Bạn xác nhận nhận tiền & Giao thiết bị</strong>.
           </p>
         </div>
 
-        {/* Filter */}
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Lọc trạng thái:</span>
-          <select
-            className="input-field"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "6px 12px", width: "auto" }}
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Lọc trạng thái */}
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Lọc:</span>
+            <select
+              className="input-field"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ padding: "6px 12px", width: "auto", fontSize: "0.85rem" }}
+            >
+              <option value="all">Tất cả ({directRentals.length})</option>
+              <option value="pending">
+                ⏳ Chờ duyệt ({directRentals.filter((r: any) => ["PENDING", "CONTRACT_PENDING"].includes(String(r.status || "").toUpperCase())).length})
+              </option>
+              <option value="approved">
+                📝 Đã duyệt / Chờ ký & CK ({directRentals.filter((r: any) => ["APPROVED", "CONTRACT_SIGNED"].includes(String(r.status || "").toUpperCase())).length})
+              </option>
+              <option value="waiting_payment">
+                💳 Khách đã CK - Chờ bạn check ({directRentals.filter((r: any) => String(r.status || "").toUpperCase() === "PAYMENT_PENDING" || r.payment?.paymentStatus === "pending_confirmation").length})
+              </option>
+              <option value="paid">
+                🚚 Đã thanh toán / Đang thuê ({directRentals.filter((r: any) => (String(r.status || "").toUpperCase() === "PAID" || r.payment?.isPaid === true) && !["RETURNED", "RETURN_REQUESTED"].includes(String(r.status || "").toUpperCase())).length})
+              </option>
+              <option value="returned">
+                📦 Báo trả / Đã trả ({directRentals.filter((r: any) => ["RETURNED", "RETURN_REQUESTED"].includes(String(r.status || "").toUpperCase())).length})
+              </option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => { void fetchDirectRentals(); onRefresh(); }}
+            className="button button-secondary"
+            style={{ fontSize: "0.85rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            title="Tải lại danh sách đơn thuê"
           >
-            <option value="all">Tất cả ({requests.length})</option>
-            <option value="pending">
-              📬 Chờ Owner duyệt ({requests.filter((r) => r.status === "pending" || r.status === "pending_moderator").length})
-            </option>
-            <option value="approved">
-              ✅ Đã phê duyệt ({requests.filter((r) => r.status === "approved" || r.status === "contract_created").length})
-            </option>
-            <option value="rejected">
-              ❌ Đã từ chối ({requests.filter((r) => r.status === "rejected" || r.status === "moderator_rejected").length})
-            </option>
-            <option value="pending_moderator">
-              ⏳ Yêu cầu cũ chờ chuyển tiếp ({requests.filter((r) => r.status === "pending_moderator").length})
-            </option>
-          </select>
+            <span>🔄</span> Tải lại
+          </button>
         </div>
       </div>
 
-      {filteredRequests.length === 0 ? (
+      {/* Danh sách đơn thuê */}
+      {directLoading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
+          Đang tải danh sách đơn thuê của bạn...
+        </div>
+      ) : filteredDirectRentals.length === 0 ? (
         <div className="owner-section-card owner-empty-state">
           <span style={{ fontSize: "2.5rem" }}>📭</span>
-          <h3>Không tìm thấy yêu cầu thuê nào</h3>
-          <p>Hiện tại không có yêu cầu nào phù hợp với bộ lọc đã chọn.</p>
+          <h3>Không có đơn thuê nào</h3>
+          <p>
+            {statusFilter !== "all"
+              ? "Không có đơn thuê nào phù hợp với bộ lọc hiện tại."
+              : "Khi có khách thuê đặt thiết bị của bạn, đơn thuê sẽ xuất hiện tại đây để bạn duyệt và xác nhận tiền."}
+          </p>
         </div>
       ) : (
         <div className="owner-section-card" style={{ padding: 0, overflow: "hidden" }}>
@@ -126,379 +221,501 @@ export default function OwnerRequestsTab({
             <table className="owner-table">
               <thead>
                 <tr>
-                  <th>Mã đơn</th>
+                  <th>Mã đơn & Ngày</th>
                   <th>Thiết bị</th>
-                  <th>Người thuê</th>
+                  <th>Khách thuê</th>
                   <th>Thời gian thuê</th>
-                  <th>Tiền thuê</th>
-                  <th>Tiền cọc</th>
-                  <th>Ghi chú yêu cầu thuê</th>
-                  <th>Trạng thái</th>
-                  <th style={{ textAlign: "right" }}>Thao tác</th>
+                  <th>Tổng tiền & Trạng thái CK</th>
+                  <th>Trạng thái đơn</th>
+                  <th style={{ textAlign: "right" }}>Thao tác của Chủ máy</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req) => (
-                  <tr key={req._id}>
-                    <td>
-                      <strong style={{ color: "#fff" }}>{req.request_code}</strong>
-                      <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                        {new Date(req.createdAt).toLocaleDateString("vi-VN")}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <img
-                          src={
-                            req.equipment_id?.images?.[0] ||
-                            "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
-                          }
-                          alt=""
-                          style={{ width: "42px", height: "42px", borderRadius: "8px", objectFit: "cover" }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 600, color: "#fff" }}>
-                            {req.equipment_id?.title || "Thiết bị"}
+                {filteredDirectRentals.map((r: any) => {
+                  const upperStatus = String(r.status || "").toUpperCase();
+                  const isPendingOwner = upperStatus === "PENDING" || upperStatus === "CONTRACT_PENDING";
+                  const isApproved = upperStatus === "APPROVED";
+                  const isSigned = upperStatus === "CONTRACT_SIGNED";
+                  const isWaitingPayment = upperStatus === "PAYMENT_PENDING" || r.payment?.paymentStatus === "pending_confirmation";
+                  const isPaid = upperStatus === "PAID" || r.payment?.isPaid === true || r.payment?.paymentStatus === "paid";
+                  const isReturned = upperStatus === "RETURNED" || upperStatus === "RETURN_REQUESTED";
+
+                  const currentEquipId = String(typeof r.equipment === "object" ? r.equipment?._id : r.equipment);
+                  const rStart = new Date(r.startDate).getTime();
+                  const rEnd = new Date(r.endDate).getTime();
+
+                  const conflictingOrder = directRentals.find((other: any) => {
+                    if (String(other._id) === String(r._id)) return false;
+                    const otherUpper = String(other.status || "").toUpperCase();
+                    const otherIsActive = [
+                      "APPROVED",
+                      "CONTRACT_PENDING",
+                      "CONTRACT_SIGNED",
+                      "PAYMENT_PENDING",
+                      "PAYMENT_VERIFYING",
+                      "PAID",
+                      "ACTIVE",
+                      "CONFIRMED",
+                    ].includes(otherUpper);
+                    if (!otherIsActive) return false;
+                    const otherEquipId = String(
+                      typeof other.equipment === "object" ? other.equipment?._id : other.equipment
+                    );
+                    if (otherEquipId !== currentEquipId) return false;
+                    const oStart = new Date(other.startDate).getTime();
+                    const oEnd = new Date(other.endDate).getTime();
+                    return rStart <= oEnd && rEnd >= oStart;
+                  });
+
+                  const renterName = typeof r.renter === "object" ? r.renter?.name : "Khách thuê";
+                  const renterPhone = typeof r.renter === "object" ? r.renter?.phone : "0909xxxxxx";
+                  const equipTitle = typeof r.equipment === "object" ? r.equipment?.title : "Thiết bị thuê";
+                  const equipImg = typeof r.equipment === "object" && r.equipment?.images?.[0]
+                    ? r.equipment.images[0]
+                    : "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80";
+
+                  return (
+                    <tr key={r._id}>
+                      <td>
+                        <strong style={{ color: "#38bdf8", fontFamily: "monospace" }}>#{r.rentalCode}</strong>
+                        <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                          {new Date(r.createdAt || Date.now()).toLocaleDateString("vi-VN")}
+                        </div>
+                        {r.contract?.contractNumber && (
+                          <div style={{ fontSize: "0.72rem", color: "#fb923c" }}>
+                            HĐ: {r.contract.contractNumber}
                           </div>
-                          <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                            {req.equipment_id?.category}
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <img
+                            src={equipImg}
+                            alt=""
+                            style={{ width: "44px", height: "44px", borderRadius: "8px", objectFit: "cover" }}
+                          />
+                          <div>
+                            <strong style={{ color: "#fff", fontSize: "0.9rem" }}>{equipTitle}</strong>
+                            <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                              Đơn giá: {(r.dailyRate || 0).toLocaleString("vi-VN")} đ/ngày
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <strong style={{ color: "#fff" }}>{renterName}</strong>
+                        <div style={{ fontSize: "0.75rem", color: "#38bdf8" }}>📞 {renterPhone}</div>
+                        {r.deliveryAddress && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--muted)", maxWidth: "180px" }}>
+                            📍 {r.deliveryAddress}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ fontSize: "0.85rem", color: "#fff" }}>
+                          {new Date(r.startDate).toLocaleDateString("vi-VN")} ➔ {new Date(r.endDate).toLocaleDateString("vi-VN")}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "#a855f7" }}>
+                          ({r.totalDays} ngày)
+                        </div>
+                        {conflictingOrder && isPendingOwner && (
+                          <div
+                            style={{
+                              marginTop: "4px",
+                              fontSize: "0.72rem",
+                              color: "#f87171",
+                              background: "rgba(239, 68, 68, 0.15)",
+                              border: "1px solid rgba(239, 68, 68, 0.4)",
+                              borderRadius: "6px",
+                              padding: "2px 6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                            title={`Trùng khoảng thời gian thuê với đơn #${conflictingOrder.rentalCode} (${new Date(conflictingOrder.startDate).toLocaleDateString("vi-VN")} - ${new Date(conflictingOrder.endDate).toLocaleDateString("vi-VN")})`}
+                          >
+                            <span>⚠️</span>
+                            <span>Trùng lịch với #{conflictingOrder.rentalCode}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <strong style={{ color: "#fb923c", fontSize: "0.95rem" }}>
+                          {(r.totalAmount || r.rentalFee || 0).toLocaleString("vi-VN")} đ
+                        </strong>
+                        <div style={{ marginTop: "4px" }}>
+                          {isPaid ? (
+                            <span style={{ fontSize: "0.75rem", color: "#34d399", fontWeight: "bold" }}>
+                              ✓ Đã nhận tiền vào TK
+                            </span>
+                          ) : isWaitingPayment ? (
+                            <span style={{ fontSize: "0.75rem", color: "#fbbf24", fontWeight: "bold" }}>
+                              📸 Đã có bill CK • Chờ bạn check
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                              Chưa thanh toán
+                            </span>
+                          )}
+                        </div>
+                        {r.payment?.receiptImage && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewBillUrl(r.payment.receiptImage)}
+                            style={{
+                              marginTop: "4px",
+                              padding: "2px 8px",
+                              background: "rgba(56, 189, 248, 0.15)",
+                              border: "1px solid #38bdf8",
+                              borderRadius: "6px",
+                              color: "#38bdf8",
+                              fontSize: "0.72rem",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <span>🔍</span> Xem ảnh bill CK
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        {isPendingOwner && (
+                          <span style={{ padding: "4px 10px", background: "rgba(245, 158, 11, 0.15)", border: "1px solid #f59e0b", color: "#fbbf24", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            ⏳ Chờ Owner duyệt
                           </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500, color: "#fff" }}>{req.renter_name}</div>
-                      <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                        📞 {req.renter_phone || "N/A"}
-                      </div>
-                      <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
-                        ✉️ {req.renter_email || "N/A"}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: "0.85rem" }}>
-                        {new Date(req.start_date).toLocaleDateString("vi-VN")}
-                        <br />
-                        ↳ {new Date(req.end_date).toLocaleDateString("vi-VN")}
-                      </div>
-                      <span style={{ fontSize: "0.75rem", color: "var(--orange)" }}>
-                        ({req.duration_days} ngày • {req.rental_type === "hourly" ? "Theo giờ" : "Theo ngày"})
-                      </span>
-                    </td>
-                    <td>
-                      <strong style={{ color: "#10b981" }}>
-                        {req.rental_fee.toLocaleString("vi-VN")} đ
-                      </strong>
-                    </td>
-                    <td style={{ color: "#10b981" }}>0 đ (Miễn cọc)</td>
-                    <td style={{ maxWidth: "220px" }}>
-                      <div style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
-                        {req.renter_note || "Không có ghi chú"}
-                      </div>
-                      {req.moderator_note && (
-                        <div style={{ color: "#38bdf8", fontSize: "0.76rem", marginTop: "4px" }}>
-                          🛡️ Quản lý web: {req.moderator_note}
-                        </div>
-                      )}
-                      {req.rejection_reason && (
-                        <div style={{ color: "#ef4444", fontSize: "0.78rem", marginTop: "4px" }}>
-                          Lý do từ chối: {req.rejection_reason}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`status-badge status-${req.status}`}>
-                        {req.status === "pending_moderator"
-                          ? "📬 Chờ Owner duyệt"
-                          : req.status === "pending"
-                          ? "📬 Chờ Owner duyệt"
-                          : (req.status === "approved" || req.status === "contract_created")
-                          ? "✅ Đã phê duyệt"
-                          : req.status === "moderator_rejected"
-                          ? "❌ Quản lý web từ chối"
-                          : req.status === "rejected"
-                          ? "❌ Owner từ chối"
-                          : req.status}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                        {["pending", "pending_moderator"].includes(req.status) && (
-                          <>
+                        )}
+                        {isApproved && (
+                          <span style={{ padding: "4px 10px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid #38bdf8", color: "#38bdf8", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            ✅ Đã duyệt • Chờ khách ký & CK
+                          </span>
+                        )}
+                        {isSigned && (
+                          <span style={{ padding: "4px 10px", background: "rgba(168, 85, 247, 0.15)", border: "1px solid #a855f7", color: "#c084fc", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            ✍️ Đã ký HĐ • Chờ chuyển khoản
+                          </span>
+                        )}
+                        {isWaitingPayment && (
+                          <span style={{ padding: "4px 10px", background: "rgba(234, 88, 12, 0.2)", border: "1px solid #ea580c", color: "#fdba74", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            💳 Khách đã CK • Chờ bạn xác nhận
+                          </span>
+                        )}
+                        {isPaid && !isReturned && (
+                          <span style={{ padding: "4px 10px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", color: "#34d399", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            🚚 Sẵn sàng gửi hàng / Đang thuê
+                          </span>
+                        )}
+                        {isReturned && (
+                          <span style={{ padding: "4px 10px", background: "rgba(147, 51, 234, 0.2)", border: "1px solid #9333ea", color: "#d8b4fe", borderRadius: "999px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                            📦 Đã báo trả máy
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          {/* NÚT DUYỆT ĐƠN KHI PENDING -> CHUYỂN SANG LẬP HỢP ĐỒNG */}
+                          {isPendingOwner && (
                             <button
-                              className="button button-primary"
-                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto" }}
-                              onClick={() => void handleApprove(req)}
-                              disabled={isProcessing}
-                              title="Phê duyệt chấp nhận yêu cầu thuê này"
-                            >
-                              ✓ Phê duyệt
-                            </button>
-                            <button
-                              className="button button-quiet"
-                              style={{ padding: "6px 12px", fontSize: "0.8rem", color: "#ef4444", width: "auto" }}
+                              type="button"
                               onClick={() => {
-                                setSelectedRequest(req);
-                                setShowRejectModal(true);
+                                if (conflictingOrder) {
+                                  if (
+                                    !window.confirm(
+                                      `⚠️ CẢNH BÁO TRÙNG LỊCH: Thiết bị này đã có đơn #${conflictingOrder.rentalCode} được duyệt trước đó trong cùng khoảng thời gian. Bạn có chắc chắn vẫn muốn thử duyệt không?`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                }
+                                handleApproveDirectRental(r);
                               }}
                               disabled={isProcessing}
-                              title="Từ chối cho thuê và ghi rõ lý do"
+                              className={conflictingOrder ? "button button-secondary" : "button button-primary"}
+                              style={{
+                                padding: "6px 14px",
+                                fontSize: "0.8rem",
+                                width: "auto",
+                                ...(conflictingOrder ? { borderColor: "#ef4444", color: "#f87171" } : {}),
+                              }}
+                              title={
+                                conflictingOrder
+                                  ? `Trùng lịch với đơn #${conflictingOrder.rentalCode}`
+                                  : "Duyệt đơn và chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                              }
                             >
-                              ✕ Từ chối
+                              {conflictingOrder ? "⚠️ Trùng lịch" : "✅ Duyệt & Lập HĐ"}
                             </button>
-                          </>
-                        )}
+                          )}
 
-                        <button
-                          className="button button-secondary"
-                          style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto" }}
-                          onClick={() => setViewingRequest(req)}
-                          title="Xem thông tin chi tiết yêu cầu thuê"
-                        >
-                          👁️ Chi tiết
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {/* NÚT LẬP HỢP ĐỒNG KHI ĐÃ DUYỆT */}
+                          {isApproved && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matchingReq = (requests || []).find(
+                                  (rq) => rq.request_code === r.rentalCode || String(rq._id) === String(r._id)
+                                );
+                                const requestObj: RentalRequest = matchingReq || ({
+                                  _id: r._id,
+                                  request_code: r.rentalCode,
+                                  renter_name: typeof r.renter === "object" ? r.renter?.name : "Khách thuê",
+                                  renter_email: typeof r.renter === "object" ? r.renter?.email : "",
+                                  renter_phone: typeof r.renter === "object" ? r.renter?.phone : "",
+                                  equipment_id: typeof r.equipment === "object" ? r.equipment : ({ _id: r.equipment, title: "Thiết bị thuê" } as any),
+                                  start_date: r.startDate,
+                                  end_date: r.endDate,
+                                  rental_fee: r.totalAmount || r.rentalFee || 0,
+                                  deposit_amount: 0,
+                                  status: "approved",
+                                  delivery_address: r.deliveryAddress,
+                                  duration_days: r.totalDays || 1,
+                                } as any);
+                                onCreateContract?.(requestObj);
+                              }}
+                              className="button button-primary"
+                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto" }}
+                              title="Chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                            >
+                              📝 Lập HĐ
+                            </button>
+                          )}
+
+                          {/* NÚT CHECK TIỀN & XÁC NHẬN KHI PAYMENT_PENDING */}
+                          {isWaitingPayment && (
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDirectPayment(r._id, r.rentalCode)}
+                              disabled={isProcessing}
+                              className="button"
+                              style={{ background: "#059669", color: "#fff", padding: "6px 14px", fontSize: "0.8rem", width: "auto", fontWeight: "bold" }}
+                            >
+                              ✅ Xác nhận đã nhận tiền (Gửi hàng)
+                            </button>
+                          )}
+
+                          {/* NÚT CHAT VỚI KHÁCH THUÊ & GỬI HỢP ĐỒNG */}
+                          <button
+                            type="button"
+                            onClick={() => setChatRental(r)}
+                            className="button button-secondary"
+                            style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            title="Nhắn tin với khách thuê & gửi hợp đồng"
+                          >
+                            <span>💬</span> Nhắn tin
+                          </button>
+
+                          {/* NÚT XEM HỢP ĐỒNG PDF */}
+                          <button
+                            type="button"
+                            onClick={() => setViewingContractRental(r)}
+                            className="button button-quiet"
+                            style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto" }}
+                            title="Mở bản hợp đồng PDF"
+                          >
+                            📄 HĐ PDF
+                          </button>
+
+                          {/* NÚT SỬA HỢP ĐỒNG TRỰC TIẾP DÀNH CHO OWNER */}
+                          <button
+                            type="button"
+                            onClick={() => setEditingContractRental(r)}
+                            className="button button-quiet"
+                            style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto", color: "#38bdf8", borderColor: "#0284c7" }}
+                            title="Chỉnh sửa điều khoản, biểu phí hợp đồng theo thỏa thuận"
+                          >
+                            ✏️ Sửa HĐ
+                          </button>
+
+                          {/* NÚT ĐÁNH GIÁ KHÁCH THUÊ KHI HOÀN TẤT */}
+                          {(upperStatus === "COMPLETED" || upperStatus === "RETURNED" || upperStatus === "completed" || upperStatus === "returned") && (
+                            r.ownerReview ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "0.75rem",
+                                  background: "rgba(245, 158, 11, 0.15)",
+                                  border: "1px solid #f59e0b",
+                                  color: "#fbbf24",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                                title={r.ownerReview?.comment ? `Đã đánh giá: "${r.ownerReview.comment}"` : "Đã gửi đánh giá uy tín cho khách thuê"}
+                              >
+                                ⭐ {r.ownerReview?.rating || 5}★
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setReviewingRental(r)}
+                                className="button"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  width: "auto",
+                                  background: "#f59e0b",
+                                  color: "#111827",
+                                  fontWeight: "bold",
+                                  border: "none",
+                                }}
+                                title="Đánh giá khách thuê & chấm điểm uy tín"
+                              >
+                                ⭐ Đánh giá khách
+                              </button>
+                            )
+                          )}
+
+                          {/* NÚT CHỦ ĐỘNG HỦY ĐƠN / SỰ CỐ THIẾT BỊ TRƯỚC BÀN GIAO */}
+                          {upperStatus !== "IN_PROGRESS" &&
+                            upperStatus !== "ACTIVE" &&
+                            upperStatus !== "RETURNED" &&
+                            upperStatus !== "COMPLETED" &&
+                            upperStatus !== "CANCELLED" && (
+                              <button
+                                type="button"
+                                onClick={() => setCancellingRental(r)}
+                                className="button button-quiet"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  width: "auto",
+                                  color: "#f87171",
+                                  borderColor: "rgba(239, 68, 68, 0.4)",
+                                }}
+                                title="Chủ động hủy đơn / Sự cố thiết bị đột xuất"
+                              >
+                                🚫 Hủy đơn
+                              </button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* VIEW REQUEST DETAIL MODAL */}
-      {viewingRequest && (
-        <div className="owner-modal-overlay">
-          <div className="owner-modal-card" style={{ maxWidth: "600px" }}>
+      {/* MODAL XEM ẢNH BIÊN LAI CHUYỂN KHOẢN (BILL PREVIEW) */}
+      {previewBillUrl && (
+        <div className="owner-modal-overlay" onClick={() => setPreviewBillUrl(null)}>
+          <div className="owner-modal-card" style={{ maxWidth: "540px", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
             <div className="owner-modal-header">
-              <div>
-                <span className="contract-code-tag">{viewingRequest.request_code}</span>
-                <h3 style={{ margin: "6px 0 0", color: "#fff" }}>Chi tiết yêu cầu thuê thiết bị</h3>
-              </div>
-              <button className="close-modal-btn" onClick={() => setViewingRequest(null)}>
+              <h3 style={{ color: "#38bdf8" }}>📸 Biên Lai Chuyển Khoản Của Khách</h3>
+              <button className="close-modal-btn" onClick={() => setPreviewBillUrl(null)}>
                 ✕
               </button>
             </div>
-
-            <div style={{ display: "grid", gap: "16px", marginTop: "10px" }}>
-              {/* Status Banner */}
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  background: "rgba(255,255,255,0.05)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Trạng thái yêu cầu:</span>
-                <span className={`status-badge status-${viewingRequest.status}`}>
-                  {viewingRequest.status === "pending_moderator"
-                    ? "📬 Chờ Owner duyệt"
-                    : viewingRequest.status === "pending"
-                    ? "📬 Chờ Owner duyệt"
-                    : (viewingRequest.status === "approved" || viewingRequest.status === "contract_created")
-                    ? "✅ Đã phê duyệt"
-                    : viewingRequest.status === "moderator_rejected"
-                    ? "❌ Quản lý web từ chối"
-                    : viewingRequest.status === "rejected"
-                    ? "❌ Owner từ chối"
-                    : viewingRequest.status}
-                </span>
-              </div>
-
-              {/* Equipment info */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: "14px",
-                  alignItems: "center",
-                  padding: "12px",
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <img
-                  src={
-                    viewingRequest.equipment_id?.images?.[0] ||
-                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80"
-                  }
-                  alt=""
-                  style={{ width: "60px", height: "60px", borderRadius: "8px", objectFit: "cover" }}
-                />
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ margin: "0 0 4px", color: "#fff", fontSize: "0.95rem" }}>
-                    {viewingRequest.equipment_id?.title || "Thiết bị cho thuê"}
-                  </h4>
-                  <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                    {viewingRequest.equipment_id?.brand} {viewingRequest.equipment_id?.model_name} • Danh mục:{" "}
-                    {viewingRequest.equipment_id?.category}
-                  </div>
-                  <div style={{ fontSize: "0.8rem", color: "#10b981", marginTop: "2px" }}>
-                    Giá niêm yết: {viewingRequest.equipment_id?.pricing?.price_per_day?.toLocaleString("vi-VN")} đ/ngày
-                  </div>
-                </div>
-              </div>
-
-              {/* Renter & Schedule Details */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "4px" }}>
-                    👤 NGƯỜI THUÊ
-                  </div>
-                  <div style={{ fontWeight: 600, color: "#fff" }}>{viewingRequest.renter_name}</div>
-                  <div style={{ fontSize: "0.82rem", color: "#cbd5e1", marginTop: "2px" }}>
-                    📞 {viewingRequest.renter_phone || "N/A"}
-                  </div>
-                  <div style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
-                    ✉️ {viewingRequest.renter_email || "N/A"}
-                  </div>
-                </div>
-
-                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "4px" }}>
-                    📅 THỜI GIAN THUÊ
-                  </div>
-                  <div style={{ fontSize: "0.82rem", color: "#fff" }}>
-                    Bắt đầu: {new Date(viewingRequest.start_date).toLocaleString("vi-VN")}
-                  </div>
-                  <div style={{ fontSize: "0.82rem", color: "#fff" }}>
-                    Kết thúc: {new Date(viewingRequest.end_date).toLocaleString("vi-VN")}
-                  </div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--orange)", marginTop: "2px" }}>
-                    Tổng: {viewingRequest.duration_days} ngày ({viewingRequest.rental_type === "hourly" ? "Theo giờ" : "Theo ngày"})
-                  </div>
-                </div>
-              </div>
-
-              {/* Pricing breakdown */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>TIỀN THUÊ THIẾT BỊ</div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#10b981", marginTop: "2px" }}>
-                    {viewingRequest.rental_fee.toLocaleString("vi-VN")} đ
-                  </div>
-                </div>
-                <div style={{ padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>TIỀN ĐẶT CỌC BẢO ĐẢM</div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#f59e0b", marginTop: "2px" }}>
-                    0 đ (Miễn cọc)
-                  </div>
-                </div>
-              </div>
-
-              {/* Notes */}
-              {viewingRequest.renter_note && (
-                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
-                  <strong style={{ color: "#fff" }}>📝 Ghi chú của Người thuê:</strong>
-                  <div style={{ color: "var(--muted)", marginTop: "2px" }}>{viewingRequest.renter_note}</div>
-                </div>
-              )}
-
-              {viewingRequest.moderator_note && (
-                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "6px" }}>
-                  <strong style={{ color: "#38bdf8" }}>🛡️ Ý kiến Quản lý web:</strong>
-                  <div style={{ color: "#bae6fd", marginTop: "2px" }}>{viewingRequest.moderator_note}</div>
-                </div>
-              )}
-
-              {viewingRequest.rejection_reason && (
-                <div style={{ fontSize: "0.85rem", padding: "8px 12px", background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "6px" }}>
-                  <strong style={{ color: "#ef4444" }}>❌ Lý do từ chối:</strong>
-                  <div style={{ color: "#fca5a5", marginTop: "2px" }}>{viewingRequest.rejection_reason}</div>
-                </div>
-              )}
+            <div style={{ margin: "16px 0", maxHeight: "65vh", overflow: "auto" }}>
+              <img
+                src={previewBillUrl}
+                alt="Biên lai chuyển khoản"
+                style={{ maxWidth: "100%", maxHeight: "500px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)" }}
+              />
             </div>
-
-            <div className="modal-actions" style={{ marginTop: "20px" }}>
+            <div className="modal-actions" style={{ justifyContent: "center" }}>
               <button
                 type="button"
-                className="button button-quiet"
-                onClick={() => setViewingRequest(null)}
+                className="button button-primary"
+                onClick={() => setPreviewBillUrl(null)}
               >
-                Đóng
+                Đóng xem ảnh
               </button>
-
-              {["pending", "pending_moderator"].includes(viewingRequest.status) && (
-                <>
-                  <button
-                    type="button"
-                    className="button"
-                    style={{ background: "#ef4444", color: "#fff", width: "auto" }}
-                    onClick={() => {
-                      setSelectedRequest(viewingRequest);
-                      setShowRejectModal(true);
-                    }}
-                    disabled={isProcessing}
-                  >
-                    ✕ Từ chối
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    style={{ width: "auto" }}
-                    onClick={() => void handleApprove(viewingRequest)}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? "Đang xử lý..." : "✓ Phê duyệt yêu cầu"}
-                  </button>
-                </>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* REJECT MODAL (UC_O07 with recorded reason) */}
-      {showRejectModal && selectedRequest && (
-        <div className="owner-modal-overlay">
-          <div className="owner-modal-card" style={{ maxWidth: "480px" }}>
-            <div className="owner-modal-header">
-              <h3 style={{ color: "#ef4444" }}>✕ Từ chối yêu cầu thuê (UC_O07)</h3>
-              <button className="close-modal-btn" onClick={() => setShowRejectModal(false)}>
-                ✕
-              </button>
-            </div>
-            <p style={{ color: "var(--muted)", fontSize: "0.9rem", marginTop: 0 }}>
-              Bạn đang từ chối yêu cầu thuê <strong>{selectedRequest.request_code}</strong> của{" "}
-              <strong>{selectedRequest.renter_name}</strong>. Theo quy định hệ thống, Owner cần ghi rõ lý do.
-            </p>
+      {/* MODAL CHAT VỚI KHÁCH THUÊ & GỬI HỢP ĐỒNG QUA LẠI */}
+      {chatRental && (
+        <RentalChatModal
+          rental={chatRental}
+          isOpen={Boolean(chatRental)}
+          token={token}
+          onClose={() => setChatRental(null)}
+          onViewContract={(r) => {
+            setViewingContractRental(r);
+          }}
+        />
+      )}
 
-            <div>
-              <label className="field-label">Lý do từ chối cho thuê *</label>
-              <textarea
-                className="input-field"
-                rows={3}
-                placeholder="Ví dụ: Thiết bị có lịch bảo trì phát sinh, thời gian bàn giao không thuận tiện..."
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                required
-              />
-            </div>
+      {/* MODAL XEM HỢP ĐỒNG PDF */}
+      {viewingContractRental && (
+        <ContractPdfModal
+          rental={viewingContractRental}
+          isOpen={Boolean(viewingContractRental)}
+          isOwner={true}
+          onEditContract={() => {
+            const target = viewingContractRental;
+            setViewingContractRental(null);
+            setEditingContractRental(target);
+          }}
+          onClose={() => setViewingContractRental(null)}
+        />
+      )}
 
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="button button-quiet"
-                onClick={() => setShowRejectModal(false)}
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                className="button"
-                style={{ background: "#ef4444", color: "#fff", width: "auto" }}
-                onClick={handleConfirmReject}
-                disabled={isProcessing}
-              >
-                {isProcessing ? "Đang xử lý..." : "Xác nhận từ chối"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* MODAL CHỈNH SỬA ĐIỀU KHOẢN HỢP ĐỒNG TRỰC TIẾP DÀNH CHO OWNER */}
+      {editingContractRental && (
+        <OwnerEditContractModal
+          rental={editingContractRental}
+          token={token}
+          isOpen={Boolean(editingContractRental)}
+          onClose={() => setEditingContractRental(null)}
+          onSuccess={() => {
+            setEditingContractRental(null);
+            fetchDirectRentals();
+            onSuccess("Đã cập nhật điều khoản hợp đồng & tự động gửi bản cập nhật vào khung chat!");
+          }}
+        />
+      )}
+      {/* MODAL CHỦ ĐỘNG HỦY ĐƠN / SỰ CỐ THIẾT BỊ KÈM LÝ DO & HOÀN TIỀN */}
+      {cancellingRental && (
+        <OwnerCancelRentalModal
+          isOpen={Boolean(cancellingRental)}
+          rentalId={cancellingRental._id}
+          rentalCode={cancellingRental.rentalCode}
+          equipmentTitle={typeof cancellingRental.equipment === "object" ? cancellingRental.equipment?.title : "Thiết bị"}
+          renterName={typeof cancellingRental.renter === "object" ? cancellingRental.renter?.name : "Khách thuê"}
+          isPaid={
+            String(cancellingRental.status).toUpperCase() === "PAID" ||
+            cancellingRental.payment?.isPaid === true ||
+            cancellingRental.payment?.paymentStatus === "paid"
+          }
+          totalAmount={cancellingRental.totalAmount || cancellingRental.rentalFee || 0}
+          token={token}
+          onClose={() => setCancellingRental(null)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            void fetchDirectRentals();
+            onRefresh();
+          }}
+          onError={onError}
+        />
+      )}
+
+      {/* MODAL ĐÁNH GIÁ KHÁCH THUÊ & CHẤM ĐIỂM UY TÍN (TRUST SCORE) */}
+      {reviewingRental && (
+        <OwnerReviewRenterModal
+          isOpen={Boolean(reviewingRental)}
+          rentalId={reviewingRental._id}
+          rentalCode={reviewingRental.rentalCode}
+          equipmentTitle={typeof reviewingRental.equipment === "object" ? reviewingRental.equipment?.title : "Thiết bị"}
+          renterName={typeof reviewingRental.renter === "object" ? reviewingRental.renter?.name : "Khách thuê"}
+          token={token}
+          initialReview={reviewingRental.ownerReview}
+          onClose={() => setReviewingRental(null)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            void fetchDirectRentals();
+            onRefresh();
+          }}
+          onError={onError}
+        />
       )}
     </div>
   );

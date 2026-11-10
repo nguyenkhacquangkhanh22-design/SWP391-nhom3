@@ -54,6 +54,30 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    bankInfo: {
+      bankName: { type: String, trim: true, default: "MB Bank (Ngân hàng Quân Đội)" },
+      accountNumber: { type: String, trim: true, default: "111105056666" },
+      accountHolder: { type: String, trim: true, default: "NGUYEN KHAC QUANG KHANH" },
+      bankCode: { type: String, trim: true, default: "MB" },
+    },
+    walletBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    bankAccounts: [
+      {
+        bankName: { type: String, required: true, trim: true },
+        accountNumber: { type: String, required: true, trim: true },
+        accountHolderName: { type: String, required: true, trim: true },
+        status: {
+          type: String,
+          enum: ["PENDING", "APPROVED", "REJECTED"],
+          default: "PENDING",
+        },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     kycStatus: {
       type: String,
       enum: ["unverified", "pending", "verified", "rejected"],

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../app/AuthProvider";
 import type { OwnerContractTemplate, RentalContract, RentalRequest, DigitalSignaturePayload } from "../../types/owner";
+import type { Rental } from "../../types/smartequip";
 import DigitalSignaturePad from "../../components/DigitalSignaturePad";
+import RentalChatModal from "../../components/RentalChatModal";
 import { ownerApi } from "../../services/ownerApi";
 
 interface Props {
@@ -32,10 +34,10 @@ function buildStandardOwnerContractText(
 Độc lập - Tự do - Hạnh phúc
 --------------------------------------------------
 HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ CHUẨN
-(Dự thảo do Owner gửi trực tiếp cho Người thuê ký tên)
+(Hợp đồng ký kết điện tử trực tiếp giữa Bên Cho Thuê và Bên Thuê)
 
 Căn cứ Bộ luật Dân sự nước CHXHCN Việt Nam hiện hành;
-Căn cứ Quy chế hoạt động và Kiểm duyệt Hợp đồng của Nền tảng SWP391 Rental;
+Căn cứ Quy chế hoạt động và giao kết hợp đồng của Nền tảng SWP391 Rental;
 Hôm nay, ngày ${new Date().toLocaleDateString("vi-VN")}, chúng tôi gồm có:
 
 I. BÊN CHO THUÊ THIẾT BỊ (BÊN A - OWNER):
@@ -69,7 +71,7 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
 
 ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG & THANH TOÁN
 3.1. Tổng phí thuê thiết bị: ${req.rental_fee.toLocaleString("vi-VN")} VND (Không cần tiền cọc)
-3.4. Chính sách hủy đơn: ${eq?.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
+3.2. Chính sách hủy đơn: ${eq?.cancellation_policy || "Miễn phí hủy trước 24 giờ."}
 
 ĐIỀU 4: QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (OWNER)
 4.1. Bàn giao thiết bị đúng chủng loại, số serial, phụ kiện và tình trạng hoạt động tốt đúng thời gian đã thỏa thuận.
@@ -83,14 +85,14 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
     eq?.rental_terms ||
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   }
-5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý thanh toán chi phí khắc phục thực tế theo Biên bản hoàn trả được Quản lý web xác minh.
+5.4. Trường hợp trả trễ hạn hoặc phát sinh hư hỏng, mất mát linh kiện/phụ kiện, Bên B đồng ý thanh toán chi phí khắc phục thực tế.
 
 ĐIỀU 6: ĐIỀU KHOẢN BỔ SUNG CỦA OWNER
 ${specialConditions.trim() || "Không có điều khoản bổ sung đặc biệt."}
 
-ĐIỀU 7: QUY TRÌNH PHÊ DUYỆT CỦA QUẢN LÝ WEB & CHỮ KÝ NGƯỜI THUÊ
-7.1. Hợp đồng này được Bên A (Owner) lập sau khi chấp nhận yêu cầu thuê.
-7.2. Owner gửi hợp đồng trực tiếp tới Bên B (Người thuê) để Bên B xem xét và ký tên điện tử.`;
+ĐIỀU 7: QUY TRÌNH KÝ KẾT TRỰC TIẾP & HIỆU LỰC HỢP ĐỒNG
+7.1. Hợp đồng này được Bên A (Owner) lập và ký số, sau đó gửi trực tiếp tới Bên B (Người thuê) qua phòng Chat để trao đổi và thỏa thuận.
+7.2. Sau khi thống nhất nội dung, Bên B (Người thuê) tiến hành ký tên điện tử để hợp đồng chính thức có hiệu lực và thực hiện thanh toán chuyển khoản.`;
 }
 
 export default function OwnerContractsTab({
@@ -127,6 +129,7 @@ export default function OwnerContractsTab({
   // View Modal states
   const [viewingContract, setViewingContract] = useState<RentalContract | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalError, setModalError] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Digital Signature states (UC_O12, UC_O13, UC_O15)
@@ -134,6 +137,26 @@ export default function OwnerContractsTab({
   const [editSignature, setEditSignature] = useState<DigitalSignaturePayload | null>(null);
   const [signingContract, setSigningContract] = useState<RentalContract | null>(null);
   const [signingSignature, setSigningSignature] = useState<DigitalSignaturePayload | null>(null);
+
+  // Chat Modal & direct rentals
+  const [chatRental, setChatRental] = useState<Rental | null>(null);
+  const [directRentals, setDirectRentals] = useState<Rental[]>([]);
+
+  const fetchDirectRentals = async () => {
+    if (!token) return;
+    try {
+      const res = await ownerApi.getOwnerRentals(token);
+      if (res && Array.isArray(res.data)) {
+        setDirectRentals(res.data);
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  useEffect(() => {
+    void fetchDirectRentals();
+  }, [token]);
 
   useEffect(() => {
     ownerApi
@@ -156,6 +179,12 @@ export default function OwnerContractsTab({
     initialSelectedRequest && !approvedRequests.some((r) => r._id === initialSelectedRequest._id)
       ? [initialSelectedRequest, ...approvedRequests]
       : approvedRequests;
+
+  useEffect(() => {
+    if (showCreateModal && !selectedRequestForContract && selectableRequests.length > 0) {
+      setSelectedRequestForContract(selectableRequests[0]._id);
+    }
+  }, [showCreateModal, selectedRequestForContract, selectableRequests]);
 
   const activeRequestObj = selectableRequests.find((r) => r._id === selectedRequestForContract);
 
@@ -194,16 +223,72 @@ export default function OwnerContractsTab({
     "special_conditions",
   ]);
 
-  // UC_O12: Create a standard contract and optionally send it directly to the renter
+  function handleOpenChatForContract(c: RentalContract) {
+    const reqObj = typeof c.request_id === "object" ? (c.request_id as any) : null;
+    const requestCode = reqObj?.request_code || "";
+    const renterObj = typeof c.renter_id === "object" ? (c.renter_id as any) : null;
+    const renterIdStr = renterObj?._id || renterObj?.User_Id || String(c.renter_id || "");
+
+    let rental = directRentals.find(
+      (r) =>
+        (r.contract?.contractNumber && r.contract.contractNumber === c.contract_code) ||
+        (requestCode && r.rentalCode === requestCode) ||
+        (typeof r.renter === "object" && ((r.renter as any)?._id === renterIdStr || (r.renter as any)?.User_Id === renterIdStr)) ||
+        String(r.renter) === renterIdStr
+    );
+
+    if (!rental) {
+      rental = {
+        _id: String(c._id),
+        rentalCode: requestCode || c.contract_code.replace("HD-", ""),
+        equipment: c.equipment_id as any,
+        renter: c.renter_id as any,
+        owner: user as any,
+        startDate: String(c.start_date),
+        endDate: String(c.end_date),
+        dailyRate: c.rental_price,
+        totalDays: 1,
+        totalAmount: c.rental_price,
+        depositAmount: c.deposit_amount || 0,
+        rentalFee: c.rental_price,
+        status: c.status === "signed" ? "CONTRACT_SIGNED" : "APPROVED",
+        contract: {
+          contractNumber: c.contract_code,
+          contractTerms: c.terms_content,
+          ownerSigned: true,
+          agreedToSign: c.status === "signed",
+        },
+      } as any;
+    }
+
+    setChatRental(rental || null);
+  }
+
+  // Lập hợp đồng & gửi trực tiếp cho Người thuê
   async function handleCreateContract(submitImmediately: boolean) {
+    setModalError("");
     if (!selectedRequestForContract) {
-      onError("Vui lòng chọn một yêu cầu thuê đã chấp nhận.");
+      const msg = "Vui lòng chọn một yêu cầu thuê đã chấp nhận.";
+      setModalError(msg);
+      onError(msg);
       return;
     }
 
     if (submitImmediately && !createSignature) {
-      onError("Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi hợp đồng cho Người thuê.");
+      const msg = "Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi Người thuê.";
+      setModalError(msg);
+      onError(msg);
       return;
+    }
+
+    let termsToSend = customDraftTerms;
+    if (!selectedTemplateId && !termsToSend.trim() && activeRequestObj) {
+      termsToSend = buildStandardOwnerContractText(
+        activeRequestObj,
+        user?.name || "Chủ thiết bị (Owner)",
+        user?.email || "owner@swp391.vn",
+        specialConditions
+      );
     }
 
     setIsSubmitting(true);
@@ -213,7 +298,7 @@ export default function OwnerContractsTab({
       const res = await ownerApi.createContract(token, {
         request_id: selectedRequestForContract,
         special_conditions: specialConditions,
-        custom_terms: selectedTemplateId ? undefined : customDraftTerms,
+        custom_terms: selectedTemplateId ? undefined : termsToSend,
         template_id: selectedTemplateId || undefined,
         template_values: templateValues,
         submit_immediately: submitImmediately,
@@ -221,10 +306,11 @@ export default function OwnerContractsTab({
       });
       onSuccess(
         submitImmediately
-          ? `Đã lập Hợp đồng chuẩn "${res.contract.contract_code}" kèm Chữ ký số và gửi trực tiếp cho Người thuê ký.`
-          : `Đã lưu bản nháp Hợp đồng chuẩn "${res.contract.contract_code}" (v1)${createSignature ? " kèm chữ ký số" : ""}. Bạn có thể kiểm tra lại và gửi trực tiếp cho Người thuê.`
+          ? `Đã lập Hợp đồng chuẩn "${res.contract.contract_code}" kèm Chữ ký số và gửi trực tiếp cho Người thuê qua Chat!`
+          : `Đã lưu bản nháp Hợp đồng chuẩn "${res.contract.contract_code}" (v1)${createSignature ? " kèm chữ ký số" : ""}.`
       );
       setShowCreateModal(false);
+      setModalError("");
       setSpecialConditions("");
       setCustomDraftTerms("");
       setIsCustomizingTerms(false);
@@ -232,14 +318,21 @@ export default function OwnerContractsTab({
       setTemplateValues({});
       setCreateSignature(null);
       onRefresh();
+      void fetchDirectRentals();
+
+      if (submitImmediately && res.contract) {
+        handleOpenChatForContract(res.contract);
+      }
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Lập hợp đồng thất bại.");
+      const msg = err instanceof Error ? err.message : "Lập hợp đồng thất bại.";
+      setModalError(msg);
+      onError(msg);
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // UC_O13: Update Draft / Rejected Contract (with optional immediate resubmit to Web Manager)
+  // Cập nhật điều khoản hợp đồng & gửi Người thuê qua Chat
   async function handleUpdateDraft(submitImmediately: boolean) {
     if (!editingContract) return;
     if (!changesSummary.trim()) {
@@ -260,11 +353,16 @@ export default function OwnerContractsTab({
       });
       onSuccess(
         submitImmediately
-          ? `Đã lưu phiên bản v${res.contract.version} và gửi trực tiếp cho Người thuê ký.`
+          ? `Đã lưu phiên bản v${res.contract.version} và gửi trực tiếp cho Người thuê qua Chat!`
           : `Đã lưu hợp đồng phiên bản mới (v${res.contract.version}) ở trạng thái bản nháp.`
       );
       setEditingContract(null);
       onRefresh();
+      void fetchDirectRentals();
+
+      if (submitImmediately && res.contract) {
+        handleOpenChatForContract(res.contract);
+      }
     } catch (err) {
       onError(err instanceof Error ? err.message : "Cập nhật hợp đồng thất bại.");
     } finally {
@@ -272,7 +370,7 @@ export default function OwnerContractsTab({
     }
   }
 
-  // UC_O15: Confirm / Re-sign E-Contract with Digital Signature
+  // Ký chữ ký số điện tử
   async function handleConfirmEContract() {
     if (!signingContract) return;
     if (!signingSignature) {
@@ -298,22 +396,24 @@ export default function OwnerContractsTab({
     }
   }
 
-  // UC_O14: Send the contract directly to the renter
-  async function handleSubmitApproval(contract: RentalContract) {
+  // Gửi hợp đồng trực tiếp cho Người thuê qua Chat
+  async function handleSubmitToRenter(contract: RentalContract) {
     setIsSubmitting(true);
     onError("");
     onSuccess("");
     try {
       await ownerApi.sendContractToRenter(token, contract._id);
       onSuccess(
-        `Đã gửi hợp đồng chuẩn "${contract.contract_code}" (v${contract.version}) trực tiếp cho Người thuê ký tên.`
+        `Đã gửi hợp đồng chuẩn "${contract.contract_code}" (v${contract.version}) trực tiếp tới Người thuê qua Chat để trao đổi & ký tên!`
       );
       if (viewingContract && viewingContract._id === contract._id) {
         setViewingContract(null);
       }
       onRefresh();
+      void fetchDirectRentals();
+      handleOpenChatForContract(contract);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Gửi phê duyệt thất bại.");
+      onError(err instanceof Error ? err.message : "Gửi hợp đồng thất bại.");
     } finally {
       setIsSubmitting(false);
     }
@@ -325,37 +425,49 @@ export default function OwnerContractsTab({
   });
 
   function renderWorkflowStepper(c: RentalContract) {
-    // Legacy moderator states remain readable, while new contracts go directly to the renter.
-    const isRejected = c.status === "moderator_rejected";
-    const sentToRenter = ["pending_renter_signature", "moderator_approved"].includes(c.status);
-    const signed = ["signed", "active", "completed"].includes(c.status);
+    // 4-step direct contract workflow between Owner & Renter:
+    // Step 1: Owner lập & ký số HĐ (v1)
+    // Step 2: Gửi Người thuê qua Chat
+    // Step 3: Trao đổi & Renter ký tên
+    // Step 4: Thanh toán chuyển khoản & Bàn giao thiết bị
+    const step1Done = true;
+    const step2Done = ["moderator_approved", "signed", "contract_signed", "active", "completed"].includes(c.status);
+    const step3Active = c.status === "moderator_approved";
+    const step3Done = ["signed", "contract_signed", "active", "completed"].includes(c.status);
+    const step4Done = ["active", "completed"].includes(c.status);
 
     const steps = [
       {
         num: 1,
-        label: `1. Owner lập Hợp đồng (v${c.version})`,
-        sub: isRejected ? "Cần chỉnh sửa lại" : "Đã soạn thảo & ký Bên A",
-        state: isRejected ? "rejected" : "done",
+        label: `1. Owner lập & ký số HĐ (v${c.version})`,
+        sub: "Đã soạn thảo & ký Bên A",
+        state: step1Done ? "done" : "current",
       },
       {
         num: 2,
-        label: "2. Owner gửi hợp đồng cho Người thuê",
-        sub: sentToRenter || signed
-          ? "Đã gửi trực tiếp cho Người thuê"
-          : isRejected
-          ? "Hợp đồng cũ cần chỉnh sửa"
-          : "Chưa gửi",
-        state: sentToRenter || signed ? "done" : isRejected ? "rejected" : "pending",
+        label: "2. Gửi Người thuê qua Chat",
+        sub: step2Done ? "Đã gửi trực tiếp tới Người thuê" : "Bản nháp chưa gửi",
+        state: step2Done ? "done" : "current",
       },
       {
         num: 3,
-        label: "3. Người thuê (Renter) ký tên",
-        sub: signed
-          ? "Người thuê đã ký tên!"
-          : sentToRenter
+        label: "3. Trao đổi & Renter ký tên",
+        sub: step3Done
+          ? "Người thuê đã ký tên điện tử"
+          : step3Active
           ? "Đang chờ Người thuê ký..."
-          : "Chờ Owner gửi hợp đồng",
-        state: signed ? "done" : sentToRenter ? "current" : "pending",
+          : "Chờ gửi Người thuê",
+        state: step3Done ? "done" : step3Active ? "current" : "pending",
+      },
+      {
+        num: 4,
+        label: "4. Thanh toán & Bàn giao",
+        sub: step4Done
+          ? "Đã bàn giao thiết bị"
+          : step3Done
+          ? "Chờ thanh toán & Bàn giao"
+          : "Chờ bước 3",
+        state: step4Done ? "done" : step3Done ? "current" : "pending",
       },
     ];
 
@@ -375,24 +487,18 @@ export default function OwnerContractsTab({
               ? "rgba(16, 185, 129, 0.45)"
               : st.state === "current"
               ? "rgba(249, 115, 22, 0.65)"
-              : st.state === "rejected"
-              ? "rgba(239, 68, 68, 0.55)"
               : "var(--border)";
           const bg =
             st.state === "done"
               ? "rgba(16, 185, 129, 0.08)"
               : st.state === "current"
               ? "rgba(249, 115, 22, 0.12)"
-              : st.state === "rejected"
-              ? "rgba(239, 68, 68, 0.1)"
               : "#111827";
           const titleColor =
             st.state === "done"
               ? "#34d399"
               : st.state === "current"
               ? "#fb923c"
-              : st.state === "rejected"
-              ? "#f87171"
               : "#94a3b8";
 
           return (
@@ -406,7 +512,7 @@ export default function OwnerContractsTab({
               }}
             >
               <div style={{ fontSize: "0.8rem", fontWeight: 700, color: titleColor }}>
-                {st.state === "done" ? "✓ " : st.state === "rejected" ? "✕ " : st.state === "current" ? "● " : "○ "}
+                {st.state === "done" ? "✓ " : st.state === "current" ? "● " : "○ "}
                 {st.label}
               </div>
               <div style={{ fontSize: "0.73rem", color: "var(--muted)", marginTop: "3px" }}>
@@ -433,14 +539,15 @@ export default function OwnerContractsTab({
         }}
       >
         <div>
-          <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
-            📝 Lập Hợp đồng cho thuê & gửi Người thuê ký (UC_O12 – UC_O15)
+          <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>📝</span> Quản Lý & Lập Hợp Đồng Cho Thuê Trực Tiếp
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
             Quy trình:{" "}
-            <strong style={{ color: "#fb923c" }}>1. Owner lập Hợp đồng cho thuê</strong> ➔{" "}
-            <strong style={{ color: "#38bdf8" }}>2. Gửi trực tiếp cho Người thuê</strong> ➔{" "}
-            <strong style={{ color: "#34d399" }}>3. Người thuê ký tên</strong>.
+            <strong style={{ color: "#fb923c" }}>1. Owner lập & ký số HĐ</strong> ➔{" "}
+            <strong style={{ color: "#38bdf8" }}>2. Gửi trực tiếp cho Người thuê qua Chat</strong> ➔{" "}
+            <strong style={{ color: "#a855f7" }}>3. Hai bên trao đổi & Người thuê ký tên</strong> ➔{" "}
+            <strong style={{ color: "#10b981" }}>4. Thanh toán & Bàn giao thiết bị</strong>.
           </p>
         </div>
 
@@ -453,22 +560,19 @@ export default function OwnerContractsTab({
           >
             <option value="all">Tất cả trạng thái ({contracts.length})</option>
             <option value="draft">
-              📝 Bản nháp chờ gửi ({contracts.filter((c) => c.status === "draft").length})
-            </option>
-            <option value="pending_renter_signature">
-              📨 Đã gửi Người thuê - Chờ ký ({contracts.filter((c) => c.status === "pending_renter_signature").length})
-            </option>
-            <option value="pending_approval">
-              ⏳ Chờ kiểm duyệt (đơn cũ) ({contracts.filter((c) => c.status === "pending_approval").length})
-            </option>
-            <option value="moderator_rejected">
-              ❌ Quản lý web yêu cầu sửa ({contracts.filter((c) => c.status === "moderator_rejected").length})
+              📝 Bản nháp ({contracts.filter((c) => c.status === "draft").length})
             </option>
             <option value="moderator_approved">
               📨 Đã gửi Người thuê - Chờ ký (đơn cũ) ({contracts.filter((c) => c.status === "moderator_approved").length})
             </option>
             <option value="signed">
               ✍️ Người thuê đã ký tên ({contracts.filter((c) => c.status === "signed").length})
+            </option>
+            <option value="active">
+              🚀 Đang thuê ({contracts.filter((c) => c.status === "active").length})
+            </option>
+            <option value="completed">
+              🏁 Đã hoàn tất ({contracts.filter((c) => c.status === "completed").length})
             </option>
           </select>
 
@@ -482,7 +586,7 @@ export default function OwnerContractsTab({
               setShowCreateModal(true);
             }}
           >
-            + Lập hợp đồng cho thuê mới (UC_O12) 📜
+            + Lập hợp đồng cho thuê mới 📜
           </button>
         </div>
       </div>
@@ -508,7 +612,7 @@ export default function OwnerContractsTab({
               🔔 Bạn có {approvedRequests.length} yêu cầu thuê đã duyệt đang chờ lập Hợp đồng!
             </strong>
             <div style={{ fontSize: "0.84rem", color: "#cbd5e1", marginTop: "2px" }}>
-              Hãy lập Hợp đồng cho thuê và gửi trực tiếp cho Người thuê ký tên.
+              Hãy lập Hợp đồng cho thuê và gửi trực tiếp cho Người thuê để trao đổi & ký tên điện tử qua Chat.
             </div>
           </div>
           <button
@@ -530,7 +634,7 @@ export default function OwnerContractsTab({
           <span style={{ fontSize: "2.5rem" }}>📜</span>
           <h3>Chưa có hợp đồng nào trong danh mục này</h3>
           <p>
-            Hợp đồng sẽ được Owner lập từ các yêu cầu thuê đã duyệt và gửi trực tiếp cho Người thuê ký tên.
+            Hợp đồng sẽ được Owner lập từ các đơn thuê đã duyệt, ký số và gửi trực tiếp cho Người thuê qua Chat để ký tên.
           </p>
           {approvedRequests.length > 0 && (
             <button
@@ -567,17 +671,11 @@ export default function OwnerContractsTab({
                 <div style={{ textAlign: "right" }}>
                   <span className={`status-badge status-${c.status}`}>
                     {c.status === "draft"
-                      ? "📝 Bản nháp (Chờ gửi Người thuê)"
-                      : c.status === "pending_renter_signature"
-                      ? "📨 Đã gửi Người thuê - Chờ ký"
-                      : c.status === "pending_approval"
-                      ? "⏳ Hợp đồng cũ chờ kiểm duyệt"
-                      : c.status === "moderator_rejected"
-                      ? "❌ Quản lý web yêu cầu chỉnh sửa"
+                      ? "📝 Bước 1: Bản nháp (Chưa gửi)"
                       : c.status === "moderator_approved"
-                      ? "📨 Hợp đồng cũ đã gửi Người thuê - Chờ ký"
+                      ? "📨 Bước 2: Đã gửi Người thuê • Chờ ký"
                       : c.status === "signed"
-                      ? "✍️ Bước 4: Người thuê đã ký tên (Sẵn sàng bàn giao)"
+                      ? "✍️ Bước 3: Người thuê đã ký tên"
                       : c.status === "active"
                       ? "🚀 Đang thuê (Đã bàn giao)"
                       : c.status === "completed"
@@ -593,57 +691,35 @@ export default function OwnerContractsTab({
               {/* 4-Step Visual Progress Bar */}
               {renderWorkflowStepper(c)}
 
-              {/* Moderator Feedback / Approval Notice */}
-              {c.status === "moderator_rejected" && c.moderator_feedback && (
-                <div
-                  style={{
-                    margin: "12px 0",
-                    padding: "12px 16px",
-                    borderRadius: "10px",
-                    background: "rgba(239, 68, 68, 0.12)",
-                    border: "1px solid rgba(239, 68, 68, 0.35)",
-                    color: "#fca5a5",
-                    fontSize: "0.88rem",
-                  }}
-                >
-                  <strong>⚠️ Yêu cầu chỉnh sửa từ Quản lý web:</strong> {c.moderator_feedback}
-                  <div style={{ fontSize: "0.8rem", color: "#cbd5e1", marginTop: "4px" }}>
-                    Vui lòng bấm <strong>"Sửa hợp đồng & Gửi duyệt lại (UC_O13)"</strong> bên dưới để cập nhật phiên bản v{c.version + 1}.
-                  </div>
-                </div>
-              )}
-
-              {c.status === "pending_approval" && (
+              {c.status === "moderator_approved" && (
                 <div
                   style={{
                     margin: "12px 0",
                     padding: "12px 16px",
                     borderRadius: "10px",
                     background: "rgba(56, 189, 248, 0.1)",
-                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
                     color: "#7dd3fc",
-                    fontSize: "0.86rem",
-                  }}
-                >
-                  ⏳ <strong>Hợp đồng cũ đang chờ kiểm duyệt:</strong> Hợp đồng phiên bản{" "}
-                  <strong>v{c.version}</strong> chưa được gửi tới Người thuê.
-                </div>
-              )}
-
-              {["pending_renter_signature", "moderator_approved"].includes(c.status) && (
-                <div
-                  style={{
-                    margin: "12px 0",
-                    padding: "12px 16px",
-                    borderRadius: "10px",
-                    background: "rgba(249, 115, 22, 0.12)",
-                    border: "1px solid rgba(249, 115, 22, 0.35)",
-                    color: "#fdba74",
                     fontSize: "0.88rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
                   }}
                 >
-                  📨 <strong>Hợp đồng (v{c.version}) đã được gửi cho Người thuê!</strong>{" "}
-                  Hệ thống đang chờ Người thuê (<strong>{c.renter_id?.name || "Renter"}</strong>) ký tên điện tử để hợp đồng chính thức có hiệu lực.
+                  <div>
+                    💬 <strong>Hợp đồng đã gửi trực tiếp tới Người thuê ({c.renter_id?.name || "Renter"}) qua phòng Chat!</strong><br />
+                    Hai bên có thể nhắn tin trao đổi điều khoản, giải đáp thắc mắc hoặc theo dõi khách ký tên.
+                  </div>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    style={{ width: "auto", fontSize: "0.82rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    onClick={() => handleOpenChatForContract(c)}
+                  >
+                    <span>💬</span> Chat với Người thuê
+                  </button>
                 </div>
               )}
 
@@ -657,10 +733,25 @@ export default function OwnerContractsTab({
                     border: "1px solid rgba(16, 185, 129, 0.4)",
                     color: "#6ee7b7",
                     fontSize: "0.88rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
                   }}
                 >
-                  ✍️ <strong>Người thuê ({c.renter_id?.name || "Renter"}) đã ký tên xác nhận Hợp đồng!</strong>{" "}
-                  Hợp đồng đã có đầy đủ hiệu lực pháp lý. Bạn có thể tiến hành <strong>Bàn giao thiết bị (UC_O08)</strong>.
+                  <div>
+                    ✍️ <strong>Người thuê ({c.renter_id?.name || "Renter"}) đã ký tên xác nhận Hợp đồng!</strong><br />
+                    Hợp đồng đã có đầy đủ hiệu lực pháp lý. Bạn có thể kiểm tra thanh toán hoặc chuẩn bị Bàn giao thiết bị.
+                  </div>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    style={{ width: "auto", fontSize: "0.82rem", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    onClick={() => handleOpenChatForContract(c)}
+                  >
+                    <span>💬</span> Mở phòng Chat
+                  </button>
                 </div>
               )}
 
@@ -698,12 +789,10 @@ export default function OwnerContractsTab({
                 <div>
                   <span className="meta-label">Chữ ký Người thuê (Bên B):</span>
                   <span className="meta-val">
-                    {c.renter_signature?.signed || c.status === "signed" || c.status === "active" || c.status === "completed" ? (
+                    {c.renter_signature?.signed || ["signed", "contract_signed", "active", "completed"].includes(c.status) ? (
                       <span style={{ color: "#10b981", fontWeight: 700 }}>✅ Người thuê đã ký</span>
-                    ) : ["pending_renter_signature", "moderator_approved"].includes(c.status) ? (
-                      <span style={{ color: "#fb923c", fontWeight: 600 }}>⏳ Đã gửi - Chờ Renter ký</span>
                     ) : (
-                      <span style={{ color: "var(--muted)" }}>🔒 Chờ Owner gửi cho Người thuê</span>
+                      <span style={{ color: "#fb923c", fontWeight: 600 }}>⏳ Đã gửi - Chờ Renter ký</span>
                     )}
                   </span>
                 </div>
@@ -731,7 +820,18 @@ export default function OwnerContractsTab({
                   👁️ Xem toàn văn Hợp đồng
                 </button>
 
-                {/* UC_O15: Ký / cập nhật chữ ký số */}
+                {/* Nút Chat trao đổi trực tiếp với Renter */}
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ width: "auto", display: "inline-flex", alignItems: "center", gap: "6px", borderColor: "#38bdf8", color: "#38bdf8" }}
+                  onClick={() => handleOpenChatForContract(c)}
+                  title="Mở phòng chat để trao đổi điều khoản và gửi hợp đồng trực tiếp cho Người thuê"
+                >
+                  <span>💬</span> Chat với Người thuê & Gửi HĐ
+                </button>
+
+                {/* Ký / cập nhật chữ ký số */}
                 {["draft", "moderator_rejected"].includes(c.status) && (
                   <button
                     className="button button-secondary"
@@ -741,11 +841,11 @@ export default function OwnerContractsTab({
                       setSigningSignature(null);
                     }}
                   >
-                    ✍️ {c.owner_signature?.signed ? "Ký lại Chữ ký số" : "Ký Chữ ký số (UC_O15)"}
+                    ✍️ {c.owner_signature?.signed ? "Ký lại Chữ ký số" : "Ký Chữ ký số Bên A"}
                   </button>
                 )}
 
-                {/* UC_O13: Sửa bản nháp / bị trả lại */}
+                {/* Sửa bản nháp */}
                 {["draft", "moderator_rejected"].includes(c.status) && (
                   <button
                     className="button button-secondary"
@@ -754,27 +854,22 @@ export default function OwnerContractsTab({
                       setEditingContract(c);
                       setEditedTerms(c.terms_content);
                       setEditedSpecialConditions(c.special_conditions || "");
-                      setChangesSummary(
-                        c.status === "moderator_rejected"
-                          ? `Chỉnh sửa theo phản hồi của Quản lý web (lên phiên bản v${c.version + 1})`
-                          : `Cập nhật nội dung hợp đồng chuẩn v${c.version + 1}`
-                      );
+                      setChangesSummary(`Cập nhật nội dung hợp đồng chuẩn v${c.version + 1}`);
                     }}
                   >
-                    ✏️ {c.status === "moderator_rejected" ? "Sửa theo yêu cầu Quản lý web" : "Chỉnh sửa nháp"} (v
-                    {c.version + 1} - UC_O13)
+                    ✏️ Chỉnh sửa điều khoản (v{c.version + 1})
                   </button>
                 )}
 
-                {/* UC_O14: Gửi hợp đồng trực tiếp cho Người thuê */}
+                {/* Gửi trực tiếp cho Người thuê */}
                 {c.status === "draft" && (
                   <button
                     className="button button-primary"
                     style={{ width: "auto" }}
-                    onClick={() => handleSubmitApproval(c)}
+                    onClick={() => handleSubmitToRenter(c)}
                     disabled={isSubmitting}
                   >
-                    📤 Gửi trực tiếp cho Người thuê ký (UC_O14)
+                    📤 Gửi Người thuê qua Chat
                   </button>
                 )}
 
@@ -785,7 +880,7 @@ export default function OwnerContractsTab({
                     style={{ width: "auto" }}
                     onClick={() => onOpenHandoverTab(c)}
                   >
-                    🤝 Bàn giao & Kiểm tra thiết bị (UC_O08, UC_O09)
+                    🤝 Bàn giao & Kiểm tra thiết bị
                   </button>
                 )}
               </div>
@@ -794,22 +889,59 @@ export default function OwnerContractsTab({
         </div>
       )}
 
-      {/* MODAL: Create Standard Contract from Approved Request (UC_O12) */}
+      {/* MODAL: Create Standard Contract from Approved Request */}
       {showCreateModal && (
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "820px" }}>
             <div className="owner-modal-header">
-              <h3>📜 Lập Hợp đồng cho thuê & Gửi Người thuê ký (UC_O12)</h3>
-              <button className="close-modal-btn" onClick={() => setShowCreateModal(false)}>
+              <h3>📜 Lập Hợp đồng cho thuê & Gửi trực tiếp Người thuê</h3>
+              <button
+                className="close-modal-btn"
+                onClick={() => {
+                  setModalError("");
+                  setShowCreateModal(false);
+                }}
+              >
                 ✕
               </button>
             </div>
 
+            {modalError && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  color: "#fca5a5",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  fontSize: "0.88rem",
+                  marginBottom: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>⚠️ {modalError}</span>
+                <button
+                  type="button"
+                  onClick={() => setModalError("")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fca5a5",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginTop: 0 }}>
               Hệ thống tự động trích xuất dữ liệu từ Yêu cầu thuê đã được Owner duyệt để lập{" "}
-              <strong style={{ color: "#fff" }}>Hợp đồng cho thuê chuẩn</strong>. Sau khi bạn gửi lên,{" "}
-              Sau khi lập hợp đồng, bạn có thể gửi trực tiếp cho{" "}
-              <strong style={{ color: "#10b981" }}>Người thuê ký tên</strong>.
+              <strong style={{ color: "#fff" }}>Hợp đồng cho thuê chuẩn</strong>. Sau khi ký số Bên A, Hợp đồng sẽ được gửi trực tiếp cho{" "}
+              <strong style={{ color: "#10b981" }}>Người thuê</strong> qua phòng Chat để hai bên trao đổi và ký tên điện tử.
             </p>
 
             <form
@@ -947,7 +1079,7 @@ export default function OwnerContractsTab({
                       }}
                     >
                       <label className="field-label" style={{ marginBottom: 0 }}>
-                        3. Toàn văn Hợp đồng chuẩn do Owner lập *
+                        3. Toàn văn Hợp đồng chuẩn do Owner lập (Gửi trực tiếp Người thuê) *
                       </label>
                       <button
                         type="button"
@@ -982,18 +1114,17 @@ export default function OwnerContractsTab({
                         lineHeight: 1.55,
                         background: "#0b101b",
                       }}
-                      required
                     />
                   </div>
                 )}
 
-                {/* 4. Digital Signature Pad for Owner (UC_O12) */}
+                {/* Digital Signature Pad for Owner */}
                 <div>
                   <label className="field-label" style={{ fontSize: "0.95rem", color: "#38bdf8", marginBottom: "4px" }}>
                     4. Chữ ký số điện tử của Bên Cho Thuê (Owner) *
                   </label>
                   <p style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: 0, marginBottom: "8px" }}>
-                    Theo Luật Giao dịch điện tử 2023, chữ ký số xác nhận trách nhiệm của Owner trước khi gửi hợp đồng cho Người thuê.
+                    Theo Luật Giao dịch điện tử 2023, chữ ký số chứng thực tính pháp lý của hợp đồng trước khi gửi Người thuê ký tên.
                   </p>
                   <DigitalSignaturePad
                     initialSignerName={user?.name || ""}
@@ -1003,49 +1134,83 @@ export default function OwnerContractsTab({
                 </div>
               </div>
 
-              <div className="modal-actions" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="button button-quiet"
-                  style={{ width: "auto" }}
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Hủy
-                </button>
+                {modalError && (
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.15)",
+                      border: "1px solid rgba(239, 68, 68, 0.4)",
+                      color: "#fca5a5",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      marginTop: "16px",
+                      marginBottom: "6px",
+                      fontSize: "0.85rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>⚠️ {modalError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setModalError("")}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#fca5a5",
+                        cursor: "pointer",
+                        fontSize: "1rem",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
 
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <div className="modal-actions" style={{ justifyContent: "space-between", flexWrap: "wrap", marginTop: "16px" }}>
                   <button
                     type="button"
-                    className="button button-secondary"
+                    className="button button-quiet"
                     style={{ width: "auto" }}
-                    disabled={isSubmitting || !selectedRequestForContract}
-                    onClick={() => void handleCreateContract(false)}
+                    onClick={() => setShowCreateModal(false)}
                   >
-                    📝 Chỉ lưu bản nháp (v1)
+                    Hủy
                   </button>
-                  <button
-                    type="submit"
-                    className="button button-primary"
-                    style={{ width: "auto" }}
-                    disabled={isSubmitting || !selectedRequestForContract}
-                  >
-                    {isSubmitting
-                      ? "Đang xử lý..."
-                      : "📤 Lập Hợp đồng & Gửi Người thuê ký ngay"}
-                  </button>
+
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ width: "auto" }}
+                      disabled={isSubmitting || !selectedRequestForContract}
+                      onClick={() => void handleCreateContract(false)}
+                    >
+                      📝 Chỉ lưu bản nháp (v1)
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      style={{ width: "auto" }}
+                      disabled={isSubmitting || !selectedRequestForContract}
+                      onClick={() => void handleCreateContract(true)}
+                    >
+                      {isSubmitting
+                        ? "Đang xử lý..."
+                        : "📤 Lập Hợp đồng & Gửi Người thuê qua Chat"}
+                    </button>
+                  </div>
                 </div>
-              </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL: Edit Draft / Rejected Contract (UC_O13 with versioning) */}
+      {/* MODAL: Edit Draft Contract */}
       {editingContract && (
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "760px" }}>
             <div className="owner-modal-header">
-              <h3>✏️ Chỉnh sửa Hợp đồng (UC_O13)</h3>
+              <h3>✏️ Chỉnh sửa Hợp đồng & Gửi Người thuê qua Chat</h3>
               <button className="close-modal-btn" onClick={() => setEditingContract(null)}>
                 ✕
               </button>
@@ -1055,22 +1220,6 @@ export default function OwnerContractsTab({
               <strong>v{editingContract.version}</strong> ➔ Sẽ lưu thành{" "}
               <strong style={{ color: "var(--orange)" }}>v{editingContract.version + 1}</strong>.
             </p>
-
-            {editingContract.moderator_feedback && (
-              <div
-                style={{
-                  marginBottom: "14px",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  color: "#fca5a5",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <strong>Lý do Quản lý web yêu cầu chỉnh sửa:</strong> {editingContract.moderator_feedback}
-              </div>
-            )}
 
             <form
               onSubmit={(e) => {
@@ -1084,7 +1233,7 @@ export default function OwnerContractsTab({
                   <input
                     className="input-field"
                     type="text"
-                    placeholder="Ví dụ: Bổ sung chi tiết số serial và điều khoản bảo quản theo yêu cầu Quản lý web..."
+                    placeholder="Ví dụ: Bổ sung chi tiết phụ kiện và địa điểm giao nhận..."
                     value={changesSummary}
                     onChange={(e) => setChangesSummary(e.target.value)}
                     required
@@ -1154,7 +1303,7 @@ export default function OwnerContractsTab({
                   >
                     {isSubmitting
                       ? "Đang lưu..."
-                      : `📤 Lưu v${editingContract.version + 1} & Gửi Người thuê ký`}
+                      : `📤 Lưu v${editingContract.version + 1} & Gửi Người thuê qua Chat`}
                   </button>
                 </div>
               </div>
@@ -1169,7 +1318,7 @@ export default function OwnerContractsTab({
           <div className="owner-modal-card" style={{ maxWidth: "800px" }}>
             <div className="owner-modal-header">
               <h3>
-                📄 Hợp đồng chuẩn {viewingContract.contract_code} (Phiên bản v{viewingContract.version})
+                📄 Hợp đồng {viewingContract.contract_code} (Phiên bản v{viewingContract.version})
               </h3>
               <button className="close-modal-btn" onClick={() => setViewingContract(null)}>
                 ✕
@@ -1233,97 +1382,47 @@ export default function OwnerContractsTab({
                       background: "rgba(16, 185, 129, 0.15)",
                       color: "#34d399",
                       padding: "2px 8px",
-                      borderRadius: "12px",
+                      borderRadius: "6px",
                       fontSize: "0.72rem",
                       fontWeight: 600,
                     }}
                   >
-                    e-Sign Certified
+                    ✓ ĐÃ KÝ SỐ
                   </span>
                 </div>
 
-                {viewingContract.owner_signature?.signature_image ? (
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      textAlign: "center",
-                      margin: "8px 0",
-                      boxShadow: "inset 0 1px 3px rgba(0,0,0,0.1)",
-                    }}
-                  >
-                    <img
-                      src={viewingContract.owner_signature.signature_image}
-                      alt="Chữ ký Owner"
-                      style={{ maxHeight: "72px", maxWidth: "100%", objectFit: "contain", display: "inline-block" }}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      textAlign: "center",
-                      margin: "8px 0",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "'Brush Script MT', 'Dancing Script', cursive",
-                        fontSize: "1.7rem",
-                        color: "#1d4ed8",
-                        fontStyle: "italic",
-                      }}
-                    >
-                      {viewingContract.owner_signature?.signer_name || user?.name || "Owner"}
-                    </span>
-                  </div>
-                )}
-
-                <div style={{ fontSize: "0.8rem", color: "#cbd5e1", display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <div>
-                    Người ký:{" "}
-                    <strong style={{ color: "#fff" }}>
-                      {viewingContract.owner_signature?.signer_name || user?.name || "Chủ thiết bị"}
-                    </strong>
-                  </div>
-                  <div style={{ fontSize: "0.74rem", color: "#94a3b8", marginTop: "3px" }}>
-                    Thời gian ký:{" "}
-                    {new Date(
-                      viewingContract.owner_signature?.signed_at || viewingContract.createdAt
-                    ).toLocaleString("vi-VN")}
-                  </div>
-                  <div style={{ fontSize: "0.72rem", color: "#38bdf8", marginTop: "3px", fontFamily: "monospace" }}>
-                    Mã chứng thư: {viewingContract.owner_signature?.certificate_code || `CERT-OWNER-${viewingContract.contract_code}`}
-                  </div>
+                <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#fff" }}>
+                  {viewingContract.owner_signature?.signer_name || user?.name || "Owner"}
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>
+                  Thời gian ký:{" "}
+                  {viewingContract.owner_signature?.signed_at
+                    ? new Date(viewingContract.owner_signature.signed_at).toLocaleString("vi-VN")
+                    : "Đã ký khi tạo HĐ"}
                 </div>
 
-                {["draft", "moderator_rejected"].includes(viewingContract.status) && (
-                  <button
-                    type="button"
-                    className="button button-quiet"
-                    style={{ marginTop: "10px", width: "100%", fontSize: "0.78rem", minHeight: "30px" }}
-                    onClick={() => {
-                      setSigningContract(viewingContract);
-                      setSigningSignature(null);
+                {viewingContract.owner_signature?.certificate_code && (
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      fontFamily: "monospace",
+                      color: "#38bdf8",
+                      marginTop: "6px",
+                      background: "rgba(56, 189, 248, 0.08)",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
                     }}
                   >
-                    ✍️ Ký lại Chữ ký số điện tử
-                  </button>
+                    Mã chứng thư: {viewingContract.owner_signature.certificate_code}
+                  </div>
                 )}
               </div>
 
-              {/* Bên B: Renter Digital Signature */}
+              {/* Bên B: Renter Signature */}
               <div
                 style={{
                   background: "#0d1527",
-                  border: `1px solid ${
-                    viewingContract.renter_signature?.signed || viewingContract.status === "signed"
-                      ? "rgba(16, 185, 129, 0.4)"
-                      : "rgba(100, 116, 139, 0.3)"
-                  }`,
+                  border: "1px solid rgba(16, 185, 129, 0.35)",
                   borderRadius: "12px",
                   padding: "16px",
                   position: "relative",
@@ -1339,155 +1438,94 @@ export default function OwnerContractsTab({
                   }}
                 >
                   <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#34d399", textTransform: "uppercase" }}>
-                    🛡️ BÊN THUÊ (BÊN B - RENTER)
+                    ✍️ BÊN THUÊ (BÊN B - RENTER)
                   </span>
                   <span
                     style={{
                       background:
-                        viewingContract.renter_signature?.signed || viewingContract.status === "signed"
+                        viewingContract.renter_signature?.signed ||
+                        ["signed", "contract_signed", "active", "completed"].includes(viewingContract.status)
                           ? "rgba(16, 185, 129, 0.15)"
                           : "rgba(249, 115, 22, 0.15)",
                       color:
-                        viewingContract.renter_signature?.signed || viewingContract.status === "signed"
+                        viewingContract.renter_signature?.signed ||
+                        ["signed", "contract_signed", "active", "completed"].includes(viewingContract.status)
                           ? "#34d399"
                           : "#fb923c",
                       padding: "2px 8px",
-                      borderRadius: "12px",
+                      borderRadius: "6px",
                       fontSize: "0.72rem",
                       fontWeight: 600,
                     }}
                   >
-                    {viewingContract.renter_signature?.signed || viewingContract.status === "signed"
-                      ? "e-Sign Certified"
-                      : "Pending"}
+                    {viewingContract.renter_signature?.signed ||
+                    ["signed", "contract_signed", "active", "completed"].includes(viewingContract.status)
+                      ? "✓ ĐÃ KÝ TÊN"
+                      : "⏳ CHỜ KÝ TÊN"}
                   </span>
                 </div>
 
-                {viewingContract.renter_signature?.signed || viewingContract.status === "signed" ? (
-                  <>
-                    {viewingContract.renter_signature?.signature_image ? (
-                      <div
-                        style={{
-                          background: "#ffffff",
-                          borderRadius: "8px",
-                          padding: "8px 14px",
-                          textAlign: "center",
-                          margin: "8px 0",
-                        }}
-                      >
-                        <img
-                          src={viewingContract.renter_signature.signature_image}
-                          alt="Chữ ký Renter"
-                          style={{ maxHeight: "72px", maxWidth: "100%", objectFit: "contain" }}
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          background: "#ffffff",
-                          borderRadius: "8px",
-                          padding: "12px",
-                          textAlign: "center",
-                          margin: "8px 0",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontFamily: "'Brush Script MT', 'Dancing Script', cursive",
-                            fontSize: "1.7rem",
-                            color: "#1d4ed8",
-                            fontStyle: "italic",
-                          }}
-                        >
-                          {viewingContract.renter_signature?.signer_name || viewingContract.renter_id?.name}
-                        </span>
-                      </div>
-                    )}
-                    <div style={{ fontSize: "0.8rem", color: "#cbd5e1" }}>
-                      <div>
-                        Người ký:{" "}
-                        <strong style={{ color: "#fff" }}>
-                          {viewingContract.renter_signature?.signer_name || viewingContract.renter_id?.name}
-                        </strong>
-                      </div>
-                      <div style={{ fontSize: "0.74rem", color: "#94a3b8", marginTop: "3px" }}>
-                        Thời gian ký:{" "}
-                        {viewingContract.renter_signature?.signed_at
-                          ? new Date(viewingContract.renter_signature.signed_at).toLocaleString("vi-VN")
-                          : "Đã hoàn tất"}
-                      </div>
-                      <div style={{ fontSize: "0.72rem", color: "#34d399", marginTop: "3px", fontFamily: "monospace" }}>
-                        Mã chứng thư: {viewingContract.renter_signature?.certificate_code || `CERT-RENTER-${viewingContract.contract_code}`}
-                      </div>
-                    </div>
-                  </>
-                ) : ["pending_renter_signature", "moderator_approved"].includes(viewingContract.status) ? (
-                  <div
-                    style={{
-                      background: "rgba(249, 115, 22, 0.08)",
-                      border: "1px dashed rgba(249, 115, 22, 0.3)",
-                      borderRadius: "8px",
-                      padding: "20px 14px",
-                      textAlign: "center",
-                      color: "#fdba74",
-                      fontSize: "0.82rem",
-                      margin: "8px 0",
-                    }}
-                  >
-                    ⏳ Hợp đồng đã được gửi trực tiếp.<br />
-                    Đang chờ Người thuê (<strong>{viewingContract.renter_id?.name}</strong>) ký tên điện tử.
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      background: "rgba(100, 116, 139, 0.08)",
-                      border: "1px dashed rgba(100, 116, 139, 0.3)",
-                      borderRadius: "8px",
-                      padding: "20px 14px",
-                      textAlign: "center",
-                      color: "#94a3b8",
-                      fontSize: "0.82rem",
-                      margin: "8px 0",
-                    }}
-                  >
-                    🔒 Chưa gửi Người thuê ký tên.<br />
-                    Owner cần gửi hợp đồng để Người thuê ký.
+                <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#fff" }}>
+                  {viewingContract.renter_id?.name || "Người thuê (Renter)"}
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>
+                  {viewingContract.renter_id?.phone || viewingContract.renter_id?.email || ""}
+                </div>
+
+                {viewingContract.renter_signature?.signed_at && (
+                  <div style={{ fontSize: "0.78rem", color: "#34d399", marginTop: "4px" }}>
+                    Thời gian ký: {new Date(viewingContract.renter_signature.signed_at).toLocaleString("vi-VN")}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="modal-actions">
-              {viewingContract.status === "draft" && (
-                <button
-                  type="button"
-                  className="button button-primary"
-                  style={{ width: "auto" }}
-                  disabled={isSubmitting}
-                  onClick={() => void handleSubmitApproval(viewingContract)}
-                >
-                  📤 Gửi trực tiếp cho Người thuê ký (UC_O14)
-                </button>
-              )}
+            <div className="modal-actions" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
               <button
                 type="button"
-                className="button button-quiet"
-                style={{ width: "auto" }}
-                onClick={() => setViewingContract(null)}
+                className="button button-secondary"
+                style={{ width: "auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                onClick={() => {
+                  const target = viewingContract;
+                  setViewingContract(null);
+                  handleOpenChatForContract(target);
+                }}
               >
-                Đóng
+                <span>💬</span> Mở Chat với Người thuê
               </button>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                {viewingContract.status === "draft" && (
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    style={{ width: "auto" }}
+                    disabled={isSubmitting}
+                    onClick={() => void handleSubmitToRenter(viewingContract)}
+                  >
+                    📤 Gửi Người thuê qua Chat
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  style={{ width: "auto" }}
+                  onClick={() => setViewingContract(null)}
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: Digital Signature for Contract (UC_O15) */}
+      {/* MODAL: Digital Signature for Contract */}
       {signingContract && (
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "680px" }}>
             <div className="owner-modal-header">
-              <h3>✍️ Ký chữ ký số điện tử cho Hợp đồng {signingContract.contract_code} (UC_O15)</h3>
+              <h3>✍️ Ký chữ ký số điện tử cho Hợp đồng {signingContract.contract_code}</h3>
               <button className="close-modal-btn" onClick={() => setSigningContract(null)}>
                 ✕
               </button>
@@ -1521,11 +1559,38 @@ export default function OwnerContractsTab({
                 disabled={isSubmitting || !signingSignature}
                 onClick={() => void handleConfirmEContract()}
               >
-                {isSubmitting ? "Đang xử lý..." : "✅ Xác nhận & Lưu Chữ ký số (UC_O15)"}
+                {isSubmitting ? "Đang xử lý..." : "✅ Xác nhận & Lưu Chữ ký số"}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* CHAT MODAL VỚI KHÁCH THUÊ ĐỂ TRAO ĐỔI HỢP ĐỒNG */}
+      {chatRental && (
+        <RentalChatModal
+          rental={chatRental}
+          isOpen={Boolean(chatRental)}
+          token={token}
+          currentUserId={(user as any)?._id || (user as any)?.User_Id}
+          partnerUser={
+            typeof chatRental.renter === "object"
+              ? {
+                  _id: String((chatRental.renter as any)?._id || (chatRental.renter as any)?.User_Id || ""),
+                  name: (chatRental.renter as any)?.name || "Khách thuê",
+                  avatarUrl: (chatRental.renter as any)?.avatarUrl,
+                  role: "renter",
+                }
+              : undefined
+          }
+          onClose={() => setChatRental(null)}
+          onViewContract={(r) => {
+            const match = contracts.find((c) => c.contract_code === r.contract?.contractNumber);
+            if (match) {
+              setViewingContract(match);
+            }
+          }}
+        />
       )}
     </div>
   );

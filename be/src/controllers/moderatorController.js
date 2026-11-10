@@ -295,6 +295,32 @@ async function reviewContract(req, res) {
 
   let notificationWarning = "";
   if (action === "approve") {
+    // Tự động đồng bộ trạng thái đơn thuê Rental thành APPROVED để Renter ký hợp đồng & thanh toán
+    try {
+      const Rental = require("../models/Rental");
+      await Rental.updateMany(
+        {
+          $or: [
+            { "contract.contractNumber": updated.contract_code },
+            { rentalCode: updated.request_id?.request_code },
+            {
+              renter: updated.renter_id?._id,
+              equipment: updated.equipment_id?._id,
+              status: { $in: ["PENDING", "pending", "contract_pending"] },
+            },
+          ],
+        },
+        {
+          $set: {
+            status: "APPROVED",
+            "contract.contractNumber": updated.contract_code,
+          },
+        }
+      );
+    } catch (err) {
+      console.error("Failed to sync Rental status upon contract approval:", err);
+    }
+
     const w1 = await notifyUsers(
       [updated.renter_id?._id],
       `✍️ Hợp đồng #${updated.contract_code} đã được gửi tới bạn để ký tên`,
@@ -736,11 +762,25 @@ async function verifyPayment(req, res) {
 
     try {
       const { getIO } = require("../config/socket");
-      getIO().emit("payment:verified", {
+      const io = getIO();
+      const ownerIdStr = String(rental.owner?._id || rental.owner || "");
+      const renterIdStr = String(rental.renter?._id || rental.renter || "");
+      const toastData = {
         rentalId: rental._id.toString(),
         rentalCode: rental.rentalCode,
         status: "PAID",
-      });
+        ownerId: ownerIdStr,
+        renterId: renterIdStr,
+        renterName: rental.renter?.name || "Khách thuê",
+        amount: rental.totalAmount || 0,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        title: "💰 TIỀN ĐÃ VỀ VÍ! THANH TOÁN ĐÃ ĐƯỢC XÁC NHẬN",
+        message: `Rental Moderator đã xác nhận khách ${rental.renter?.name || ""} chuyển khoản ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode}. Bạn đã có thể bàn giao thiết bị!`,
+        link: "/owner",
+      };
+      io.emit("payment:verified", toastData);
+      io.emit("payment:approved", toastData);
+      io.emit("payment:success_owner", toastData);
     } catch {}
 
     const populated = await Rental.findById(rental._id)
@@ -773,11 +813,14 @@ async function verifyPayment(req, res) {
 
     try {
       const { getIO } = require("../config/socket");
-      getIO().emit("payment:rejected", {
-        rentalId: rental._id.toString(),
-        rentalCode: rental.rentalCode,
-        reason: note,
-      });
+      const io = getIO();
+      if (io) {
+        io.emit("payment:rejected", {
+          rentalId: rental._id.toString(),
+          rentalCode: rental.rentalCode,
+          reason: note,
+        });
+      }
     } catch {}
 
     const populated = await Rental.findById(rental._id)
@@ -903,6 +946,7 @@ module.exports = {
   reviewKycSubmission: adminController.reviewKycSubmission,
   listPayments,
   verifyPayment,
+  reviewPayment: verifyPayment,
   createTemplate,
   createTemplateVersion,
   forwardRentalRequest,

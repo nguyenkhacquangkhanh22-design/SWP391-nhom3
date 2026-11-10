@@ -84,48 +84,58 @@ export interface ModeratorPaymentRental {
   startDate: string;
   endDate: string;
   totalDays: number;
-  dailyRate: number;
+  dailyRate?: number;
   rentalFee: number;
-  depositAmount: number;
+  depositAmount?: number;
   discountAmount?: number;
   totalAmount: number;
   status: string;
   deliveryAddress?: string;
+  deliveryTime?: string;
+  returnTime?: string;
+  deliveryMethod?: string;
+  returnMethod?: string;
+  shippingFee?: number;
   renterNote?: string;
-  contract?: {
-    contractNumber?: string;
-    renterSignature?: string;
-    digitalSignature?: string;
-    signedAt?: string;
-  };
-  payment?: {
-    isPaid?: boolean;
-    paymentStatus?: "unpaid" | "verifying" | "paid" | "rejected" | "refunded" | string;
-    paymentMethod?: string;
-    transactionId?: string;
-    transferNote?: string;
-    senderName?: string;
-    proofImage?: string;
-    submittedAt?: string;
-    paidAt?: string;
-    amountPaid?: number;
-    verifiedBy?: { _id: string; name: string; email: string };
-    verifiedAt?: string;
-    moderatorNote?: string;
-  };
+  renter?: { _id: string; name: string; email: string; phone?: string };
+  owner?: { _id: string; name: string; email: string; phone?: string };
   equipment?: {
     _id: string;
     title: string;
     category?: string;
     brand?: string;
     model_name?: string;
+    modelNumber?: string;
     serial_number?: string;
     images?: string[];
     dailyRate?: number;
     depositAmount?: number;
   };
-  owner?: { _id: string; name: string; email: string; phone?: string };
-  renter?: { _id: string; name: string; email: string; phone?: string };
+  contract?: {
+    contractNumber?: string;
+    termsAccepted?: boolean;
+    renterSignature?: string;
+    digitalSignature?: string;
+    signedAt?: string;
+  };
+  payment?: {
+    isPaid?: boolean;
+    paymentMethod?: string;
+    paymentStatus?: "unpaid" | "verifying" | "paid" | "rejected" | "refunded" | string;
+    amountPaid?: number;
+    transactionId?: string;
+    transferNotifiedAt?: string;
+    transferNote?: string;
+    senderName?: string;
+    proofImage?: string;
+    receiptImage?: string;
+    submittedAt?: string;
+    paidAt?: string;
+    rejectionReason?: string;
+    verifiedBy?: { _id: string; name: string; email: string };
+    verifiedAt?: string;
+    moderatorNote?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -281,8 +291,20 @@ export const moderatorApi = {
         body: JSON.stringify({ action, note }),
       }
     ),
-  getPayments: (token: string) =>
-    request<{ payments: ModeratorPaymentRental[] }>("/payments", token),
+  getPayments: (token: string, status?: string) =>
+    request<{ payments: ModeratorPaymentRental[] }>(
+      `/payments${status ? `?status=${status}` : ""}`,
+      token
+    ),
+  reviewPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
+    request<{ message: string; rental?: ModeratorPaymentRental; paymentRental?: ModeratorPaymentRental }>(
+      `/payments/${id}/review`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ action, note }),
+      }
+    ),
   verifyPayment: (token: string, id: string, action: "approve" | "reject", note?: string) =>
     request<{ message: string; notificationWarning?: string; paymentRental: ModeratorPaymentRental }>(
       `/payments/${id}/verify`,

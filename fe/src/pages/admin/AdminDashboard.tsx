@@ -7,6 +7,7 @@ import AdminUserTable, { type AdminUserRow } from "../../components/admin/AdminU
 import AdminDisputesTab from "../../components/admin/AdminDisputesTab";
 import AdminKycTab from "../../components/admin/AdminKycTab";
 import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
+import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -593,6 +594,8 @@ export default function AdminDashboard() {
                 ? "Tiếp nhận & Xử lý yêu cầu hỗ trợ (UC_A17)"
                 : activeTab === "audit-logs"
                 ? "Nhật ký hoạt động hệ thống (UC_A21)"
+                : activeTab === "finance"
+                ? "Quản lý Tài chính, Ví trung gian & Duyệt rút tiền (Admin Finance)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -1992,6 +1995,13 @@ export default function AdminDashboard() {
             token={token}
             onError={setError}
           />
+        )}
+
+        {/* Finance Manager Tab: Duyệt Ngân Hàng & Rút Tiền */}
+        {activeTab === "finance" && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminFinanceManager />
+          </div>
         )}
 
         {/* Equipment Detail Modal (UC_A11 & UC_A12) */}

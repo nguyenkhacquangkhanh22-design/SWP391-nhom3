@@ -12,8 +12,8 @@ const {
 
 const router = express.Router();
 
-// Require authenticated user with 'owner' or 'systemadmin' role
-router.use(authenticate, authorize("owner", "systemadmin"));
+// Require authenticated user with 'owner', 'systemadmin', or 'admin' role
+router.use(authenticate, authorize("owner", "systemadmin", "admin"));
 
 // 1. Dashboard Overview (UC_O01)
 router.get("/membership", asyncHandler(ownerMembershipController.getMembership));
@@ -33,9 +33,15 @@ router.patch("/equipments/:id/visibility", requireMembershipToPublish, asyncHand
 router.post("/equipments/:id/schedule", asyncHandler(ownerController.scheduleEquipmentAvailability));
 router.post("/equipments/:id/status-request", asyncHandler(ownerController.submitEquipmentStatusUpdateRequest));
 
-// 3. Rental Requests (UC_O07)
+// 3. Rental Requests & Direct Rental Management
 router.get("/rental-requests", asyncHandler(ownerController.getRentalRequests));
 router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respondRentalRequest));
+router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
+router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
+router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
+router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));
+router.post("/rentals/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
+router.post("/rentals/:id/review-renter", asyncHandler(ownerController.reviewRenter));
 
 // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
 router.get("/contracts", asyncHandler(ownerController.getContracts));
@@ -47,6 +53,8 @@ router.post("/contracts/:id/send-to-renter", asyncHandler(ownerController.sendRe
 // Backward-compatible path; submitting now sends the contract directly to the renter.
 router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.sendRentalContractToRenter));
 router.post("/contracts/:id/confirm-e-contract", asyncHandler(ownerController.confirmEContract));
+router.post("/contracts/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
+router.post("/contracts/:id/review-renter", asyncHandler(ownerController.reviewRenter));
 
 // 5. Handover & Return Inspection (UC_O08, UC_O09)
 router.get("/contracts/:id/handover", asyncHandler(ownerController.getContractHandoverRecords));
@@ -67,5 +75,13 @@ router.post("/disputes", asyncHandler(ownerController.submitRentalDispute));
 router.get("/support-tickets", asyncHandler(ownerController.getOwnerSupportTickets));
 router.post("/support-tickets", asyncHandler(ownerController.submitSupportTicket));
 router.post("/support-tickets/:id/reply", asyncHandler(ownerController.replySupportTicket));
+
+// 8. Ví trung gian & Rút tiền (Wallet & Withdrawals)
+const walletController = require("../controllers/walletController");
+router.post("/bank-accounts", asyncHandler(walletController.addBankAccount));
+router.get("/bank-accounts", asyncHandler(walletController.getOwnerBankAccountsAndBalance));
+router.delete("/bank-accounts/:accountId", asyncHandler(walletController.removeBankAccount));
+router.post("/withdraw", asyncHandler(walletController.createWithdrawal));
+router.get("/withdrawals", asyncHandler(walletController.getOwnerWithdrawals));
 
 module.exports = router;

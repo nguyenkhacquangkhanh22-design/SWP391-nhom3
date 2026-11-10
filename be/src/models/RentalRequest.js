@@ -30,6 +30,10 @@ const rentalRequestSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    delivery_address: {
+      type: String,
+      default: "",
+    },
     renter_phone: {
       type: String,
       default: "",
@@ -87,9 +91,27 @@ const rentalRequestSchema = new mongoose.Schema(
         "approved",          // Owner approved the rental request
         "rejected",          // Owner từ chối yêu cầu thuê
         "contract_created",  // Bước 3b: Owner đã lập hợp đồng cho thuê
+        "contract_signed",
+        "payment_pending",
+        "paid",
         "active",
+        "returned",
         "completed",
         "cancelled",
+        // Hỗ trợ chữ hoa
+        "PENDING_MODERATOR",
+        "MODERATOR_REJECTED",
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "CONTRACT_CREATED",
+        "CONTRACT_SIGNED",
+        "PAYMENT_PENDING",
+        "PAID",
+        "ACTIVE",
+        "RETURNED",
+        "COMPLETED",
+        "CANCELLED",
       ],
       default: "pending",
       index: true,

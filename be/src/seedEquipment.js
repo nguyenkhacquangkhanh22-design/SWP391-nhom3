@@ -12,6 +12,24 @@ const Equipment = require("./models/Equipment");
 
 const sampleEquipments = [
   {
+    title: "Thiết Bị Test Cổng Thanh Toán PayOS (1.000 đ/ngày)",
+    description:
+      "Thiết bị chuyên biệt để kiểm thử quy trình tạo mã VietQR động PayOS và webhook tự động duyệt đơn tức thì. Giá thuê chỉ 1.000 đ / ngày.",
+    category: "Thiết bị Test Thanh toán",
+    brand: "SmartEquip Lab",
+    modelNumber: "PAYOS-1K",
+    dailyRate: 1000,
+    depositAmount: 0,
+    status: "APPROVED",
+    images: [
+      "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=800&q=80",
+    ],
+    condition: "like-new",
+    isFeatured: true,
+    location: { address: "Trung tâm Demo SmartEquip, Quận 1", city: "TP. Hồ Chí Minh" },
+  },
+  {
     title: "Máy ảnh Sony Alpha A7 IV (Body) + Ống kính 24-70mm GM",
     description: "Máy ảnh Full-frame đa năng 33MP, quay phim 4K 60p 10-bit 4:2:2. Cảm biến sắc nét, lấy nét mắt tự động Real-time Eye AF. Đi kèm thẻ nhớ 128GB tốc độ cao và 2 pin.",
     category: "Máy ảnh & Quay phim",
@@ -126,21 +144,28 @@ const sampleEquipments = [
 ];
 
 async function seed() {
-  if (!process.env.MONGODB_URI) {
-    throw new Error("MONGODB_URI is not defined");
+  if (mongoose.connection.readyState !== 1) {
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not defined");
+    }
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("MongoDB connected for seeding...");
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
-  console.log("MongoDB connected for seeding...");
-
-  // Tìm hoặc tạo một user Owner đại diện
-  let owner = await User.findOne({ email: "owner@smartequip.vn" });
+  // Tìm tài khoản Owner chính (owner@example.com hoặc role owner)
+  let owner = await User.findOne({ email: "owner@example.com" });
+  if (!owner) {
+    owner = await User.findOne({ role: "owner" });
+  }
+  if (!owner) {
+    owner = await User.findOne({ email: "owner@smartequip.vn" });
+  }
   if (!owner) {
     owner = await User.create({
       User_Id: "OWNER-001",
-      name: "SmartEquip Official Hub",
-      email: "owner@smartequip.vn",
-      role: "user",
+      name: "Nguyễn Văn Owner",
+      email: "owner@example.com",
+      role: "owner",
       status: "active",
       trust_score: 99,
       phone: "0909123456",
@@ -148,24 +173,43 @@ async function seed() {
       kycStatus: "verified",
     });
     console.log("Created official owner user:", owner.email);
+  } else if (owner.role !== "owner") {
+    owner.role = "owner";
+    await owner.save();
   }
 
-  // Xóa các thiết bị seed cũ nếu có và nạp mới
-  await Equipment.deleteMany({ owner: owner._id });
+  // Giữ nguyên thiết bị và đúng chủ sở hữu cho từng Owner, không xóa và không ghi đè chủ sở hữu
+  const existingCount = await Equipment.countDocuments();
+  if (existingCount > 0) {
+    console.log(`✓ Đã có ${existingCount} thiết bị trong DB, giữ nguyên toàn bộ bài đăng và quyền sở hữu của từng Owner.`);
+    return;
+  }
 
   const equipmentsToInsert = sampleEquipments.map((item) => ({
     ...item,
     owner: owner._id,
+    owner_id: owner._id,
+    pricing: {
+      price_per_day: item.dailyRate,
+      deposit_amount: item.depositAmount,
+    },
   }));
 
   const inserted = await Equipment.insertMany(equipmentsToInsert);
-  console.log(`Successfully seeded ${inserted.length} equipments with status APPROVED!`);
+  console.log(`✓ Đã nạp ${inserted.length} thiết bị mẫu cho Guest/Renter (status: APPROVED)!`);
+}
 
+async function runDirectly() {
+  await seed();
   await mongoose.disconnect();
   console.log("Disconnected from MongoDB.");
 }
 
-seed().catch((err) => {
-  console.error("Seeding failed:", err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  runDirectly().catch((err) => {
+    console.error("Seeding failed:", err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { seedEquipment: seed, sampleEquipments };

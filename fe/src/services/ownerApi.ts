@@ -1,4 +1,5 @@
 import { ApiError } from "./authApi";
+import type { Rental } from "../types/smartequip";
 import type {
   Equipment,
   RentalRequest,
@@ -203,7 +204,7 @@ export const ownerApi = {
       token
     ),
 
-  // 3. Rental Requests (UC_O07)
+  // 3. Rental Requests & Direct Rental Management
   getRentalRequests: (token: string) =>
     request<{ requests: RentalRequest[] }>("/api/owner/rental-requests", { method: "GET" }, token),
 
@@ -216,6 +217,67 @@ export const ownerApi = {
     request<{ message: string; request: RentalRequest }>(
       `/api/owner/rental-requests/${id}/respond`,
       { method: "PATCH", body: JSON.stringify({ action, rejection_reason }) },
+      token
+    ),
+
+  getOwnerRentals: (token: string, status?: string) => {
+    const qs = status && status !== "all" ? `?status=${status}` : "";
+    return request<{ success: boolean; data: any[]; pagination: any }>(
+      `/api/owner/rentals${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  respondOwnerRental: (
+    token: string,
+    rentalId: string,
+    action: "approve" | "reject",
+    rejection_reason?: string
+  ) =>
+    request<{ success: boolean; message: string; rental: any; rentalRequest?: RentalRequest }>(
+      `/api/owner/rentals/${rentalId}/respond`,
+      { method: "PATCH", body: JSON.stringify({ action, rejection_reason }) },
+      token
+    ),
+
+  confirmOwnerRentalPayment: (
+    token: string,
+    rentalId: string,
+    action: "approve" | "reject",
+    note?: string
+  ) =>
+    request<{ success: boolean; message: string; rental: any }>(
+      `/api/owner/rentals/${rentalId}/confirm-payment`,
+      { method: "PATCH", body: JSON.stringify({ action, note }) },
+      token
+    ),
+
+  updateOwnerRentalContractTerms: (
+    token: string,
+    rentalId: string,
+    data: {
+      contractTerms?: string;
+      dailyRate?: number;
+      totalDays?: number;
+      rentalFee?: number;
+      depositAmount?: number;
+      discountAmount?: number;
+      shippingFee?: number;
+      totalAmount?: number;
+      startDate?: string;
+      endDate?: string;
+      deliveryTime?: string;
+      returnTime?: string;
+      deliveryAddress?: string;
+      deliveryMethod?: string;
+      returnMethod?: string;
+      changeSummary?: string;
+    }
+  ) =>
+    request<{ success: boolean; message: string; rental: any; chatMessage?: any }>(
+      `/api/owner/rentals/${rentalId}/contract`,
+      { method: "PATCH", body: JSON.stringify(data) },
       token
     ),
 
@@ -437,13 +499,19 @@ export const ownerApi = {
   signMyContract: (
     token: string,
     contractId: string,
-    data: { signature_note: string; terms_accepted: boolean },
-  ) =>
-    request<{ message: string; contract: RentalContract }>(
+    data: {
+      signature_note: string;
+      terms_accepted: boolean;
+      signature_image?: string;
+      payment_method?: string;
+    },
+  ) => {
+    return request<{ message: string; contract: RentalContract }>(
       `/api/equipments/my/contracts/${contractId}/sign`,
       { method: "POST", body: JSON.stringify(data) },
       token
-    ),
+    );
+  },
 
   confirmMyReceipt: (token: string, contractId: string) =>
     request<{ message: string; contract: RentalContract }>(
@@ -484,6 +552,41 @@ export const ownerApi = {
     request<{ message: string; application: OwnerApplication }>(
       `/api/admin/owner-applications/${id}/review`,
       { method: "PATCH", body: JSON.stringify({ action, admin_note }) },
+      token
+    ),
+
+  // Chủ máy chủ động hủy đơn / từ chối bàn giao trước giờ giao máy
+  cancelRentalByOwner: (
+    token: string,
+    id: string,
+    reason: string,
+    isDamaged?: boolean
+  ) =>
+    request<{ success: boolean; message: string; rental: Rental }>(
+      `/api/owner/rentals/${id}/cancel`,
+      { method: "POST", body: JSON.stringify({ reason, is_damaged: isDamaged }) },
+      token
+    ),
+
+  // Owner đánh giá Renter & chấm điểm uy tín (trust_score)
+  reviewRenter: (
+    token: string,
+    id: string,
+    data: {
+      rating: number;
+      equipment_preservation: string;
+      on_time_return: boolean;
+      comment?: string;
+    }
+  ) =>
+    request<{
+      success: boolean;
+      message: string;
+      ownerReview: any;
+      newTrustScore: number;
+    }>(
+      `/api/owner/rentals/${id}/review-renter`,
+      { method: "POST", body: JSON.stringify(data) },
       token
     ),
 };

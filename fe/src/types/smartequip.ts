@@ -8,6 +8,12 @@ export interface EquipmentOwner {
   avatarUrl?: string;
   trust_score?: number;
   kycStatus?: "unverified" | "pending" | "verified" | "rejected";
+  bankInfo?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+    bankCode?: string;
+  };
 }
 
 export interface Equipment {
@@ -29,8 +35,44 @@ export interface Equipment {
   owner: EquipmentOwner;
   condition?: "like-new" | "good" | "fair";
   isFeatured?: boolean;
+  rating?: number;
+  review_count?: number;
+  reviews?: EquipmentReview[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChatMessage {
+  _id: string;
+  rental_id?: string | any;
+  sender: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  receiver: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  message: string;
+  message_type: "text" | "contract" | "image";
+  file_url?: string;
+  contract_data?: {
+    contract_number?: string;
+    rental_code?: string;
+    equipment_title?: string;
+    rental_id?: string;
+    total_amount?: number;
+    status?: string;
+    is_signed?: boolean;
+  };
+  is_read: boolean;
+  createdAt: string;
 }
 
 export interface SystemInfo {
@@ -60,15 +102,27 @@ export interface RentalContract {
   renterSignature?: string;
   digitalSignature?: string;
   contractUrl?: string;
+  agreedToSign?: boolean;
+  agreedAt?: string;
   moderatorApproved?: boolean;
   moderatorStatus?: "none" | "draft" | "pending_renter_signature" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
   ownerSigned?: boolean;
 }
 
+export interface EquipmentReview {
+  _id: string;
+  rentalCode?: string;
+  rating: number;
+  comment: string;
+  reviewedAt: string;
+  renterName: string;
+  renterAvatar?: string;
+}
+
 export interface RentalPayment {
   isPaid?: boolean;
-  paymentStatus: "unpaid" | "verifying" | "paid" | "rejected" | "refunded";
-  paymentMethod?: "qr_transfer" | "bank_transfer" | "vnpay" | "momo" | "wallet" | string;
+  paymentStatus: "unpaid" | "pending_confirmation" | "verifying" | "paid" | "rejected" | "refunded" | "refund_pending";
+  paymentMethod?: "qr_transfer" | "bank_transfer" | "vnpay" | "momo" | "wallet" | "payos_vietqr" | string;
   transactionId?: string;
   transferNote?: string;
   senderName?: string;
@@ -76,6 +130,10 @@ export interface RentalPayment {
   submittedAt?: string;
   paidAt?: string;
   amountPaid: number;
+  receiptImage?: string;
+  orderCode?: number;
+  paymentLinkId?: string;
+  checkoutUrl?: string;
   verifiedBy?: { _id?: string; name: string; email: string } | string;
   verifiedAt?: string;
   moderatorNote?: string;
@@ -107,10 +165,30 @@ export interface RentalDispute {
   status?: "open" | "investigating" | "resolved" | string;
 }
 
+export interface RentalRefundInfo {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  refundAmount?: number;
+  status?: "pending" | "processed" | "rejected";
+  processedAt?: string;
+  note?: string;
+}
+
 export interface RentalCancellation {
   cancelledBy?: string;
   reason?: string;
   cancelledAt?: string;
+  refundInfo?: RentalRefundInfo;
+}
+
+export interface RentalExtension {
+  extendedAt: string;
+  extraDays: number;
+  extraFee: number;
+  previousEndDate: string;
+  newEndDate: string;
+  note?: string;
 }
 
 export interface Rental {
@@ -156,11 +234,58 @@ export interface Rental {
   returnInfo?: RentalReturnRequest;
   returnRequest?: RentalReturnRequest;
   review?: RentalReview;
+  ownerReview?: {
+    rating: number;
+    trustScoreDelta?: number;
+    equipmentPreservation?: string;
+    onTimeReturn?: boolean;
+    comment?: string;
+    reviewedAt?: string;
+  };
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
+  extensions?: RentalExtension[];
   deliveryAddress?: string;
+  deliveryTime?: string;
+  returnTime?: string;
+  deliveryMethod?: string;
+  returnMethod?: string;
+  shippingFee?: number;
   renterNote?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChatMessage {
+  _id: string;
+  rental_id?: string | any;
+  sender: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  receiver: {
+    _id: string;
+    name: string;
+    email: string;
+    role?: string;
+    avatarUrl?: string;
+  };
+  message: string;
+  message_type: "text" | "contract" | "image";
+  file_url?: string;
+  contract_data?: {
+    contract_number?: string;
+    rental_code?: string;
+    equipment_title?: string;
+    rental_id?: string;
+    total_amount?: number;
+    status?: string;
+    is_signed?: boolean;
+  };
+  is_read: boolean;
+  createdAt: string;
 }
