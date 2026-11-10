@@ -1334,9 +1334,12 @@ export default function OwnerEquipmentsTab({
                       className="input-field"
                       type="number"
                       min={0}
-                      step={10000}
+                      step={1}
                       value={pricePerDay}
-                      onChange={(e) => setPricePerDay(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPricePerDay(val === "" ? 0 : Math.max(0, Number(val)));
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
@@ -1349,9 +1352,12 @@ export default function OwnerEquipmentsTab({
                       className="input-field"
                       type="number"
                       min={0}
-                      step={5000}
+                      step={1}
                       value={pricePerHour}
-                      onChange={(e) => setPricePerHour(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPricePerHour(val === "" ? 0 : Math.max(0, Number(val)));
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
@@ -1363,9 +1369,12 @@ export default function OwnerEquipmentsTab({
                       className="input-field"
                       type="number"
                       min={0}
-                      step={50000}
+                      step={1}
                       value={depositAmount}
-                      onChange={(e) => setDepositAmount(Math.max(0, Number(e.target.value) || 0))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDepositAmount(val === "" ? 0 : Math.max(0, Number(val)));
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}

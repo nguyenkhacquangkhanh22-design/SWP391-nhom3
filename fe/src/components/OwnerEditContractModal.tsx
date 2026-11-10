@@ -219,9 +219,12 @@ export default function OwnerEditContractModal({
                 <input
                   type="number"
                   min="0"
-                  step="10000"
+                  step="1"
                   value={dailyRate}
                   onChange={(e) => setDailyRate(Math.max(0, Number(e.target.value)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "-" || e.key === "e") e.preventDefault();
+                  }}
                   className="w-full bg-[#0d1524] border border-[#2a3c5a] rounded-lg px-3 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400"
                   required
                 />
@@ -251,9 +254,12 @@ export default function OwnerEditContractModal({
                 <input
                   type="number"
                   min="0"
-                  step="5000"
+                  step="1"
                   value={shippingFee}
                   onChange={(e) => setShippingFee(Math.max(0, Number(e.target.value)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "-" || e.key === "e") e.preventDefault();
+                  }}
                   className="w-full bg-[#0d1524] border border-[#2a3c5a] rounded-lg px-3 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -262,9 +268,12 @@ export default function OwnerEditContractModal({
                 <input
                   type="number"
                   min="0"
-                  step="10000"
+                  step="1"
                   value={discountAmount}
                   onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "-" || e.key === "e") e.preventDefault();
+                  }}
                   className="w-full bg-[#0d1524] border border-[#2a3c5a] rounded-lg px-3 py-1.5 text-emerald-400 font-mono focus:outline-none focus:border-emerald-400"
                 />
               </div>
@@ -273,9 +282,12 @@ export default function OwnerEditContractModal({
                 <input
                   type="number"
                   min="0"
-                  step="50000"
+                  step="1"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(Math.max(0, Number(e.target.value)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "-" || e.key === "e") e.preventDefault();
+                  }}
                   className="w-full bg-[#0d1524] border border-[#2a3c5a] rounded-lg px-3 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400"
                 />
               </div>

@@ -162,15 +162,31 @@ async function createEquipmentListing(req, res) {
     cancellation_policy,
   } = req.body;
 
-  if (!title || !category || !pricing || !pricing.price_per_day) {
+  if (
+    !title ||
+    !category ||
+    !pricing ||
+    pricing.price_per_day === undefined ||
+    pricing.price_per_day === null ||
+    pricing.price_per_day === ""
+  ) {
     throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục và giá thuê ngày");
   }
 
+  const pDay = Number(pricing.price_per_day);
+  const pHour = Number(pricing.price_per_hour || 0);
+  const pDeposit = Number(pricing.deposit_amount || 0);
+  const pWeekend = Number(pricing.weekend_rate || 0);
+
   if (
-    Number(pricing.price_per_day) < 0 ||
-    Number(pricing.price_per_hour || 0) < 0 ||
-    Number(pricing.deposit_amount || 0) < 0 ||
-    Number(pricing.weekend_rate || 0) < 0
+    isNaN(pDay) ||
+    pDay < 0 ||
+    isNaN(pHour) ||
+    pHour < 0 ||
+    isNaN(pDeposit) ||
+    pDeposit < 0 ||
+    isNaN(pWeekend) ||
+    pWeekend < 0
   ) {
     throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
   }
