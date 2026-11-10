@@ -218,10 +218,21 @@ const rentalSchema = new mongoose.Schema(
       createdAt: { type: Date },
       reviewedAt: { type: Date },
     },
+    ownerReview: {
+      rating: { type: Number, min: 1, max: 5 },
+      trustScoreDelta: { type: Number, default: 0 },
+      equipmentPreservation: { type: String, enum: ["excellent", "good", "fair", "poor"], default: "good" },
+      onTimeReturn: { type: Boolean, default: true },
+      comment: { type: String, trim: true, default: "" },
+      reviewedAt: { type: Date },
+    },
     cancellation: {
       cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       reason: { type: String, trim: true },
       cancelledAt: { type: Date },
+      refundAmount: { type: Number, default: 0 },
+      refundStatus: { type: String, default: "completed" },
+      isOwnerCancelled: { type: Boolean, default: false },
     },
     dispute: {
       reason: { type: String, trim: true },

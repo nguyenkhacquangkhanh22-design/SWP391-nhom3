@@ -201,6 +201,14 @@ export interface Rental {
   returnInfo?: RentalReturnRequest;
   returnRequest?: RentalReturnRequest;
   review?: RentalReview;
+  ownerReview?: {
+    rating: number;
+    trustScoreDelta?: number;
+    equipmentPreservation?: string;
+    onTimeReturn?: boolean;
+    comment?: string;
+    reviewedAt?: string;
+  };
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   deliveryAddress?: string;

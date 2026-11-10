@@ -5,6 +5,8 @@ import { ownerApi } from "../../services/ownerApi";
 import RentalChatModal from "../../components/RentalChatModal";
 import ContractPdfModal from "../../components/ContractPdfModal";
 import OwnerEditContractModal from "../../components/OwnerEditContractModal";
+import OwnerCancelRentalModal from "../../components/OwnerCancelRentalModal";
+import OwnerReviewRenterModal from "../../components/OwnerReviewRenterModal";
 
 interface Props {
   requests?: RentalRequest[];
@@ -33,6 +35,8 @@ export default function OwnerRequestsTab({
   const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
   const [editingContractRental, setEditingContractRental] = useState<Rental | null>(null);
   const [previewBillUrl, setPreviewBillUrl] = useState<string | null>(null);
+  const [cancellingRental, setCancellingRental] = useState<Rental | null>(null);
+  const [reviewingRental, setReviewingRental] = useState<Rental | null>(null);
 
   const fetchDirectRentals = async (): Promise<Rental[] | undefined> => {
     if (!token) return;
@@ -522,6 +526,70 @@ export default function OwnerRequestsTab({
                           >
                             ✏️ Sửa HĐ
                           </button>
+
+                          {/* NÚT ĐÁNH GIÁ KHÁCH THUÊ KHI HOÀN TẤT */}
+                          {(upperStatus === "COMPLETED" || upperStatus === "RETURNED" || upperStatus === "completed" || upperStatus === "returned") && (
+                            r.ownerReview ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "0.75rem",
+                                  background: "rgba(245, 158, 11, 0.15)",
+                                  border: "1px solid #f59e0b",
+                                  color: "#fbbf24",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                                title={r.ownerReview?.comment ? `Đã đánh giá: "${r.ownerReview.comment}"` : "Đã gửi đánh giá uy tín cho khách thuê"}
+                              >
+                                ⭐ {r.ownerReview?.rating || 5}★
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setReviewingRental(r)}
+                                className="button"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  width: "auto",
+                                  background: "#f59e0b",
+                                  color: "#111827",
+                                  fontWeight: "bold",
+                                  border: "none",
+                                }}
+                                title="Đánh giá khách thuê & chấm điểm uy tín"
+                              >
+                                ⭐ Đánh giá khách
+                              </button>
+                            )
+                          )}
+
+                          {/* NÚT CHỦ ĐỘNG HỦY ĐƠN / SỰ CỐ THIẾT BỊ TRƯỚC BÀN GIAO */}
+                          {upperStatus !== "IN_PROGRESS" &&
+                            upperStatus !== "ACTIVE" &&
+                            upperStatus !== "RETURNED" &&
+                            upperStatus !== "COMPLETED" &&
+                            upperStatus !== "CANCELLED" && (
+                              <button
+                                type="button"
+                                onClick={() => setCancellingRental(r)}
+                                className="button button-quiet"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  width: "auto",
+                                  color: "#f87171",
+                                  borderColor: "rgba(239, 68, 68, 0.4)",
+                                }}
+                                title="Chủ động hủy đơn / Sự cố thiết bị đột xuất"
+                              >
+                                🚫 Hủy đơn
+                              </button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -603,6 +671,50 @@ export default function OwnerRequestsTab({
             fetchDirectRentals();
             onSuccess("Đã cập nhật điều khoản hợp đồng & tự động gửi bản cập nhật vào khung chat!");
           }}
+        />
+      )}
+      {/* MODAL CHỦ ĐỘNG HỦY ĐƠN / SỰ CỐ THIẾT BỊ KÈM LÝ DO & HOÀN TIỀN */}
+      {cancellingRental && (
+        <OwnerCancelRentalModal
+          isOpen={Boolean(cancellingRental)}
+          rentalId={cancellingRental._id}
+          rentalCode={cancellingRental.rentalCode}
+          equipmentTitle={typeof cancellingRental.equipment === "object" ? cancellingRental.equipment?.title : "Thiết bị"}
+          renterName={typeof cancellingRental.renter === "object" ? cancellingRental.renter?.name : "Khách thuê"}
+          isPaid={
+            String(cancellingRental.status).toUpperCase() === "PAID" ||
+            cancellingRental.payment?.isPaid === true ||
+            cancellingRental.payment?.paymentStatus === "paid"
+          }
+          totalAmount={cancellingRental.totalAmount || cancellingRental.rentalFee || 0}
+          token={token}
+          onClose={() => setCancellingRental(null)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            void fetchDirectRentals();
+            onRefresh();
+          }}
+          onError={onError}
+        />
+      )}
+
+      {/* MODAL ĐÁNH GIÁ KHÁCH THUÊ & CHẤM ĐIỂM UY TÍN (TRUST SCORE) */}
+      {reviewingRental && (
+        <OwnerReviewRenterModal
+          isOpen={Boolean(reviewingRental)}
+          rentalId={reviewingRental._id}
+          rentalCode={reviewingRental.rentalCode}
+          equipmentTitle={typeof reviewingRental.equipment === "object" ? reviewingRental.equipment?.title : "Thiết bị"}
+          renterName={typeof reviewingRental.renter === "object" ? reviewingRental.renter?.name : "Khách thuê"}
+          token={token}
+          initialReview={reviewingRental.ownerReview}
+          onClose={() => setReviewingRental(null)}
+          onSuccess={(msg) => {
+            onSuccess(msg);
+            void fetchDirectRentals();
+            onRefresh();
+          }}
+          onError={onError}
         />
       )}
     </div>

@@ -54,6 +54,12 @@ export default function OwnerPortal() {
   // Inter-tab selections
   const [requestForContract, setRequestForContract] = useState<RentalRequest | null>(null);
   const [contractForHandover, setContractForHandover] = useState<RentalContract | null>(null);
+  const [newOrderAlert, setNewOrderAlert] = useState<{
+    renterName: string;
+    equipmentTitle: string;
+    rentalCode: string;
+    totalAmount?: number;
+  } | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -76,6 +82,37 @@ export default function OwnerPortal() {
     }
   }, [token]);
 
+  function playNewOrderBell() {
+    try {
+      const AudioContextClass =
+        window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+
+      const now = ctx.currentTime;
+      // 4 nốt chuông ngân vang vui tươi báo đơn mới (C5, E5, G5, C6)
+      const pitches = [523.25, 659.25, 783.99, 1046.5];
+      pitches.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.13);
+        gain.gain.setValueAtTime(0, now + idx * 0.13);
+        gain.gain.linearRampToValueAtTime(0.28, now + idx * 0.13 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.13 + 0.65);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.13);
+        osc.stop(now + idx * 0.13 + 0.65);
+      });
+    } catch (e) {
+      console.warn("Autoplay audio blocked:", e);
+    }
+  }
+
   useEffect(() => {
     const socket = getSocket();
     const handleLivePayment = () => {
@@ -83,17 +120,33 @@ export default function OwnerPortal() {
       void loadAllData(false);
     };
 
+    const handleNewRental = (data: any) => {
+      playNewOrderBell();
+      if (data && (data.renterName || data.equipmentTitle || data.rentalCode)) {
+        setNewOrderAlert({
+          renterName: data.renterName || "Khách thuê SmartEquip",
+          equipmentTitle: data.equipmentTitle || "Thiết bị",
+          rentalCode: data.rentalCode || "",
+          totalAmount: data.totalAmount,
+        });
+      }
+      void fetchNotifications();
+      void loadAllData(false);
+    };
+
     socket.on("payment:approved", handleLivePayment);
     socket.on("payment:submitted", handleLivePayment);
     socket.on("payment:success_owner", handleLivePayment);
-    socket.on("rental:created", handleLivePayment);
+    socket.on("rental:created", handleNewRental);
+    socket.on("notification:new_rental", handleNewRental);
     socket.on("rental:approved", handleLivePayment);
 
     return () => {
       socket.off("payment:approved", handleLivePayment);
       socket.off("payment:submitted", handleLivePayment);
       socket.off("payment:success_owner", handleLivePayment);
-      socket.off("rental:created", handleLivePayment);
+      socket.off("rental:created", handleNewRental);
+      socket.off("notification:new_rental", handleNewRental);
       socket.off("rental:approved", handleLivePayment);
     };
   }, [token]);
@@ -477,6 +530,68 @@ export default function OwnerPortal() {
             >
               ✕
             </button>
+          </div>
+        )}
+
+        {/* Realtime New Order Sound & Banner Alert */}
+        {newOrderAlert && (
+          <div
+            style={{
+              background: "linear-gradient(90deg, #1e3a8a 0%, #065f46 100%)",
+              border: "1px solid #34d399",
+              borderRadius: "12px",
+              padding: "14px 20px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+              boxShadow: "0 6px 24px rgba(16, 185, 129, 0.3)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "1.8rem" }}>🔔</span>
+              <div>
+                <strong style={{ color: "#fff", fontSize: "0.98rem", display: "block" }}>
+                  BẠN VỪA CÓ ĐƠN THUÊ MỚI {newOrderAlert.rentalCode ? `#${newOrderAlert.rentalCode}` : ""}!
+                </strong>
+                <div style={{ fontSize: "0.85rem", color: "#a7f3d0", marginTop: "2px" }}>
+                  Khách thuê <strong>{newOrderAlert.renterName}</strong> vừa đặt thuê "
+                  <strong>{newOrderAlert.equipmentTitle}</strong>"
+                  {newOrderAlert.totalAmount ? ` (${newOrderAlert.totalAmount.toLocaleString("vi-VN")} đ)` : ""}.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                className="button button-primary"
+                style={{
+                  width: "auto",
+                  minHeight: "38px",
+                  padding: "0 16px",
+                  fontSize: "0.84rem",
+                  background: "#10b981",
+                  color: "#fff",
+                  fontWeight: "bold",
+                }}
+                onClick={() => {
+                  setActiveTab("requests");
+                  setNewOrderAlert(null);
+                }}
+              >
+                👉 Xem & Duyệt đơn ngay
+              </button>
+              <button
+                type="button"
+                className="button button-quiet"
+                style={{ width: "auto", minHeight: "38px", padding: "0 12px", color: "#cbd5e1" }}
+                onClick={() => setNewOrderAlert(null)}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 

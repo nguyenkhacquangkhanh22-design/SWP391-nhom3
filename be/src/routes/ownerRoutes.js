@@ -31,6 +31,8 @@ router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
 router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
 router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
 router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));
+router.post("/rentals/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
+router.post("/rentals/:id/review-renter", asyncHandler(ownerController.reviewRenter));
 
 // 4. Rental Contracts (UC_O12, UC_O13, UC_O14, UC_O15)
 router.get("/contracts", asyncHandler(ownerController.getContracts));
@@ -40,6 +42,8 @@ router.post("/contracts", asyncHandler(ownerController.createRentalContract));
 router.put("/contracts/:id", asyncHandler(ownerController.updateDraftContract));
 router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.submitRentalContractForApproval));
 router.post("/contracts/:id/confirm-e-contract", asyncHandler(ownerController.confirmEContract));
+router.post("/contracts/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
+router.post("/contracts/:id/review-renter", asyncHandler(ownerController.reviewRenter));
 
 // 5. Handover & Return Inspection (UC_O08, UC_O09)
 router.get("/contracts/:id/handover", asyncHandler(ownerController.getContractHandoverRecords));

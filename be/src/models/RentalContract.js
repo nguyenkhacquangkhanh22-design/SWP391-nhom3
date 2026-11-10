@@ -197,6 +197,20 @@ const rentalContractSchema = new mongoose.Schema(
       signature_type: { type: String, enum: ["drawn", "typed"], default: "typed" },
       certificate_code: { type: String, default: "" },
     },
+    owner_review: {
+      rating: { type: Number, min: 1, max: 5 },
+      equipment_preservation: { type: String, default: "good" },
+      on_time_return: { type: Boolean, default: true },
+      comment: { type: String, default: "" },
+      reviewed_at: { type: Date },
+    },
+    cancellation: {
+      cancelled_by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reason: { type: String, default: "" },
+      cancelled_at: { type: Date },
+      refund_amount: { type: Number, default: 0 },
+      is_owner_cancelled: { type: Boolean, default: false },
+    },
   },
   {
     timestamps: true,

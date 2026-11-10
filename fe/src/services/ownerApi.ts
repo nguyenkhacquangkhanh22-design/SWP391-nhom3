@@ -1,4 +1,5 @@
 import { ApiError } from "./authApi";
+import type { Rental } from "../types/smartequip";
 import type {
   Equipment,
   RentalRequest,
@@ -521,6 +522,41 @@ export const ownerApi = {
     request<{ message: string; application: OwnerApplication }>(
       `/api/admin/owner-applications/${id}/review`,
       { method: "PATCH", body: JSON.stringify({ action, admin_note }) },
+      token
+    ),
+
+  // Chủ máy chủ động hủy đơn / từ chối bàn giao trước giờ giao máy
+  cancelRentalByOwner: (
+    token: string,
+    id: string,
+    reason: string,
+    isDamaged?: boolean
+  ) =>
+    request<{ success: boolean; message: string; rental: Rental }>(
+      `/api/owner/rentals/${id}/cancel`,
+      { method: "POST", body: JSON.stringify({ reason, is_damaged: isDamaged }) },
+      token
+    ),
+
+  // Owner đánh giá Renter & chấm điểm uy tín (trust_score)
+  reviewRenter: (
+    token: string,
+    id: string,
+    data: {
+      rating: number;
+      equipment_preservation: string;
+      on_time_return: boolean;
+      comment?: string;
+    }
+  ) =>
+    request<{
+      success: boolean;
+      message: string;
+      ownerReview: any;
+      newTrustScore: number;
+    }>(
+      `/api/owner/rentals/${id}/review-renter`,
+      { method: "POST", body: JSON.stringify(data) },
       token
     ),
 };

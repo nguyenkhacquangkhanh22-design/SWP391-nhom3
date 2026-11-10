@@ -267,6 +267,12 @@ class RentalService {
         createdAt: new Date(),
       };
       io.emit("rental:created", toastData);
+      io.emit("notification:new_rental", toastData);
+      const targetOwnerId = String(effectiveOwnerId || equipment.owner || equipment.owner_id || "");
+      if (targetOwnerId) {
+        io.to(`user:${targetOwnerId}`).emit("rental:created", toastData);
+        io.to(`user:${targetOwnerId}`).emit("notification:new_rental", toastData);
+      }
     } catch (socketErr) {
       console.warn("Socket emit error on createRentalRequest:", socketErr?.message);
     }

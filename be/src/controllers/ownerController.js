@@ -2581,6 +2581,303 @@ async function updateOwnerRentalContractTerms(req, res) {
   });
 }
 
+// UC: Chủ máy chủ động hủy đơn / từ chối bàn giao trước giờ xuất kho kèm lý do
+async function cancelRentalByOwner(req, res) {
+  const { id } = req.params;
+  const { reason, is_damaged } = req.body;
+
+  if (!reason || !reason.trim()) {
+    throw new AppError(400, "Vui lòng nhập lý do hủy đơn / từ chối bàn giao để thông báo cho khách.");
+  }
+
+  const ownerIds = [req.user._id];
+  try {
+    const hubUser = await User.findOne({ email: "owner@smartequip.vn" }).select("_id").lean();
+    if (hubUser) ownerIds.push(hubUser._id);
+  } catch (e) {}
+
+  const mongoose = require("mongoose");
+  let rental = null;
+  if (mongoose.isValidObjectId(id)) {
+    rental = await Rental.findById(id).populate("renter equipment");
+  }
+  if (!rental) {
+    rental = await Rental.findOne({ rentalCode: id }).populate("renter equipment");
+  }
+
+  if (!rental) {
+    let reqDoc = null;
+    if (mongoose.isValidObjectId(id)) reqDoc = await RentalRequest.findById(id);
+    if (!reqDoc) reqDoc = await RentalRequest.findOne({ request_code: id });
+    if (reqDoc) {
+      rental = await Rental.findOne({ rentalCode: reqDoc.request_code }).populate("renter equipment");
+    }
+  }
+
+  if (!rental) {
+    const con = await RentalContract.findById(id);
+    if (con) {
+      rental = await Rental.findOne({
+        $or: [{ "contract.contractNumber": con.contract_code }, { rentalCode: con.contract_code }],
+      }).populate("renter equipment");
+    }
+  }
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy thông tin đơn thuê tương ứng.");
+  }
+
+  const isOwner =
+    ownerIds.some((oid) => oid.toString() === rental.owner?.toString()) ||
+    rental.owner?.toString() === req.user._id.toString();
+  if (!isOwner && req.user.role !== "admin" && req.user.role !== "systemadmin") {
+    throw new AppError(403, "Bạn không có quyền hủy đơn thuê này.");
+  }
+
+  const nonCancellable = ["IN_PROGRESS", "in_progress", "RETURNED", "returned", "COMPLETED", "completed", "CANCELLED", "cancelled"];
+  if (nonCancellable.includes(rental.status)) {
+    throw new AppError(400, `Không thể hủy đơn thuê ở trạng thái hiện tại: "${rental.status}".`);
+  }
+
+  const upperStatus = String(rental.status).toUpperCase();
+  const isPaid = upperStatus === "PAID" || rental.payment?.isPaid || rental.payment?.paymentStatus === "paid";
+  const refundAmount = isPaid ? (rental.totalAmount || rental.rentalFee || 0) : 0;
+
+  // Nếu khách đã thanh toán, hoàn trả 100% tiền vào Ví của Renter
+  if (refundAmount > 0 && rental.renter?._id) {
+    try {
+      await User.findByIdAndUpdate(rental.renter._id, {
+        $inc: { walletBalance: refundAmount },
+      });
+      if (rental.payment) {
+        rental.payment.paymentStatus = "refunded";
+      }
+    } catch (refErr) {
+      console.error("Lỗi hoàn tiền vào ví khách khi Owner hủy đơn:", refErr);
+    }
+  }
+
+  rental.status = "CANCELLED";
+  rental.cancellation = {
+    cancelledBy: req.user._id,
+    reason: reason.trim(),
+    cancelledAt: new Date(),
+    refundAmount: refundAmount,
+    refundStatus: refundAmount > 0 ? "completed" : "none",
+    isOwnerCancelled: true,
+  };
+  await rental.save();
+
+  // Mở khóa lịch thiết bị
+  if (rental.equipment?._id) {
+    try {
+      await unlockEquipmentSchedule(rental.equipment._id, rental.rentalCode);
+      if (is_damaged) {
+        await Equipment.findByIdAndUpdate(rental.equipment._id, { status: "MAINTENANCE" });
+      } else {
+        await Equipment.findByIdAndUpdate(rental.equipment._id, { status: "AVAILABLE" });
+      }
+    } catch (schErr) {
+      console.warn("Lỗi mở khóa lịch:", schErr.message);
+    }
+  }
+
+  // Đồng bộ RentalRequest và RentalContract
+  try {
+    await RentalRequest.updateMany(
+      { request_code: rental.rentalCode },
+      { $set: { status: "rejected", rejection_reason: `Chủ máy hủy: ${reason.trim()}` } }
+    );
+    await RentalContract.updateMany(
+      {
+        $or: [
+          { "contract_code": rental.contract?.contractNumber },
+          { request_id: rental._id },
+        ],
+      },
+      {
+        $set: {
+          status: "cancelled",
+          cancellation: {
+            cancelled_by: req.user._id,
+            reason: reason.trim(),
+            cancelled_at: new Date(),
+            refund_amount: refundAmount,
+            is_owner_cancelled: true,
+          },
+        },
+      }
+    );
+  } catch (syncErr) {
+    console.warn("Lỗi đồng bộ HĐ/Yêu cầu khi hủy:", syncErr.message);
+  }
+
+  // Tự động tạo tin nhắn giải thích vào phòng Chat
+  try {
+    const ChatMessage = require("../models/ChatMessage");
+    const chatMsg = await ChatMessage.create({
+      rental_id: rental._id,
+      sender: req.user._id,
+      receiver: rental.renter?._id || rental.renter,
+      message: `⚠️ THÔNG BÁO TỪ CHỦ MÁY: Tôi rất tiếc phải chủ động hủy đơn thuê #${rental.rentalCode} trước giờ bàn giao do sự cố: "${reason.trim()}". ${
+        refundAmount > 0
+          ? `Hệ thống đã tự động hoàn trả 100% số tiền ${refundAmount.toLocaleString("vi-VN")} đ vào Ví SmartEquip của bạn. Xin chân thành cáo lỗi cùng bạn!`
+          : "Xin chân thành cáo lỗi cùng bạn!"
+      }`,
+      message_type: "text",
+    });
+    const { getIO } = require("../config/socket");
+    getIO().emit("chat:message", chatMsg);
+  } catch (chatErr) {
+    console.warn("Lỗi tạo chat khi hủy:", chatErr.message);
+  }
+
+  // Thông báo tới Renter
+  if (rental.renter?._id) {
+    try {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: `⚠️ Đơn thuê #${rental.rentalCode} đã bị hủy bởi Chủ máy`,
+        message: `Chủ thiết bị (${req.user.name}) đã hủy đơn do sự cố: "${reason.trim()}". ${
+          refundAmount > 0 ? `Toàn bộ ${refundAmount.toLocaleString("vi-VN")} đ đã được hoàn lại vào Ví của bạn.` : ""
+        }`,
+        related_record_id: rental._id,
+      });
+    } catch (notifErr) {
+      console.warn("Lỗi tạo thông báo Renter:", notifErr.message);
+    }
+  }
+
+  // Socket emit
+  try {
+    const { getIO } = require("../config/socket");
+    getIO().emit("rental:cancelled", {
+      rentalId: rental._id,
+      rentalCode: rental.rentalCode,
+      reason: reason.trim(),
+      cancelledBy: "owner",
+      refundAmount,
+    });
+  } catch (sErr) {}
+
+  res.json({
+    success: true,
+    message: refundAmount > 0
+      ? `Đã hủy đơn thuê và hoàn trả ${refundAmount.toLocaleString("vi-VN")} đ vào ví của khách hàng thành công.`
+      : "Đã hủy đơn thuê và mở khóa lịch thiết bị thành công.",
+    rental,
+  });
+}
+
+// UC: Owner chấm điểm uy tín và đánh giá Người thuê (Owner review Renter)
+async function reviewRenter(req, res) {
+  const { id } = req.params;
+  const { rating, equipment_preservation, on_time_return, comment } = req.body;
+
+  const numRating = Number(rating);
+  if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+    throw new AppError(400, "Vui lòng chọn số sao đánh giá từ 1 đến 5 sao.");
+  }
+
+  const mongoose = require("mongoose");
+  let rental = null;
+  if (mongoose.isValidObjectId(id)) {
+    rental = await Rental.findById(id).populate("renter equipment");
+  }
+  if (!rental) {
+    rental = await Rental.findOne({
+      $or: [{ rentalCode: id }, { "contract.contractNumber": id }],
+    }).populate("renter equipment");
+  }
+  if (!rental) {
+    const con = await RentalContract.findById(id);
+    if (con) {
+      rental = await Rental.findOne({
+        $or: [{ "contract.contractNumber": con.contract_code }, { rentalCode: con.contract_code }],
+      }).populate("renter equipment");
+    }
+  }
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê để đánh giá.");
+  }
+
+  // Tính điểm uy tín cộng/trừ cho Renter
+  let delta = 0;
+  if (numRating === 5) delta += 3;
+  else if (numRating === 4) delta += 1;
+  else if (numRating === 2) delta -= 3;
+  else if (numRating === 1) delta -= 6;
+
+  if (on_time_return === true || on_time_return === "true") delta += 1;
+  else if (on_time_return === false || on_time_return === "false") delta -= 2;
+
+  if (equipment_preservation === "excellent") delta += 2;
+  else if (equipment_preservation === "poor") delta -= 4;
+
+  rental.ownerReview = {
+    rating: numRating,
+    trustScoreDelta: delta,
+    equipmentPreservation: equipment_preservation || "good",
+    onTimeReturn: Boolean(on_time_return),
+    comment: (comment || "").trim(),
+    reviewedAt: new Date(),
+  };
+  await rental.save();
+
+  // Cập nhật điểm uy tín Renter trong bảng User
+  let newTrustScore = 100;
+  if (rental.renter?._id) {
+    const renterUser = await User.findById(rental.renter._id);
+    if (renterUser) {
+      const currentTrust = renterUser.trust_score ?? 95;
+      newTrustScore = Math.max(10, Math.min(100, currentTrust + delta));
+      renterUser.trust_score = newTrustScore;
+      await renterUser.save();
+
+      // Thông báo cho Renter
+      try {
+        await UserNotification.create({
+          user_id: renterUser._id,
+          title: `🌟 Chủ máy đã gửi đánh giá uy tín cho bạn!`,
+          message: `Chủ thiết bị (${req.user.name}) đã đánh giá ${numRating}/5 sao về giao dịch thuê thiết bị "${rental.equipment?.title || "thiết bị"}". Điểm uy tín của bạn hiện tại là: ${newTrustScore}/100.`,
+          related_record_id: rental._id,
+        });
+      } catch (ne) {}
+    }
+  }
+
+  // Đồng bộ sang RentalContract nếu có
+  try {
+    await RentalContract.updateMany(
+      {
+        $or: [
+          { "contract_code": rental.contract?.contractNumber },
+          { request_id: rental._id },
+        ],
+      },
+      {
+        $set: {
+          owner_review: {
+            rating: numRating,
+            equipment_preservation: equipment_preservation || "good",
+            on_time_return: Boolean(on_time_return),
+            comment: (comment || "").trim(),
+            reviewed_at: new Date(),
+          },
+        },
+      }
+    );
+  } catch (ce) {}
+
+  res.json({
+    success: true,
+    message: `Đã gửi đánh giá thành công! Điểm uy tín của khách thuê được cập nhật (${delta >= 0 ? `+${delta}` : delta} điểm).`,
+    ownerReview: rental.ownerReview,
+    newTrustScore,
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -2618,4 +2915,6 @@ module.exports = {
   respondOwnerRental,
   confirmOwnerRentalPayment,
   updateOwnerRentalContractTerms,
+  cancelRentalByOwner,
+  reviewRenter,
 };
