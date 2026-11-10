@@ -242,9 +242,9 @@ export const ownerApi = {
       token
     ),
 
-  submitContractApproval: (token: string, id: string, digital_signature?: DigitalSignaturePayload) =>
+  sendContractToRenter: (token: string, id: string, digital_signature?: DigitalSignaturePayload) =>
     request<{ message: string; contract: RentalContract }>(
-      `/api/owner/contracts/${id}/submit-approval`,
+      `/api/owner/contracts/${id}/send-to-renter`,
       { method: "POST", body: JSON.stringify({ digital_signature }) },
       token
     ),
@@ -408,10 +408,14 @@ export const ownerApi = {
       token
     ),
 
-  signMyContract: (token: string, contractId: string, signature_note?: string) =>
+  signMyContract: (
+    token: string,
+    contractId: string,
+    data: { signature_note: string; terms_accepted: boolean },
+  ) =>
     request<{ message: string; contract: RentalContract }>(
       `/api/equipments/my/contracts/${contractId}/sign`,
-      { method: "POST", body: JSON.stringify({ signature_note }) },
+      { method: "POST", body: JSON.stringify(data) },
       token
     ),
 

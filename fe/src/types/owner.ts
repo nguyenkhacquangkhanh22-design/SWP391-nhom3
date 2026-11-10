@@ -103,6 +103,7 @@ export interface RentalContract {
   version_history: ContractVersionHistory[];
   status:
     | "draft"
+    | "pending_renter_signature"
     | "pending_approval"
     | "moderator_rejected"
     | "moderator_approved"

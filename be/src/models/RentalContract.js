@@ -85,6 +85,7 @@ const rentalContractSchema = new mongoose.Schema(
       type: String,
       enum: [
         "draft",                 // Owner mới tạo nháp
+        "pending_renter_signature", // Owner sent the contract directly to the renter
         "pending_approval",      // Owner gửi Hợp đồng cho Quản lý web duyệt
         "moderator_rejected",    // Quản lý web từ chối / trả về chỉnh sửa
         "moderator_approved",    // Quản lý web đã duyệt & gửi cho Người thuê (Renter) ký tên

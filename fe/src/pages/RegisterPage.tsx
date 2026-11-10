@@ -30,13 +30,8 @@ export default function RegisterPage() {
     try {
       const result = await authApi.sendRegistrationOtp(email);
       setStep("otp");
-      const devOtp = (result as { devOtp?: string }).devOtp;
-      if (devOtp) {
-        setOtp(devOtp);
-        setNotice(`Mã OTP xác minh là: ${devOtp} (Đã tự động điền)`);
-      } else {
-        setNotice(result.message);
-      }
+      setOtp("");
+      setNotice(result.message);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -99,14 +94,8 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       const result = await authApi.sendRegistrationOtp(email);
-      const devOtp = (result as { devOtp?: string }).devOtp;
-      if (devOtp) {
-        setOtp(devOtp);
-        setNotice(`Mã OTP mới là: ${devOtp} (Đã tự động điền)`);
-      } else {
-        setOtp("");
-        setNotice(result.message);
-      }
+      setOtp("");
+      setNotice(result.message);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -196,7 +185,7 @@ export default function RegisterPage() {
               name="otp"
               type="text"
               inputMode="numeric"
-              autoComplete="one-time-code"
+              autoComplete="off"
               pattern="[0-9]{6}"
               maxLength={6}
               placeholder="Nhập mã 6 chữ số"

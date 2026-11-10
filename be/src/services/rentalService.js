@@ -156,7 +156,7 @@ class RentalService {
 
     await rental.save();
 
-    // Đồng bộ tạo bản ghi RentalRequest cho Cổng Người Cho Thuê (Owner Portal)
+    // Keep the Owner Portal request in sync before returning success to the renter.
     try {
       const RentalRequest = require("../models/RentalRequest");
       await RentalRequest.create({
@@ -179,7 +179,8 @@ class RentalService {
         status: "pending",
       });
     } catch (rrErr) {
-      console.warn("Lưu RentalRequest đồng bộ:", rrErr.message);
+      await Rental.deleteOne({ _id: rental._id });
+      throw rrErr;
     }
 
     try {
@@ -247,7 +248,7 @@ class RentalService {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
-    // Bắt buộc hợp đồng phải được Quản lý web (Moderator) kiểm tra và phê duyệt trước khi gửi về cho Người thuê ký!
+    // Contract records created by the Owner are authoritative; legacy moderator-reviewed records remain signable.
     const RentalContract = require("../models/RentalContract");
     const RentalRequest = require("../models/RentalRequest");
     const matchingReq = await RentalRequest.findOne({
@@ -266,7 +267,7 @@ class RentalService {
       if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
         throw new AppError(
           400,
-          "Hợp đồng thuê đang được Quản lý web (Moderator) kiểm tra. Vui lòng chờ Quản lý web phê duyệt hợp đồng trước khi ký tên."
+          "Owner chưa gửi hợp đồng cho bạn ký tên."
         );
       }
       if (matchingContract.status === "moderator_rejected") {
@@ -275,16 +276,20 @@ class RentalService {
           "Hợp đồng đang được Chủ máy (Owner) điều chỉnh theo yêu cầu của Quản lý web. Vui lòng chờ cập nhật trước khi ký tên."
         );
       }
-      if (matchingContract.status !== "moderator_approved" && matchingContract.status !== "signed") {
+      if (
+        !["pending_renter_signature", "moderator_approved", "signed"].includes(
+          matchingContract.status,
+        )
+      ) {
         throw new AppError(
           400,
-          "Hợp đồng này chưa được Quản lý web (Moderator) phê duyệt để chuyển cho bạn ký tên."
+          "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
         );
       }
     } else if (!rental.contract?.moderatorApproved) {
       throw new AppError(
         400,
-        "Hợp đồng thuê cần được Chủ thiết bị lập và Quản lý web (Moderator) kiểm tra phê duyệt trước khi bạn có thể ký tên."
+        "Hợp đồng thuê cần được Chủ thiết bị (Owner) lập và gửi cho bạn trước khi ký tên."
       );
     }
 

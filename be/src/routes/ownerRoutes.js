@@ -34,7 +34,9 @@ router.get("/contract-templates/published", asyncHandler(ownerController.getPubl
 router.get("/contracts/:id", asyncHandler(ownerController.getContractDetail));
 router.post("/contracts", asyncHandler(ownerController.createRentalContract));
 router.put("/contracts/:id", asyncHandler(ownerController.updateDraftContract));
-router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.submitRentalContractForApproval));
+router.post("/contracts/:id/send-to-renter", asyncHandler(ownerController.sendRentalContractToRenter));
+// Backward-compatible path; submitting now sends the contract directly to the renter.
+router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.sendRentalContractToRenter));
 router.post("/contracts/:id/confirm-e-contract", asyncHandler(ownerController.confirmEContract));
 
 // 5. Handover & Return Inspection (UC_O08, UC_O09)

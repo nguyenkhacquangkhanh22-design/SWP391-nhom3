@@ -32,7 +32,7 @@ function buildStandardOwnerContractText(
 Độc lập - Tự do - Hạnh phúc
 --------------------------------------------------
 HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ CHUẨN
-(Dự thảo trình Quản lý web kiểm duyệt và gửi Người thuê ký tên)
+(Dự thảo do Owner gửi trực tiếp cho Người thuê ký tên)
 
 Căn cứ Bộ luật Dân sự nước CHXHCN Việt Nam hiện hành;
 Căn cứ Quy chế hoạt động và Kiểm duyệt Hợp đồng của Nền tảng SWP391 Rental;
@@ -89,8 +89,8 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
 ${specialConditions.trim() || "Không có điều khoản bổ sung đặc biệt."}
 
 ĐIỀU 7: QUY TRÌNH PHÊ DUYỆT CỦA QUẢN LÝ WEB & CHỮ KÝ NGƯỜI THUÊ
-7.1. Hợp đồng này được Bên A (Owner) lập sau khi duyệt yêu cầu thuê do Quản lý web chuyển tiếp, và gửi lên cho Quản lý web kiểm duyệt nội dung.
-7.2. Sau khi Quản lý web phê duyệt hợp lệ, Quản lý web gửi Hợp đồng này tới Bên B (Người thuê) để Bên B ký tên điện tử xác nhận hiệu lực hợp đồng.`;
+7.1. Hợp đồng này được Bên A (Owner) lập sau khi chấp nhận yêu cầu thuê.
+7.2. Owner gửi hợp đồng trực tiếp tới Bên B (Người thuê) để Bên B xem xét và ký tên điện tử.`;
 }
 
 export default function OwnerContractsTab({
@@ -194,7 +194,7 @@ export default function OwnerContractsTab({
     "special_conditions",
   ]);
 
-  // UC_O12 (+ optional UC_O14): Create Standard Contract & send to Web Manager with Digital Signature
+  // UC_O12: Create a standard contract and optionally send it directly to the renter
   async function handleCreateContract(submitImmediately: boolean) {
     if (!selectedRequestForContract) {
       onError("Vui lòng chọn một yêu cầu thuê đã chấp nhận.");
@@ -202,7 +202,7 @@ export default function OwnerContractsTab({
     }
 
     if (submitImmediately && !createSignature) {
-      onError("Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi Quản lý web duyệt.");
+      onError("Vui lòng ký chữ ký số và xác nhận cam kết trách nhiệm pháp lý trước khi gửi hợp đồng cho Người thuê.");
       return;
     }
 
@@ -221,8 +221,8 @@ export default function OwnerContractsTab({
       });
       onSuccess(
         submitImmediately
-          ? `Đã lập Hợp đồng chuẩn "${res.contract.contract_code}" kèm Chữ ký số của Owner và gửi cho Quản lý web duyệt! Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên.`
-          : `Đã lưu bản nháp Hợp đồng chuẩn "${res.contract.contract_code}" (v1)${createSignature ? " kèm chữ ký số" : ""}. Bạn có thể kiểm tra lại và gửi cho Quản lý web duyệt.`
+          ? `Đã lập Hợp đồng chuẩn "${res.contract.contract_code}" kèm Chữ ký số và gửi trực tiếp cho Người thuê ký.`
+          : `Đã lưu bản nháp Hợp đồng chuẩn "${res.contract.contract_code}" (v1)${createSignature ? " kèm chữ ký số" : ""}. Bạn có thể kiểm tra lại và gửi trực tiếp cho Người thuê.`
       );
       setShowCreateModal(false);
       setSpecialConditions("");
@@ -260,7 +260,7 @@ export default function OwnerContractsTab({
       });
       onSuccess(
         submitImmediately
-          ? `Đã lưu phiên bản v${res.contract.version} và gửi lại cho Quản lý web phê duyệt!`
+          ? `Đã lưu phiên bản v${res.contract.version} và gửi trực tiếp cho Người thuê ký.`
           : `Đã lưu hợp đồng phiên bản mới (v${res.contract.version}) ở trạng thái bản nháp.`
       );
       setEditingContract(null);
@@ -298,15 +298,15 @@ export default function OwnerContractsTab({
     }
   }
 
-  // UC_O14: Submit for Approval to Web Manager
+  // UC_O14: Send the contract directly to the renter
   async function handleSubmitApproval(contract: RentalContract) {
     setIsSubmitting(true);
     onError("");
     onSuccess("");
     try {
-      await ownerApi.submitContractApproval(token, contract._id);
+      await ownerApi.sendContractToRenter(token, contract._id);
       onSuccess(
-        `Đã gửi hợp đồng chuẩn "${contract.contract_code}" (v${contract.version}) đến Quản lý web xét duyệt. Sau khi Quản lý web duyệt sẽ gửi cho Người thuê ký tên.`
+        `Đã gửi hợp đồng chuẩn "${contract.contract_code}" (v${contract.version}) trực tiếp cho Người thuê ký tên.`
       );
       if (viewingContract && viewingContract._id === contract._id) {
         setViewingContract(null);
@@ -325,57 +325,37 @@ export default function OwnerContractsTab({
   });
 
   function renderWorkflowStepper(c: RentalContract) {
-    // 4-step contract workflow after Owner approved request:
-    // Step 1: Owner lập HĐ cho thuê (draft / moderator_rejected)
-    // Step 2: Gửi Quản lý web duyệt (pending_approval)
-    // Step 3: Quản lý web duyệt & gửi Người thuê ký (moderator_approved)
-    // Step 4: Người thuê (Renter) ký tên hoàn tất (signed / active / completed)
+    // Legacy moderator states remain readable, while new contracts go directly to the renter.
     const isRejected = c.status === "moderator_rejected";
-    const step1Done = true;
-    const step2Active = c.status === "pending_approval";
-    const step2Done = ["moderator_approved", "signed", "active", "completed"].includes(c.status);
-    const step3Active = c.status === "moderator_approved";
-    const step3Done = ["moderator_approved", "signed", "active", "completed"].includes(c.status);
-    const step4Done = ["signed", "active", "completed"].includes(c.status);
+    const sentToRenter = ["pending_renter_signature", "moderator_approved"].includes(c.status);
+    const signed = ["signed", "active", "completed"].includes(c.status);
 
     const steps = [
       {
         num: 1,
         label: `1. Owner lập Hợp đồng (v${c.version})`,
         sub: isRejected ? "Cần chỉnh sửa lại" : "Đã soạn thảo & ký Bên A",
-        state: isRejected ? "rejected" : step1Done ? "done" : "current",
+        state: isRejected ? "rejected" : "done",
       },
       {
         num: 2,
-        label: "2. Gửi Quản lý web duyệt",
-        sub: step2Active
-          ? "Đang chờ Quản lý web duyệt..."
-          : step2Done
-          ? "Đã gửi Quản lý web"
+        label: "2. Owner gửi hợp đồng cho Người thuê",
+        sub: sentToRenter || signed
+          ? "Đã gửi trực tiếp cho Người thuê"
           : isRejected
-          ? "Cần gửi duyệt lại"
-          : "Chưa gửi duyệt",
-        state: step2Done ? "done" : step2Active ? "current" : "pending",
+          ? "Hợp đồng cũ cần chỉnh sửa"
+          : "Chưa gửi",
+        state: sentToRenter || signed ? "done" : isRejected ? "rejected" : "pending",
       },
       {
         num: 3,
-        label: "3. Quản lý web duyệt & gửi Renter",
-        sub: isRejected
-          ? "Quản lý web từ chối"
-          : step3Done
-          ? `Đã duyệt v${c.moderator_approved_version || c.version} & gửi Renter`
-          : "Chờ Quản lý web duyệt",
-        state: isRejected ? "rejected" : step3Done ? "done" : "pending",
-      },
-      {
-        num: 4,
-        label: "4. Người thuê (Renter) ký tên",
-        sub: step4Done
+        label: "3. Người thuê (Renter) ký tên",
+        sub: signed
           ? "Người thuê đã ký tên!"
-          : step3Active
+          : sentToRenter
           ? "Đang chờ Người thuê ký..."
-          : "Chờ bước 3",
-        state: step4Done ? "done" : step3Active ? "current" : "pending",
+          : "Chờ Owner gửi hợp đồng",
+        state: signed ? "done" : sentToRenter ? "current" : "pending",
       },
     ];
 
@@ -383,7 +363,7 @@ export default function OwnerContractsTab({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: "10px",
           marginTop: "14px",
           marginBottom: "14px",
@@ -454,14 +434,13 @@ export default function OwnerContractsTab({
       >
         <div>
           <h2 style={{ margin: 0, fontSize: "1.4rem", color: "#fff" }}>
-            📝 Lập Hợp đồng cho thuê & Trình Quản lý web duyệt (UC_O12 – UC_O15)
+            📝 Lập Hợp đồng cho thuê & gửi Người thuê ký (UC_O12 – UC_O15)
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
             Quy trình:{" "}
             <strong style={{ color: "#fb923c" }}>1. Owner lập Hợp đồng cho thuê</strong> ➔{" "}
-            <strong style={{ color: "#38bdf8" }}>2. Gửi Quản lý web duyệt</strong> ➔{" "}
-            <strong style={{ color: "#34d399" }}>3. Quản lý web duyệt & gửi cho Người thuê</strong> ➔{" "}
-            <strong style={{ color: "#fff" }}>4. Người thuê ký tên</strong>.
+            <strong style={{ color: "#38bdf8" }}>2. Gửi trực tiếp cho Người thuê</strong> ➔{" "}
+            <strong style={{ color: "#34d399" }}>3. Người thuê ký tên</strong>.
           </p>
         </div>
 
@@ -476,14 +455,17 @@ export default function OwnerContractsTab({
             <option value="draft">
               📝 Bản nháp chờ gửi ({contracts.filter((c) => c.status === "draft").length})
             </option>
+            <option value="pending_renter_signature">
+              📨 Đã gửi Người thuê - Chờ ký ({contracts.filter((c) => c.status === "pending_renter_signature").length})
+            </option>
             <option value="pending_approval">
-              ⏳ Chờ Quản lý web duyệt ({contracts.filter((c) => c.status === "pending_approval").length})
+              ⏳ Chờ kiểm duyệt (đơn cũ) ({contracts.filter((c) => c.status === "pending_approval").length})
             </option>
             <option value="moderator_rejected">
               ❌ Quản lý web yêu cầu sửa ({contracts.filter((c) => c.status === "moderator_rejected").length})
             </option>
             <option value="moderator_approved">
-              📨 Đã gửi Người thuê - Chờ ký ({contracts.filter((c) => c.status === "moderator_approved").length})
+              📨 Đã gửi Người thuê - Chờ ký (đơn cũ) ({contracts.filter((c) => c.status === "moderator_approved").length})
             </option>
             <option value="signed">
               ✍️ Người thuê đã ký tên ({contracts.filter((c) => c.status === "signed").length})
@@ -526,7 +508,7 @@ export default function OwnerContractsTab({
               🔔 Bạn có {approvedRequests.length} yêu cầu thuê đã duyệt đang chờ lập Hợp đồng!
             </strong>
             <div style={{ fontSize: "0.84rem", color: "#cbd5e1", marginTop: "2px" }}>
-              Hãy lập Hợp đồng cho thuê và gửi cho Quản lý web duyệt để Quản lý web gửi cho Người thuê ký tên.
+              Hãy lập Hợp đồng cho thuê và gửi trực tiếp cho Người thuê ký tên.
             </div>
           </div>
           <button
@@ -538,7 +520,7 @@ export default function OwnerContractsTab({
               setShowCreateModal(true);
             }}
           >
-            Lập hợp đồng gửi Quản lý web ngay →
+            Lập hợp đồng gửi Người thuê ngay →
           </button>
         </div>
       )}
@@ -548,7 +530,7 @@ export default function OwnerContractsTab({
           <span style={{ fontSize: "2.5rem" }}>📜</span>
           <h3>Chưa có hợp đồng nào trong danh mục này</h3>
           <p>
-            Hợp đồng sẽ được Owner lập từ các yêu cầu thuê đã duyệt, gửi cho Quản lý web kiểm duyệt, sau đó Quản lý web gửi cho Người thuê ký tên.
+            Hợp đồng sẽ được Owner lập từ các yêu cầu thuê đã duyệt và gửi trực tiếp cho Người thuê ký tên.
           </p>
           {approvedRequests.length > 0 && (
             <button
@@ -585,13 +567,15 @@ export default function OwnerContractsTab({
                 <div style={{ textAlign: "right" }}>
                   <span className={`status-badge status-${c.status}`}>
                     {c.status === "draft"
-                      ? "📝 Bước 1: Bản nháp (Chờ gửi Quản lý web)"
+                      ? "📝 Bản nháp (Chờ gửi Người thuê)"
+                      : c.status === "pending_renter_signature"
+                      ? "📨 Đã gửi Người thuê - Chờ ký"
                       : c.status === "pending_approval"
-                      ? "⏳ Bước 2: Đang chờ Quản lý web duyệt"
+                      ? "⏳ Hợp đồng cũ chờ kiểm duyệt"
                       : c.status === "moderator_rejected"
                       ? "❌ Quản lý web yêu cầu chỉnh sửa"
                       : c.status === "moderator_approved"
-                      ? "📨 Bước 3: Quản lý web đã duyệt & gửi Renter chờ ký"
+                      ? "📨 Hợp đồng cũ đã gửi Người thuê - Chờ ký"
                       : c.status === "signed"
                       ? "✍️ Bước 4: Người thuê đã ký tên (Sẵn sàng bàn giao)"
                       : c.status === "active"
@@ -641,12 +625,12 @@ export default function OwnerContractsTab({
                     fontSize: "0.86rem",
                   }}
                 >
-                  ⏳ <strong>Đang chờ Quản lý web kiểm duyệt:</strong> Hợp đồng phiên bản{" "}
-                  <strong>v{c.version}</strong> đang được Quản lý web rà soát. Sau khi Quản lý web duyệt sẽ tự động chuyển tới Người thuê để ký tên.
+                  ⏳ <strong>Hợp đồng cũ đang chờ kiểm duyệt:</strong> Hợp đồng phiên bản{" "}
+                  <strong>v{c.version}</strong> chưa được gửi tới Người thuê.
                 </div>
               )}
 
-              {c.status === "moderator_approved" && (
+              {["pending_renter_signature", "moderator_approved"].includes(c.status) && (
                 <div
                   style={{
                     margin: "12px 0",
@@ -658,7 +642,7 @@ export default function OwnerContractsTab({
                     fontSize: "0.88rem",
                   }}
                 >
-                  📨 <strong>Quản lý web đã phê duyệt hợp đồng (v{c.moderator_approved_version || c.version}) và gửi cho Người thuê!</strong>{" "}
+                  📨 <strong>Hợp đồng (v{c.version}) đã được gửi cho Người thuê!</strong>{" "}
                   Hệ thống đang chờ Người thuê (<strong>{c.renter_id?.name || "Renter"}</strong>) ký tên điện tử để hợp đồng chính thức có hiệu lực.
                 </div>
               )}
@@ -716,10 +700,10 @@ export default function OwnerContractsTab({
                   <span className="meta-val">
                     {c.renter_signature?.signed || c.status === "signed" || c.status === "active" || c.status === "completed" ? (
                       <span style={{ color: "#10b981", fontWeight: 700 }}>✅ Người thuê đã ký</span>
-                    ) : c.status === "moderator_approved" ? (
+                    ) : ["pending_renter_signature", "moderator_approved"].includes(c.status) ? (
                       <span style={{ color: "#fb923c", fontWeight: 600 }}>⏳ Đã gửi - Chờ Renter ký</span>
                     ) : (
-                      <span style={{ color: "var(--muted)" }}>🔒 Chờ Quản lý web duyệt</span>
+                      <span style={{ color: "var(--muted)" }}>🔒 Chờ Owner gửi cho Người thuê</span>
                     )}
                   </span>
                 </div>
@@ -782,7 +766,7 @@ export default function OwnerContractsTab({
                   </button>
                 )}
 
-                {/* UC_O14: Gửi Quản lý web duyệt */}
+                {/* UC_O14: Gửi hợp đồng trực tiếp cho Người thuê */}
                 {c.status === "draft" && (
                   <button
                     className="button button-primary"
@@ -790,7 +774,7 @@ export default function OwnerContractsTab({
                     onClick={() => handleSubmitApproval(c)}
                     disabled={isSubmitting}
                   >
-                    📤 Gửi Quản lý web duyệt (UC_O14)
+                    📤 Gửi trực tiếp cho Người thuê ký (UC_O14)
                   </button>
                 )}
 
@@ -815,7 +799,7 @@ export default function OwnerContractsTab({
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "820px" }}>
             <div className="owner-modal-header">
-              <h3>📜 Lập Hợp đồng cho thuê & Gửi Quản lý web duyệt (UC_O12)</h3>
+              <h3>📜 Lập Hợp đồng cho thuê & Gửi Người thuê ký (UC_O12)</h3>
               <button className="close-modal-btn" onClick={() => setShowCreateModal(false)}>
                 ✕
               </button>
@@ -824,7 +808,7 @@ export default function OwnerContractsTab({
             <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginTop: 0 }}>
               Hệ thống tự động trích xuất dữ liệu từ Yêu cầu thuê đã được Owner duyệt để lập{" "}
               <strong style={{ color: "#fff" }}>Hợp đồng cho thuê chuẩn</strong>. Sau khi bạn gửi lên,{" "}
-              <strong style={{ color: "var(--orange)" }}>Quản lý web</strong> sẽ duyệt và gửi cho{" "}
+              Sau khi lập hợp đồng, bạn có thể gửi trực tiếp cho{" "}
               <strong style={{ color: "#10b981" }}>Người thuê ký tên</strong>.
             </p>
 
@@ -963,7 +947,7 @@ export default function OwnerContractsTab({
                       }}
                     >
                       <label className="field-label" style={{ marginBottom: 0 }}>
-                        3. Toàn văn Hợp đồng chuẩn do Owner lập (Gửi Quản lý web duyệt) *
+                        3. Toàn văn Hợp đồng chuẩn do Owner lập *
                       </label>
                       <button
                         type="button"
@@ -1009,7 +993,7 @@ export default function OwnerContractsTab({
                     4. Chữ ký số điện tử của Bên Cho Thuê (Owner) *
                   </label>
                   <p style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: 0, marginBottom: "8px" }}>
-                    Theo Luật Giao dịch điện tử 2023, chữ ký số chứng thực tính pháp lý của hợp đồng trước khi gửi Quản lý web duyệt.
+                    Theo Luật Giao dịch điện tử 2023, chữ ký số xác nhận trách nhiệm của Owner trước khi gửi hợp đồng cho Người thuê.
                   </p>
                   <DigitalSignaturePad
                     initialSignerName={user?.name || ""}
@@ -1047,7 +1031,7 @@ export default function OwnerContractsTab({
                   >
                     {isSubmitting
                       ? "Đang xử lý..."
-                      : "📤 Lập Hợp đồng & Gửi Quản lý web duyệt ngay"}
+                      : "📤 Lập Hợp đồng & Gửi Người thuê ký ngay"}
                   </button>
                 </div>
               </div>
@@ -1061,7 +1045,7 @@ export default function OwnerContractsTab({
         <div className="owner-modal-overlay">
           <div className="owner-modal-card" style={{ maxWidth: "760px" }}>
             <div className="owner-modal-header">
-              <h3>✏️ Chỉnh sửa Hợp đồng & Gửi lại Quản lý web duyệt (UC_O13)</h3>
+              <h3>✏️ Chỉnh sửa Hợp đồng (UC_O13)</h3>
               <button className="close-modal-btn" onClick={() => setEditingContract(null)}>
                 ✕
               </button>
@@ -1170,7 +1154,7 @@ export default function OwnerContractsTab({
                   >
                     {isSubmitting
                       ? "Đang lưu..."
-                      : `📤 Lưu v${editingContract.version + 1} & Gửi Quản lý web duyệt ngay`}
+                      : `📤 Lưu v${editingContract.version + 1} & Gửi Người thuê ký`}
                   </button>
                 </div>
               </div>
@@ -1437,7 +1421,7 @@ export default function OwnerContractsTab({
                       </div>
                     </div>
                   </>
-                ) : viewingContract.status === "moderator_approved" ? (
+                ) : ["pending_renter_signature", "moderator_approved"].includes(viewingContract.status) ? (
                   <div
                     style={{
                       background: "rgba(249, 115, 22, 0.08)",
@@ -1450,7 +1434,7 @@ export default function OwnerContractsTab({
                       margin: "8px 0",
                     }}
                   >
-                    ⏳ Quản lý web đã phê duyệt hợp đồng.<br />
+                    ⏳ Hợp đồng đã được gửi trực tiếp.<br />
                     Đang chờ Người thuê (<strong>{viewingContract.renter_id?.name}</strong>) ký tên điện tử.
                   </div>
                 ) : (
@@ -1467,7 +1451,7 @@ export default function OwnerContractsTab({
                     }}
                   >
                     🔒 Chưa gửi Người thuê ký tên.<br />
-                    (Cần Quản lý web kiểm duyệt nội dung trước)
+                    Owner cần gửi hợp đồng để Người thuê ký.
                   </div>
                 )}
               </div>
@@ -1482,7 +1466,7 @@ export default function OwnerContractsTab({
                   disabled={isSubmitting}
                   onClick={() => void handleSubmitApproval(viewingContract)}
                 >
-                  📤 Gửi Quản lý web duyệt ngay (UC_O14)
+                  📤 Gửi trực tiếp cho Người thuê ký (UC_O14)
                 </button>
               )}
               <button

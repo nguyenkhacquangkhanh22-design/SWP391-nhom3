@@ -61,7 +61,7 @@ export interface RentalContract {
   digitalSignature?: string;
   contractUrl?: string;
   moderatorApproved?: boolean;
-  moderatorStatus?: "none" | "draft" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
+  moderatorStatus?: "none" | "draft" | "pending_renter_signature" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
   ownerSigned?: boolean;
 }
 
