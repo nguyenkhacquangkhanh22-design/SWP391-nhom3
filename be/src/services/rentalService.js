@@ -14,6 +14,11 @@ const Equipment = require("../models/Equipment");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
+const {
+  checkBookingConflict,
+  lockEquipmentSchedule,
+  unlockEquipmentSchedule,
+} = require("../utils/bookingConflictChecker");
 
 class RentalService {
   /**
@@ -859,6 +864,27 @@ class RentalService {
       throw new AppError(400, `Đơn thuê đã ở trạng thái: ${rental.status}`);
     }
 
+    // 1. Kiểm tra xung đột lịch thuê thiết bị (chống Double Booking)
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const conflictResult = await checkBookingConflict({
+      equipmentId,
+      startDate: rental.startDate,
+      endDate: rental.endDate,
+      excludeRentalId: rental._id,
+      excludeReferenceCode: rental.rentalCode,
+    });
+    if (conflictResult.hasConflict) {
+      throw new AppError(400, conflictResult.message);
+    }
+
+    // 2. Tự động khóa lịch thiết bị
+    await lockEquipmentSchedule(
+      equipmentId,
+      rental.startDate,
+      rental.endDate,
+      rental.rentalCode
+    );
+
     rental.status = "APPROVED";
     if (options.note) {
       rental.notes = `${rental.notes ? rental.notes + " | " : ""}Đã duyệt: ${options.note}`;
@@ -1279,10 +1305,11 @@ class RentalService {
 
     await rental.save();
 
-    // Reset thiết bị về AVAILABLE
+    // Reset thiết bị về AVAILABLE và mở khóa lịch
     if (rental.equipment) {
       try {
         await Equipment.findByIdAndUpdate(rental.equipment, { status: "AVAILABLE" });
+        await unlockEquipmentSchedule(rental.equipment, rental.rentalCode);
       } catch (e) { }
     }
 
@@ -1406,6 +1433,28 @@ class RentalService {
     if (rental.status !== "PENDING" && rental.status !== "pending") {
       throw new AppError(400, `Đơn thuê đã ở trạng thái: ${rental.status}`);
     }
+
+    // Kiểm tra xung đột lịch thuê thiết bị (chống Double Booking)
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const conflictResult = await checkBookingConflict({
+      equipmentId,
+      startDate: rental.startDate,
+      endDate: rental.endDate,
+      excludeRentalId: rental._id,
+      excludeReferenceCode: rental.rentalCode,
+    });
+    if (conflictResult.hasConflict) {
+      throw new AppError(400, conflictResult.message);
+    }
+
+    // Tự động khóa lịch thiết bị
+    await lockEquipmentSchedule(
+      equipmentId,
+      rental.startDate,
+      rental.endDate,
+      rental.rentalCode
+    );
+
     rental.status = "APPROVED";
     await rental.save();
 

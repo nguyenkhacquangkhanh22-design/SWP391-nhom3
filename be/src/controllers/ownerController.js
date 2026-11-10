@@ -13,6 +13,11 @@ const { getIO } = require("../config/socket");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
+const {
+  checkBookingConflict,
+  lockEquipmentSchedule,
+  unlockEquipmentSchedule,
+} = require("../utils/bookingConflictChecker");
 
 // Helper to generate short unique codes
 function generateCode(prefix) {
@@ -485,6 +490,26 @@ async function respondRentalRequest(req, res) {
   }
 
   if (action === "approve") {
+    // Kiểm tra xung đột lịch thuê thiết bị (chống Double Booking)
+    const conflictResult = await checkBookingConflict({
+      equipmentId: rentalReq.equipment_id,
+      startDate: rentalReq.start_date,
+      endDate: rentalReq.end_date,
+      excludeRequestId: rentalReq._id,
+      excludeReferenceCode: rentalReq.request_code,
+    });
+    if (conflictResult.hasConflict) {
+      throw new AppError(400, conflictResult.message);
+    }
+
+    // Tự động khóa lịch thiết bị trong availability_schedule
+    await lockEquipmentSchedule(
+      rentalReq.equipment_id,
+      rentalReq.start_date,
+      rentalReq.end_date,
+      rentalReq.request_code
+    );
+
     rentalReq.status = "approved";
     try {
       const Rental = require("../models/Rental");
@@ -501,6 +526,9 @@ async function respondRentalRequest(req, res) {
       console.warn("Lỗi đồng bộ Rental:", rErr.message);
     }
   } else {
+    // Mở khóa lịch nếu đã khóa trước đó
+    await unlockEquipmentSchedule(rentalReq.equipment_id, rentalReq.request_code);
+
     rentalReq.status = "rejected";
     rentalReq.rejection_reason = rejection_reason.trim();
     try {
@@ -1868,6 +1896,28 @@ async function respondOwnerRental(req, res) {
   }
 
   if (action === "approve") {
+    // 1. Kiểm tra xung đột lịch thuê thiết bị (chống Double Booking)
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const conflictResult = await checkBookingConflict({
+      equipmentId,
+      startDate: rental.startDate,
+      endDate: rental.endDate,
+      excludeRentalId: rental._id,
+      excludeReferenceCode: rental.rentalCode,
+    });
+
+    if (conflictResult.hasConflict) {
+      throw new AppError(400, conflictResult.message);
+    }
+
+    // 2. Tự động khóa lịch thiết bị trong availability_schedule
+    await lockEquipmentSchedule(
+      equipmentId,
+      rental.startDate,
+      rental.endDate,
+      rental.rentalCode
+    );
+
     rental.status = "APPROVED";
     await rental.save();
 
@@ -1917,6 +1967,9 @@ async function respondOwnerRental(req, res) {
       rental,
     });
   } else {
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    await unlockEquipmentSchedule(equipmentId, rental.rentalCode);
+
     rental.status = "CANCELLED";
     rental.notes = `${rental.notes ? rental.notes + " | " : ""}Chủ máy từ chối: ${rejection_reason || "Chủ máy bận hoặc thiết bị bảo trì"}`;
     await rental.save();

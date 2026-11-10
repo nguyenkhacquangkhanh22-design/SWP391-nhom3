@@ -230,6 +230,33 @@ export default function OwnerRequestsTab({
                   const isPaid = upperStatus === "PAID" || r.payment?.isPaid === true || r.payment?.paymentStatus === "paid";
                   const isReturned = upperStatus === "RETURNED" || upperStatus === "RETURN_REQUESTED";
 
+                  const currentEquipId = String(typeof r.equipment === "object" ? r.equipment?._id : r.equipment);
+                  const rStart = new Date(r.startDate).getTime();
+                  const rEnd = new Date(r.endDate).getTime();
+
+                  const conflictingOrder = directRentals.find((other: any) => {
+                    if (String(other._id) === String(r._id)) return false;
+                    const otherUpper = String(other.status || "").toUpperCase();
+                    const otherIsActive = [
+                      "APPROVED",
+                      "CONTRACT_PENDING",
+                      "CONTRACT_SIGNED",
+                      "PAYMENT_PENDING",
+                      "PAYMENT_VERIFYING",
+                      "PAID",
+                      "ACTIVE",
+                      "CONFIRMED",
+                    ].includes(otherUpper);
+                    if (!otherIsActive) return false;
+                    const otherEquipId = String(
+                      typeof other.equipment === "object" ? other.equipment?._id : other.equipment
+                    );
+                    if (otherEquipId !== currentEquipId) return false;
+                    const oStart = new Date(other.startDate).getTime();
+                    const oEnd = new Date(other.endDate).getTime();
+                    return rStart <= oEnd && rEnd >= oStart;
+                  });
+
                   const renterName = typeof r.renter === "object" ? r.renter?.name : "Khách thuê";
                   const renterPhone = typeof r.renter === "object" ? r.renter?.phone : "0909xxxxxx";
                   const equipTitle = typeof r.equipment === "object" ? r.equipment?.title : "Thiết bị thuê";
@@ -281,6 +308,26 @@ export default function OwnerRequestsTab({
                         <div style={{ fontSize: "0.75rem", color: "#a855f7" }}>
                           ({r.totalDays} ngày)
                         </div>
+                        {conflictingOrder && isPendingOwner && (
+                          <div
+                            style={{
+                              marginTop: "4px",
+                              fontSize: "0.72rem",
+                              color: "#f87171",
+                              background: "rgba(239, 68, 68, 0.15)",
+                              border: "1px solid rgba(239, 68, 68, 0.4)",
+                              borderRadius: "6px",
+                              padding: "2px 6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                            title={`Trùng khoảng thời gian thuê với đơn #${conflictingOrder.rentalCode} (${new Date(conflictingOrder.startDate).toLocaleDateString("vi-VN")} - ${new Date(conflictingOrder.endDate).toLocaleDateString("vi-VN")})`}
+                          >
+                            <span>⚠️</span>
+                            <span>Trùng lịch với #{conflictingOrder.rentalCode}</span>
+                          </div>
+                        )}
                       </td>
                       <td>
                         <strong style={{ color: "#fb923c", fontSize: "0.95rem" }}>
@@ -361,13 +408,33 @@ export default function OwnerRequestsTab({
                           {isPendingOwner && (
                             <button
                               type="button"
-                              onClick={() => handleApproveDirectRental(r)}
+                              onClick={() => {
+                                if (conflictingOrder) {
+                                  if (
+                                    !window.confirm(
+                                      `⚠️ CẢNH BÁO TRÙNG LỊCH: Thiết bị này đã có đơn #${conflictingOrder.rentalCode} được duyệt trước đó trong cùng khoảng thời gian. Bạn có chắc chắn vẫn muốn thử duyệt không?`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                }
+                                handleApproveDirectRental(r);
+                              }}
                               disabled={isProcessing}
-                              className="button button-primary"
-                              style={{ padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
-                              title="Duyệt đơn và chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                              className={conflictingOrder ? "button button-secondary" : "button button-primary"}
+                              style={{
+                                padding: "6px 14px",
+                                fontSize: "0.8rem",
+                                width: "auto",
+                                ...(conflictingOrder ? { borderColor: "#ef4444", color: "#f87171" } : {}),
+                              }}
+                              title={
+                                conflictingOrder
+                                  ? `Trùng lịch với đơn #${conflictingOrder.rentalCode}`
+                                  : "Duyệt đơn và chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                              }
                             >
-                              ✅ Duyệt & Lập HĐ
+                              {conflictingOrder ? "⚠️ Trùng lịch" : "✅ Duyệt & Lập HĐ"}
                             </button>
                           )}
 
