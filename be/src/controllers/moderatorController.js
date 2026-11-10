@@ -762,11 +762,25 @@ async function verifyPayment(req, res) {
 
     try {
       const { getIO } = require("../config/socket");
-      getIO().emit("payment:verified", {
+      const io = getIO();
+      const ownerIdStr = String(rental.owner?._id || rental.owner || "");
+      const renterIdStr = String(rental.renter?._id || rental.renter || "");
+      const toastData = {
         rentalId: rental._id.toString(),
         rentalCode: rental.rentalCode,
         status: "PAID",
-      });
+        ownerId: ownerIdStr,
+        renterId: renterIdStr,
+        renterName: rental.renter?.name || "Khách thuê",
+        amount: rental.totalAmount || 0,
+        equipmentTitle: rental.equipment?.title || "Thiết bị",
+        title: "💰 TIỀN ĐÃ VỀ VÍ! THANH TOÁN ĐÃ ĐƯỢC XÁC NHẬN",
+        message: `Rental Moderator đã xác nhận khách ${rental.renter?.name || ""} chuyển khoản ${(rental.totalAmount || 0).toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode}. Bạn đã có thể bàn giao thiết bị!`,
+        link: "/owner",
+      };
+      io.emit("payment:verified", toastData);
+      io.emit("payment:approved", toastData);
+      io.emit("payment:success_owner", toastData);
     } catch {}
 
     const populated = await Rental.findById(rental._id)

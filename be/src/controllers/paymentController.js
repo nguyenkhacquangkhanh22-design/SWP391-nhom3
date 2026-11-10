@@ -241,12 +241,23 @@ const paymentController = {
         String(orderCode);
       await rental.save();
 
+      // Nạp đầy đủ thông tin thiết bị, chủ máy, người thuê
+      await rental.populate("equipment owner renter");
+
+      const ownerId = rental.owner?._id || rental.owner;
+      const renterId = rental.renter?._id || rental.renter;
+      const renterName = rental.renter?.name || "Khách thuê";
+      const equipmentTitle = rental.equipment?.title || "Thiết bị";
+      const paidAmount =
+        Number(rental.payment.amountPaid) ||
+        Number(rental.totalAmount) ||
+        Number(rental.rentalFee) ||
+        0;
+
       // Cộng tiền vào walletBalance của Owner (Ví trung gian)
-      if (!wasAlreadyPaid && rental.owner) {
+      if (!wasAlreadyPaid && ownerId) {
         try {
           const User = require("../models/User");
-          const ownerId = rental.owner._id || rental.owner;
-          const paidAmount = Number(rental.payment.amountPaid) || Number(rental.totalAmount) || Number(rental.rentalFee) || 0;
           if (paidAmount > 0) {
             await User.findByIdAndUpdate(ownerId, {
               $inc: { walletBalance: paidAmount },
@@ -255,18 +266,51 @@ const paymentController = {
         } catch (walletErr) {
           console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);
         }
+
+        // Tạo thông báo lưu trữ trong DB cho Owner
+        try {
+          const UserNotification = require("../models/UserNotification");
+          await UserNotification.create({
+            user_id: ownerId,
+            title: `💰 Tiền đã về ví! Khách chuyển tiền đơn #${rental.rentalCode}`,
+            message: `Khách thuê ${renterName} đã quét mã VietQR chuyển thành công ${paidAmount.toLocaleString("vi-VN")} đ cho thiết bị "${equipmentTitle}". Số dư ví của bạn đã được cộng tự động!`,
+            related_record_id: rental._id,
+          });
+
+          if (renterId) {
+            await UserNotification.create({
+              user_id: renterId,
+              title: `✅ Thanh toán VietQR thành công đơn #${rental.rentalCode}`,
+              message: `Hệ thống đã nhận được ${paidAmount.toLocaleString("vi-VN")} đ cho thiết bị "${equipmentTitle}". Bạn đã sẵn sàng nhận bàn giao thiết bị!`,
+              related_record_id: rental._id,
+            });
+          }
+        } catch (notifErr) {
+          console.warn("Tạo thông báo thanh toán thất bại:", notifErr.message);
+        }
       }
 
-      // Bắn Socket.IO realtime để client Renter & Owner cập nhật giao diện
+      // Bắn Socket.IO realtime để client Renter & Owner nhận thông báo tức thì
       try {
         const { getIO } = require("../config/socket");
         const io = getIO();
-        io.emit("payment:approved", {
+        const toastData = {
           rentalId: rental._id,
           rentalCode: rental.rentalCode,
-          status: "PAID",
+          equipmentTitle,
+          renterName,
+          amount: paidAmount,
+          ownerId: String(ownerId || ""),
+          renterId: String(renterId || ""),
           orderCode,
-        });
+          status: "PAID",
+          title: "💰 TIỀN ĐÃ VỀ VÍ! KHÁCH CHUYỂN TIỀN THÀNH CÔNG",
+          message: `Khách thuê ${renterName} vừa thanh toán thành công ${paidAmount.toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode} ("${equipmentTitle}")!`,
+          link: "/owner",
+          createdAt: new Date(),
+        };
+        io.emit("payment:approved", toastData);
+        io.emit("payment:success_owner", toastData);
       } catch (socketErr) {
         console.warn("Socket emit error on webhook:", socketErr?.message);
       }
@@ -346,12 +390,23 @@ const paymentController = {
       }
       await rental.save();
 
+      // Nạp đầy đủ thông tin thiết bị, chủ máy, người thuê
+      await rental.populate("equipment owner renter");
+
+      const ownerId = rental.owner?._id || rental.owner;
+      const renterId = rental.renter?._id || rental.renter;
+      const renterName = rental.renter?.name || "Khách thuê";
+      const equipmentTitle = rental.equipment?.title || "Thiết bị";
+      const paidAmount =
+        Number(rental.payment.amountPaid) ||
+        Number(rental.totalAmount) ||
+        Number(rental.rentalFee) ||
+        0;
+
       // Cộng tiền vào walletBalance của Owner (Ví trung gian)
-      if (!wasAlreadyPaid && rental.owner) {
+      if (!wasAlreadyPaid && ownerId) {
         try {
           const User = require("../models/User");
-          const ownerId = rental.owner._id || rental.owner;
-          const paidAmount = Number(rental.payment.amountPaid) || Number(rental.totalAmount) || Number(rental.rentalFee) || 0;
           if (paidAmount > 0) {
             await User.findByIdAndUpdate(ownerId, {
               $inc: { walletBalance: paidAmount },
@@ -360,17 +415,50 @@ const paymentController = {
         } catch (walletErr) {
           console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);
         }
+
+        // Tạo thông báo lưu trữ trong DB cho Owner
+        try {
+          const UserNotification = require("../models/UserNotification");
+          await UserNotification.create({
+            user_id: ownerId,
+            title: `💰 Tiền đã về ví! Khách chuyển tiền đơn #${rental.rentalCode}`,
+            message: `Khách thuê ${renterName} đã quét mã VietQR PayOS chuyển thành công ${paidAmount.toLocaleString("vi-VN")} đ cho thiết bị "${equipmentTitle}". Số dư ví của bạn đã được cộng tự động!`,
+            related_record_id: rental._id,
+          });
+
+          if (renterId) {
+            await UserNotification.create({
+              user_id: renterId,
+              title: `✅ Thanh toán VietQR thành công đơn #${rental.rentalCode}`,
+              message: `Hệ thống đã nhận được ${paidAmount.toLocaleString("vi-VN")} đ cho thiết bị "${equipmentTitle}". Bạn đã sẵn sàng nhận bàn giao thiết bị!`,
+              related_record_id: rental._id,
+            });
+          }
+        } catch (notifErr) {
+          console.warn("Tạo thông báo thanh toán thất bại:", notifErr.message);
+        }
       }
 
       try {
         const { getIO } = require("../config/socket");
         const io = getIO();
-        io.emit("payment:approved", {
+        const toastData = {
           rentalId: rental._id,
           rentalCode: rental.rentalCode,
-          status: "PAID",
+          equipmentTitle,
+          renterName,
+          amount: paidAmount,
+          ownerId: String(ownerId || ""),
+          renterId: String(renterId || ""),
           orderCode,
-        });
+          status: "PAID",
+          title: "💰 TIỀN ĐÃ VỀ VÍ! KHÁCH CHUYỂN TIỀN THÀNH CÔNG",
+          message: `Khách thuê ${renterName} vừa thanh toán thành công ${paidAmount.toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode} ("${equipmentTitle}")!`,
+          link: "/owner",
+          createdAt: new Date(),
+        };
+        io.emit("payment:approved", toastData);
+        io.emit("payment:success_owner", toastData);
       } catch (socketErr) {
         console.warn("Socket emit error on verifyPayment:", socketErr?.message);
       }

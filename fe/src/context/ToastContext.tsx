@@ -383,7 +383,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // 5. Khi owner đã duyệt tiền (Đã thanh toán thành công) -> BÁO CHO BÊN KHÁCH (Renter)
+    // 5. Khi có thanh toán thành công (PayOS VietQR / Moderator / Xác nhận tiền)
     const handlePaymentApproved = (data: {
       renterId?: string;
       renterUserCode?: string;
@@ -391,32 +391,78 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       rentalCode?: string;
       equipmentTitle?: string;
       rentalId?: string;
+      amount?: number;
+      renterName?: string;
       title?: string;
       message?: string;
       link?: string;
     }) => {
-      // Tuyệt đối không hiện thông báo này cho Owner đã duyệt tiền
-      if (
+      const isTargetOwner =
         (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) ||
-        (isOwner && !isCustomer)
-      ) {
-        return;
-      }
+        (isOwner && !isCustomer);
 
       const isTargetRenter =
         (data.renterId && (data.renterId === mongoId || data.renterId === userCode)) ||
         (data.renterUserCode && (data.renterUserCode === mongoId || data.renterUserCode === userCode)) ||
-        isCustomer;
+        (isCustomer && !isOwner);
 
+      // Thông báo cho OWNER khi khách thuê chuyển tiền thành công
+      if (isTargetOwner) {
+        showToast({
+          type: "payment_approved",
+          title: data.title || "💰 TIỀN ĐÃ VỀ VÍ! KHÁCH CHUYỂN TIỀN THÀNH CÔNG",
+          message:
+            data.message ||
+            `Khách thuê ${data.renterName || ""} đã thanh toán thành công ${
+              data.amount ? `${data.amount.toLocaleString("vi-VN")} đ ` : ""
+            }cho đơn #${data.rentalCode || ""}. Đơn đã hoàn tất thanh toán, sẵn sàng bàn giao!`,
+          link: data.link || "/owner",
+          rentalCode: data.rentalCode,
+          duration: 8500,
+        });
+      }
+
+      // Thông báo cho RENTER khi thanh toán được duyệt thành công
       if (isTargetRenter) {
         showToast({
           type: "payment_approved",
-          title: data.title || "✅ THANH TOÁN THÀNH CÔNG!",
+          title: "✅ THANH TOÁN THÀNH CÔNG!",
           message:
             data.message ||
-            `Chủ máy đã xác nhận nhận tiền cho đơn #${data.rentalCode || ""}. Đơn thuê đã hoàn tất thanh toán, sẵn sàng bàn giao!`,
+            `Đơn thuê #${data.rentalCode || ""} đã hoàn tất thanh toán. Sẵn sàng nhận bàn giao thiết bị!`,
           link: data.link || "/rentals/history",
           rentalCode: data.rentalCode,
+          duration: 7500,
+        });
+      }
+    };
+
+    // 6. Sự kiện chuyên biệt thông báo tiền về ví cho Owner
+    const handlePaymentSuccessOwner = (data: {
+      ownerId?: string;
+      rentalCode?: string;
+      equipmentTitle?: string;
+      renterName?: string;
+      amount?: number;
+      title?: string;
+      message?: string;
+      link?: string;
+    }) => {
+      const isTargetOwner =
+        (data.ownerId && (data.ownerId === mongoId || data.ownerId === userCode)) || isOwner;
+
+      if (isTargetOwner) {
+        showToast({
+          type: "payment_approved",
+          title: data.title || "💰 TIỀN ĐÃ VỀ VÍ! KHÁCH CHUYỂN TIỀN THÀNH CÔNG",
+          message:
+            data.message ||
+            `Khách thuê ${data.renterName || ""} vừa chuyển thành công ${
+              data.amount ? `${data.amount.toLocaleString("vi-VN")} đ ` : ""
+            }cho đơn #${data.rentalCode || ""}.`,
+          link: data.link || "/owner",
+          rentalCode: data.rentalCode,
+          duration: 8500,
         });
       }
     };
@@ -426,6 +472,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     socket.on("rental:approved", handleRentalApproved);
     socket.on("payment:submitted", handlePaymentSubmitted);
     socket.on("payment:approved", handlePaymentApproved);
+    socket.on("payment:success_owner", handlePaymentSuccessOwner);
 
     return () => {
       socket.off("notification:toast", handleNotificationToast);
@@ -433,6 +480,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       socket.off("rental:approved", handleRentalApproved);
       socket.off("payment:submitted", handlePaymentSubmitted);
       socket.off("payment:approved", handlePaymentApproved);
+      socket.off("payment:success_owner", handlePaymentSuccessOwner);
     };
   }, [user, showToast]);
 

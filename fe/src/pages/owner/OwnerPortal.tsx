@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../app/AuthProvider";
 import Brand from "../../components/Brand";
 import Feedback from "../../components/Feedback";
 import { ownerApi } from "../../services/ownerApi";
+import { authApi } from "../../services/authApi";
+import { getSocket } from "../../services/socket";
+import type { UserNotification } from "../../types/auth";
 import type {
   Equipment,
   RentalRequest,
@@ -43,6 +46,11 @@ export default function OwnerPortal() {
   const [requests, setRequests] = useState<RentalRequest[]>([]);
   const [contracts, setContracts] = useState<RentalContract[]>([]);
 
+  // Notifications
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
   // Inter-tab selections
   const [requestForContract, setRequestForContract] = useState<RentalRequest | null>(null);
   const [contractForHandover, setContractForHandover] = useState<RentalContract | null>(null);
@@ -51,11 +59,80 @@ export default function OwnerPortal() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const fetchNotifications = async () => {
+    if (!token) return;
+    try {
+      const res = await authApi.getNotifications(token);
+      if (res && Array.isArray(res.notifications)) {
+        setNotifications(res.notifications);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     if (token) {
       void loadAllData(true);
+      void fetchNotifications();
     }
   }, [token]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const handleLivePayment = () => {
+      void fetchNotifications();
+      void loadAllData(false);
+    };
+
+    socket.on("payment:approved", handleLivePayment);
+    socket.on("payment:submitted", handleLivePayment);
+    socket.on("payment:success_owner", handleLivePayment);
+    socket.on("rental:created", handleLivePayment);
+    socket.on("rental:approved", handleLivePayment);
+
+    return () => {
+      socket.off("payment:approved", handleLivePayment);
+      socket.off("payment:submitted", handleLivePayment);
+      socket.off("payment:success_owner", handleLivePayment);
+      socket.off("rental:created", handleLivePayment);
+      socket.off("rental:approved", handleLivePayment);
+    };
+  }, [token]);
+
+  // Click outside to close notification dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const unreadNotifs = notifications.filter((n) => !n.read_at);
+
+  const handleMarkRead = async (id: string) => {
+    if (!token) return;
+    try {
+      await authApi.markNotificationRead(token, id);
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, read_at: new Date().toISOString() } : n))
+      );
+    } catch {}
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!token) return;
+    const unread = notifications.filter((n) => !n.read_at);
+    for (const n of unread) {
+      try {
+        await authApi.markNotificationRead(token, n._id);
+      } catch {}
+    }
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
+    );
+  };
 
   async function loadAllData(showSpinner = false) {
     if (!token) return;
@@ -104,6 +181,200 @@ export default function OwnerPortal() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {/* Nút chuông thông báo Realtime cho Owner */}
+          <div ref={notifRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="button button-quiet"
+              style={{
+                position: "relative",
+                padding: "6px 12px",
+                fontSize: "1.1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+              title="Thông báo đơn thuê & Tiền về ví"
+            >
+              🔔
+              {unreadNotifs.length > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-2px",
+                    right: "-2px",
+                    background: "#ef4444",
+                    color: "#ffffff",
+                    fontSize: "0.68rem",
+                    fontWeight: "bold",
+                    borderRadius: "999px",
+                    padding: "1px 6px",
+                    lineHeight: "14px",
+                    border: "2px solid #0b101b",
+                  }}
+                >
+                  {unreadNotifs.length > 9 ? "9+" : unreadNotifs.length}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown Menu */}
+            {showNotifDropdown && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 8px)",
+                  right: 0,
+                  width: "380px",
+                  maxHeight: "460px",
+                  overflowY: "auto",
+                  background: "#111827",
+                  border: "1px solid #374151",
+                  borderRadius: "12px",
+                  boxShadow:
+                    "0 20px 35px -5px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.05)",
+                  zIndex: 99999,
+                  padding: "0",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #1f2937",
+                    background: "#0f172a",
+                  }}
+                >
+                  <strong style={{ fontSize: "0.92rem", color: "#f8fafc" }}>
+                    🔔 Thông báo Owner ({unreadNotifs.length} mới)
+                  </strong>
+                  {unreadNotifs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleMarkAllRead()}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#38bdf8",
+                        fontSize: "0.76rem",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Đã đọc tất cả
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ maxHeight: "380px", overflowY: "auto" }}>
+                  {notifications.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "28px 16px",
+                        textAlign: "center",
+                        color: "var(--muted)",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      Chưa có thông báo nào.
+                    </div>
+                  ) : (
+                    notifications.slice(0, 30).map((n) => {
+                      const isUnread = !n.read_at;
+                      return (
+                        <div
+                          key={n._id}
+                          onClick={() => {
+                            if (isUnread) void handleMarkRead(n._id);
+                            if (
+                              n.title.includes("Ví") ||
+                              n.title.includes("tiền") ||
+                              n.message.includes("chuyển")
+                            ) {
+                              handleTabChange("wallet");
+                            } else if (n.title.includes("Hợp đồng")) {
+                              handleTabChange("contracts");
+                            }
+                            setShowNotifDropdown(false);
+                          }}
+                          style={{
+                            padding: "12px 16px",
+                            borderBottom: "1px solid #1e293b",
+                            background: isUnread
+                              ? "rgba(56, 189, 248, 0.08)"
+                              : "transparent",
+                            cursor: "pointer",
+                            transition: "background 0.15s ease",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "8px",
+                            }}
+                          >
+                            {isUnread && (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: "7px",
+                                  height: "7px",
+                                  borderRadius: "50%",
+                                  background: "#38bdf8",
+                                  marginTop: "6px",
+                                  flexShrink: 0,
+                                }}
+                              />
+                            )}
+                            <div style={{ flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: "0.86rem",
+                                  fontWeight: isUnread ? 700 : 500,
+                                  color: isUnread ? "#f8fafc" : "#cbd5e1",
+                                  marginBottom: "4px",
+                                }}
+                              >
+                                {n.title}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "0.8rem",
+                                  color: "var(--muted)",
+                                  lineHeight: 1.45,
+                                  marginBottom: "4px",
+                                }}
+                              >
+                                {n.message}
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: "0.72rem",
+                                  color: "#64748b",
+                                }}
+                              >
+                                {new Date(n.createdAt).toLocaleString("vi-VN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <Link to="/equipments" className="button button-quiet" style={{ fontSize: "0.85rem" }}>
             Chợ thiết bị 🔍
           </Link>

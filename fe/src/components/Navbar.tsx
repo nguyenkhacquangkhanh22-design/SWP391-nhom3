@@ -1,10 +1,52 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthProvider";
 import Brand from "./Brand";
+import { authApi } from "../services/authApi";
+import { getSocket } from "../services/socket";
 
 export default function Navbar() {
-  const { user, signOut } = useAuth();
+  const { user, token, signOut } = useAuth();
   const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!token) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const fetchUnread = () => {
+      authApi
+        .getNotifications(token)
+        .then(({ notifications }) => {
+          const count = notifications.filter((n) => !n.read_at).length;
+          setUnreadCount(count);
+        })
+        .catch(() => {});
+    };
+
+    fetchUnread();
+
+    const socket = getSocket();
+    const handleUpdate = () => {
+      fetchUnread();
+    };
+
+    socket.on("payment:approved", handleUpdate);
+    socket.on("payment:submitted", handleUpdate);
+    socket.on("payment:success_owner", handleUpdate);
+    socket.on("rental:created", handleUpdate);
+    socket.on("rental:approved", handleUpdate);
+
+    return () => {
+      socket.off("payment:approved", handleUpdate);
+      socket.off("payment:submitted", handleUpdate);
+      socket.off("payment:success_owner", handleUpdate);
+      socket.off("rental:created", handleUpdate);
+      socket.off("rental:approved", handleUpdate);
+    };
+  }, [token]);
 
   const handleLogout = async () => {
     await signOut();
@@ -51,6 +93,11 @@ export default function Navbar() {
                 title="Hòm thư thông báo của tài khoản"
               >
                 <span className="text-base">🔔</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full min-w-[18px] text-center border-2 border-[#121927]">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </Link>
               <Link
                 to="/profile"

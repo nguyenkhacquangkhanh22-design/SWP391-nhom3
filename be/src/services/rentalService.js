@@ -701,12 +701,17 @@ class RentalService {
       const { getIO } = require("../config/socket");
       const io = getIO();
       if (io) {
+        const ownerIdStr = String(rental.owner?._id || rental.owner || "");
         io.emit("payment:submitted", {
           rentalId: rental._id.toString(),
           rentalCode: rental.rentalCode,
           amount: rental.totalAmount,
           renterName: renterUser.name,
           proofImage: proofImg,
+          ownerId: ownerIdStr,
+          title: "💳 KHÁCH ĐÃ CHUYỂN TIỀN!",
+          message: `Khách thuê ${renterUser.name || ""} vừa gửi xác nhận thanh toán ${(rental.totalAmount || rental.rentalFee).toLocaleString("vi-VN")} đ cho đơn #${rental.rentalCode}. Vui lòng kiểm tra!`,
+          link: "/owner",
         });
       }
     } catch (notifyErr) {
