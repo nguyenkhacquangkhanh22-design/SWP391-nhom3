@@ -118,6 +118,21 @@ export default function RentalHistoryPage() {
 
   // State thanh toán (UC_R09)
   const [payingRentalId, setPayingRentalId] = useState<string | null>(null);
+
+  // Modal Handover Check-in (Lưu ảnh ngoại quan ban đầu khi nhận máy)
+  const [checkinRental, setCheckinRental] = useState<Rental | null>(null);
+  const [checkinImages, setCheckinImages] = useState<string[]>([]);
+  const [checkinNote, setCheckinNote] = useState("");
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+
+  // Ảnh đính kèm khi đánh giá (Photo Reviews)
+  const [reviewImages, setReviewImages] = useState<string[]>([]);
+
+  // Modal In & Tải Hợp đồng / Biên lai PDF
+  const [viewingReceiptRental, setViewingReceiptRental] = useState<Rental | null>(null);
+
+  // Modal Xem tiến độ khiếu nại (Dispute Resolution Timeline)
+  const [viewingDisputeRental, setViewingDisputeRental] = useState<Rental | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Đồng hồ thời gian thực đếm ngược hạn trả thiết bị theo thời gian thực trên thiết bị
@@ -314,7 +329,7 @@ export default function RentalHistoryPage() {
     }
   };
 
-  // Gửi đánh giá sao & nhận xét (UC_R11)
+  // Gửi đánh giá sao & nhận xét & ảnh thực tế (UC_R11)
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewingRentalId) return;
@@ -324,15 +339,44 @@ export default function RentalHistoryPage() {
       const res = await smartEquipApi.reviewRental(token, reviewingRentalId, {
         rating,
         comment: reviewComment,
+        reviewImages,
       });
       setNotice(res.message || "Gửi đánh giá thiết bị thành công!");
       setReviewingRentalId(null);
       setReviewComment("");
+      setReviewImages([]);
       fetchHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể gửi đánh giá");
     } finally {
       setIsReviewing(false);
+    }
+  };
+
+  // Lưu ảnh ngoại quan ban đầu khi nhận máy (Handover Check-in)
+  const handleCheckinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkinRental) return;
+    if (checkinImages.length === 0) {
+      setError("Vui lòng tải lên ít nhất 1 ảnh chụp ngoại quan máy.");
+      return;
+    }
+    setIsCheckingIn(true);
+    setError("");
+    try {
+      const res = await smartEquipApi.submitHandoverCheckin(token, checkinRental._id, {
+        images: checkinImages,
+        note: checkinNote,
+      });
+      setNotice(res.message || "Đã lưu ảnh ngoại quan khi nhận máy thành công!");
+      setCheckinRental(null);
+      setCheckinImages([]);
+      setCheckinNote("");
+      fetchHistory();
+    } catch (err: any) {
+      setError(err?.message || "Không thể lưu ảnh ngoại quan");
+    } finally {
+      setIsCheckingIn(false);
     }
   };
 
@@ -882,31 +926,86 @@ export default function RentalHistoryPage() {
                               </div>
                             </div>
                           ) : (
-                            <div className="p-3.5 bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-950/90 border-2 border-rose-500/70 rounded-xl text-xs text-rose-200 shadow-xl">
-                              <div className="flex items-start gap-3">
-                                <span className="text-3xl shrink-0 animate-pulse">🚨</span>
-                                <div className="space-y-1.5 flex-1">
-                                  <div className="flex items-center justify-between flex-wrap gap-2">
-                                    <strong className="text-rose-300 font-extrabold uppercase tracking-wider text-xs flex items-center gap-1.5">
-                                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
-                                      CẢNH BÁO: ĐÃ QUÁ HẠN HOÀN TRẢ THIẾT BỊ!
-                                    </strong>
-                                    <div className="bg-[#0c1322] border border-rose-500/60 px-3 py-1 rounded-lg">
-                                      <span className="text-[11px] text-rose-400 mr-1.5">Quá hạn:</span>
-                                      <span className="text-rose-300 font-mono font-extrabold text-sm tracking-wide">
-                                        ⚠️ {formatCountdownRemaining(Math.abs(diffMs))}
-                                      </span>
+                            (() => {
+                              const overdueMs = Math.abs(diffMs);
+                              const overdueHours = Math.max(1, Math.ceil(overdueMs / (1000 * 60 * 60)));
+                              const dailyPrice = r.equipment?.dailyRate || r.dailyRate || 0;
+                              let penaltyFee = 0;
+                              let penaltyTier = "";
+
+                              if (overdueHours <= 1) {
+                                penaltyFee = 0;
+                                penaltyTier = "Ân hạn miễn phí (dưới 1 giờ)";
+                              } else if (overdueHours <= 4) {
+                                penaltyFee = Math.round(dailyPrice * 0.3);
+                                penaltyTier = "Trễ 1 - 4 giờ (+30% giá ngày)";
+                              } else if (overdueHours <= 8) {
+                                penaltyFee = Math.round(dailyPrice * 0.6);
+                                penaltyTier = "Trễ 4 - 8 giờ (+60% giá ngày)";
+                              } else {
+                                const extraDays = Math.ceil(overdueHours / 24);
+                                penaltyFee = dailyPrice * extraDays;
+                                penaltyTier = `Trễ >8 giờ (${extraDays} ngày x 100% giá ngày)`;
+                              }
+
+                              return (
+                                <div className="p-3.5 bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-950/90 border-2 border-rose-500/70 rounded-xl text-xs text-rose-200 shadow-xl space-y-2.5">
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-3xl shrink-0 animate-pulse">🚨</span>
+                                    <div className="space-y-1.5 flex-1">
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <strong className="text-rose-300 font-extrabold uppercase tracking-wider text-xs flex items-center gap-1.5">
+                                          <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                                          CẢNH BÁO: ĐÃ QUÁ HẠN HOÀN TRẢ THIẾT BỊ!
+                                        </strong>
+                                        <div className="bg-[#0c1322] border border-rose-500/60 px-3 py-1 rounded-lg">
+                                          <span className="text-[11px] text-rose-400 mr-1.5">Quá hạn:</span>
+                                          <span className="text-rose-300 font-mono font-extrabold text-sm tracking-wide">
+                                            ⚠️ {formatCountdownRemaining(overdueMs)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <p className="text-slate-200 text-xs leading-relaxed">
+                                        Đơn thuê đã quá hạn từ <strong className="text-rose-300 font-mono">{r.returnTime || "17:00"} ngày {new Date(r.endDate).toLocaleDateString("vi-VN")}</strong> (Trễ khoảng <strong>{overdueHours} giờ</strong>).
+                                      </p>
                                     </div>
                                   </div>
-                                  <p className="text-slate-200 text-xs leading-relaxed">
-                                    Đơn thuê đã quá hạn hoàn trả từ <strong className="text-rose-300 font-mono">{r.returnTime || "17:00"} ngày {new Date(r.endDate).toLocaleDateString("vi-VN")}</strong>.
-                                  </p>
-                                  <p className="text-[11px] text-rose-300 italic">
-                                    ⚠️ Quý khách vui lòng bấm ngay nút <strong>"📦 Báo trả đồ"</strong> bên phải hoặc liên hệ Chủ máy để tiến hành thu hồi thiết bị.
-                                  </p>
+
+                                  {/* Bảng công thức phạt trễ hạn minh bạch */}
+                                  <div className="bg-[#120a14] border border-rose-500/40 rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                      <span className="font-bold text-amber-300 text-xs flex items-center gap-1.5">
+                                        <span>⚖️</span> Biểu phí phạt quá hạn SmartEquip (Đơn giá: {dailyPrice.toLocaleString("vi-VN")} đ/ngày):
+                                      </span>
+                                      <span className="text-[11px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-500/50">
+                                        Ước tính phạt: +{penaltyFee.toLocaleString("vi-VN")} đ ({penaltyTier})
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-300">
+                                      <div className="p-1.5 bg-[#1a0f1d] rounded border border-[#3b1a29]">
+                                        <span className="text-emerald-400 font-semibold block">• Dưới 1 giờ:</span>
+                                        <span>Miễn phí (Ân hạn)</span>
+                                      </div>
+                                      <div className="p-1.5 bg-[#1a0f1d] rounded border border-[#3b1a29]">
+                                        <span className="text-amber-400 font-semibold block">• 1 - 4 giờ:</span>
+                                        <span>+30% ({Math.round(dailyPrice * 0.3).toLocaleString("vi-VN")} đ)</span>
+                                      </div>
+                                      <div className="p-1.5 bg-[#1a0f1d] rounded border border-[#3b1a29]">
+                                        <span className="text-orange-400 font-semibold block">• 4 - 8 giờ:</span>
+                                        <span>+60% ({Math.round(dailyPrice * 0.6).toLocaleString("vi-VN")} đ)</span>
+                                      </div>
+                                      <div className="p-1.5 bg-[#1a0f1d] rounded border border-[#3b1a29]">
+                                        <span className="text-rose-400 font-semibold block">• Trên 8 giờ:</span>
+                                        <span>100% ({dailyPrice.toLocaleString("vi-VN")} đ/ngày)</span>
+                                      </div>
+                                    </div>
+                                    <p className="text-[11px] text-rose-300 italic">
+                                      ⚠️ Quý khách vui lòng bấm ngay nút <strong>"📦 Báo trả đồ"</strong> hoặc <strong>"⏳ Gia hạn thuê"</strong> để tránh phát sinh thêm phí phạt cấn trừ vào cọc.
+                                    </p>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
+                              );
+                            })()
                           )}
                         </div>
                       )}
@@ -1086,6 +1185,40 @@ export default function RentalHistoryPage() {
                           {r.payment.moderatorNote}
                         </div>
                       )}
+
+                      {/* Ảnh ngoại quan ban đầu khi nhận máy (Issue 5) */}
+                      {r.handoverCheckin?.images && r.handoverCheckin.images.length > 0 && (
+                        <div className="mt-3 p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-200 space-y-1.5">
+                          <div className="flex items-center justify-between font-bold text-white">
+                            <span className="flex items-center gap-1.5">
+                              <span>📸</span> Ảnh ngoại quan khi nhận máy ({r.handoverCheckin.images.length} ảnh):
+                            </span>
+                            {r.handoverCheckin.receivedAt && (
+                              <span className="text-[10px] text-emerald-400/80 font-mono">
+                                {new Date(r.handoverCheckin.receivedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} {new Date(r.handoverCheckin.receivedAt).toLocaleDateString("vi-VN")}
+                              </span>
+                            )}
+                          </div>
+                          {r.handoverCheckin.note && (
+                            <p className="text-[11px] text-slate-300 italic">
+                              "{r.handoverCheckin.note}"
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 overflow-x-auto py-1">
+                            {r.handoverCheckin.images.map((img, idx) => (
+                              <a
+                                key={idx}
+                                href={img}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="w-14 h-14 rounded-lg overflow-hidden border border-emerald-500/40 shrink-0 hover:scale-105 transition-transform"
+                              >
+                                <img src={img} alt={`Ngoại quan ${idx + 1}`} className="w-full h-full object-cover" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1093,11 +1226,16 @@ export default function RentalHistoryPage() {
                   <div className="bg-[#0f1624] p-3.5 rounded-xl border border-[#1e2a40] flex lg:flex-col justify-between items-end gap-1 min-w-[190px]">
                     <span className="text-xs text-slate-400">Tổng thanh toán:</span>
                     <span className="text-lg font-extrabold text-orange-400">
-                      {r.rentalFee.toLocaleString("vi-VN")} đ
+                      {(r.totalAmount || r.rentalFee).toLocaleString("vi-VN")} đ
                     </span>
                     <div className="text-[11px] text-slate-400 text-right space-y-0.5">
                       <div>Tiền thuê: {r.rentalFee.toLocaleString("vi-VN")} đ</div>
-                      <div className="text-emerald-400 font-semibold">Tiền cọc: 0 đ (Miễn cọc)</div>
+                      {r.hasInsurance ? (
+                        <div className="text-purple-300 font-semibold">
+                          🛡️ Bảo hiểm (+5%): +{(r.insuranceFee || Math.round(r.rentalFee * 0.05)).toLocaleString("vi-VN")} đ
+                        </div>
+                      ) : null}
+                      <div className="text-emerald-400 font-semibold">Tiền cọc: {r.depositAmount ? `${r.depositAmount.toLocaleString("vi-VN")} đ` : "0 đ (Miễn cọc)"}</div>
                       {r.discountAmount ? (
                         <div className="text-emerald-400 font-semibold">
                           Giảm giá: -{r.discountAmount.toLocaleString("vi-VN")} đ
@@ -1167,6 +1305,23 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
+                    {/* Nút lưu ảnh ngoại quan khi nhận máy (Issue 5) */}
+                    {(isPaidConfirmed || upperStatus === "ACTIVE" || canReturn) && (
+                      <button
+                        onClick={() => {
+                          setCheckinRental(r);
+                          setCheckinImages(r.handoverCheckin?.images || []);
+                          setCheckinNote(r.handoverCheckin?.note || "");
+                          setError("");
+                        }}
+                        className="px-3 py-2 bg-gradient-to-r from-blue-700/60 to-cyan-700/60 hover:from-blue-600 hover:to-cyan-600 border border-blue-500/40 text-blue-200 hover:text-white font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Chụp và lưu 1-3 ảnh ngoại quan khi shipper bàn giao máy"
+                      >
+                        <span>📸</span>
+                        <span>{r.handoverCheckin?.images?.length ? `Đã lưu ảnh nhận (${r.handoverCheckin.images.length})` : "Lưu ảnh nhận máy"}</span>
+                      </button>
+                    )}
+
                     {/* Nút báo trả đồ (UC_R10) */}
                     {canReturn && (
                       <button
@@ -1181,7 +1336,12 @@ export default function RentalHistoryPage() {
                     {/* Nút đánh giá (UC_R11) */}
                     {canReview && (
                       <button
-                        onClick={() => setReviewingRentalId(r._id)}
+                        onClick={() => {
+                          setReviewingRentalId(r._id);
+                          setReviewImages([]);
+                          setRating(5);
+                          setReviewComment("");
+                        }}
                         className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1"
                       >
                         <span>⭐</span>
@@ -1191,9 +1351,28 @@ export default function RentalHistoryPage() {
 
                     {/* Đã có đánh giá */}
                     {r.review?.rating && (
-                      <div className="text-center text-xs text-amber-400 font-semibold bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20">
-                        ⭐ Đã đánh giá ({r.review.rating}/5)
+                      <div className="text-center text-xs text-amber-400 font-semibold bg-amber-500/10 px-2 py-1.5 rounded-lg border border-amber-500/20 space-y-1">
+                        <div>⭐ Đã đánh giá ({r.review.rating}/5)</div>
+                        {r.review.reviewImages && r.review.reviewImages.length > 0 && (
+                          <div className="flex items-center justify-center gap-1 pt-1">
+                            {r.review.reviewImages.map((img, idx) => (
+                              <img key={idx} src={img} alt="review" className="w-6 h-6 object-cover rounded border border-amber-400/40" />
+                            ))}
+                          </div>
+                        )}
                       </div>
+                    )}
+
+                    {/* Nút theo dõi tiến độ khiếu nại (Issue 10) */}
+                    {(upperStatus === "DISPUTED" || Boolean(r.dispute)) && (
+                      <button
+                        onClick={() => setViewingDisputeRental(r)}
+                        className="px-3 py-2 bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 font-bold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Xem tiến độ xử lý và phản hồi khiếu nại từ Admin"
+                      >
+                        <span>📋</span>
+                        <span>Tiến độ khiếu nại</span>
+                      </button>
                     )}
 
                     {/* Nút khiếu nại (UC_R14) */}
@@ -1206,7 +1385,7 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
-                    {/* Chỉ hiển thị nút HĐ Chính thức khi đã hoàn tất ký/thanh toán. Trước đó chỉ xem & trao đổi trong Khung Chat */}
+                    {/* Chỉ hiển thị nút HĐ Chính thức & Tải HĐ khi đã hoàn tất ký/thanh toán. Trước đó chỉ xem & trao đổi trong Khung Chat */}
                     {(() => {
                       const isOfficial = Boolean(
                         r.contract?.renterSignature ||
@@ -1222,14 +1401,24 @@ export default function RentalHistoryPage() {
                       );
                       if (!isOfficial) return null;
                       return (
-                        <button
-                          onClick={() => setViewingContractRental(r)}
-                          className="px-3 py-2 border font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm bg-emerald-950/40 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/50"
-                          title="Mở xem Hợp đồng chính thức"
-                        >
-                          <span>📜</span>
-                          <span>Xem hợp đồng</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => setViewingContractRental(r)}
+                            className="px-3 py-2 border font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm bg-emerald-950/40 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/50 cursor-pointer"
+                            title="Mở xem Hợp đồng chính thức"
+                          >
+                            <span>📜</span>
+                            <span>Xem hợp đồng</span>
+                          </button>
+                          <button
+                            onClick={() => setViewingReceiptRental(r)}
+                            className="px-3 py-2 border font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm bg-indigo-950/50 border-indigo-500/50 text-indigo-300 hover:bg-indigo-900/60 cursor-pointer"
+                            title="Tải hoặc in bản Hợp đồng & Biên lai thu tiền điện tử có chữ ký số"
+                          >
+                            <span>📥</span>
+                            <span>Tải HĐ & Biên lai (PDF)</span>
+                          </button>
+                        </>
                       );
                     })()}
 
@@ -1423,7 +1612,7 @@ setNotice(
         </div>
       )}
 
-      {/* Modal Đánh giá (UC_R11) */}
+      {/* Modal Đánh giá (UC_R11: Photo Reviews) */}
       {reviewingRentalId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#141d2d] border border-[#263550] w-full max-w-md rounded-2xl p-6 shadow-2xl relative space-y-4">
@@ -1461,24 +1650,496 @@ setNotice(
                 />
               </div>
 
+              {/* Upload 1-3 ảnh thực tế máy (Photo Reviews - Issue 8) */}
+              <div>
+                <label className="block font-bold text-slate-300 mb-1.5">
+                  Ảnh chụp thực tế thiết bị khi dùng (Tối đa 3 ảnh):
+                </label>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  {reviewImages.map((img, idx) => (
+                    <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-amber-500/40 group">
+                      <img src={img} alt="review" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setReviewImages(reviewImages.filter((_, i) => i !== idx))}
+                        className="absolute top-0.5 right-0.5 bg-black/80 hover:bg-rose-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  {reviewImages.length < 3 && (
+                    <label className="w-16 h-16 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 flex flex-col items-center justify-center cursor-pointer text-amber-300 transition-colors">
+                      <span className="text-xl">📷</span>
+                      <span className="text-[9px] font-bold">+ Thêm ảnh</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          files.slice(0, 3 - reviewImages.length).forEach((file) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              if (reader.result) {
+                                setReviewImages((prev) => [...prev, reader.result as string].slice(0, 3));
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          });
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
                 <button
                   type="button"
                   onClick={() => setReviewingRentalId(null)}
                   disabled={isReviewing}
-                  className="px-4 py-2 bg-[#1c2436] text-slate-300 font-semibold rounded-xl text-xs"
+                  className="px-4 py-2 bg-[#1c2436] text-slate-300 font-semibold rounded-xl text-xs hover:bg-[#253248] transition-colors cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={isReviewing}
-                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-amber-600/30"
+                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-amber-600/30 cursor-pointer"
                 >
                   {isReviewing ? "Đang gửi..." : "Gửi đánh giá"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Handover Check-in: Lưu ảnh ngoại quan khi nhận máy (Issue 5) */}
+      {checkinRental && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#141d2d] border border-blue-500/40 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span className="text-blue-400">📸</span> Lưu Ảnh Ngoại Quan Khi Nhận Máy #{checkinRental.rentalCode}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setCheckinRental(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Vui lòng chụp từ <strong>1 - 3 ảnh rõ nét</strong> các góc máy, màn hình, ống kính và linh phụ kiện ngay khi nhận máy từ shipper. Bằng chứng này sẽ bảo vệ bạn tuyệt đối khỏi các rủi ro bị đổ lỗi trầy xước lúc hoàn trả!
+            </p>
+
+            <form onSubmit={handleCheckinSubmit} className="space-y-4 text-xs">
+              {/* Image Previews & Upload Button */}
+              <div>
+                <label className="block font-bold text-slate-300 mb-2">
+                  Ảnh ngoại quan thực tế (Tối đa 3 ảnh) *
+                </label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {checkinImages.map((img, idx) => (
+                    <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-blue-500/50 group">
+                      <img src={img} alt={`Ngoại quan ${idx + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setCheckinImages(checkinImages.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 bg-black/80 hover:bg-rose-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold cursor-pointer"
+                        title="Xóa ảnh"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  {checkinImages.length < 3 && (
+                    <label className="w-20 h-20 rounded-xl border-2 border-dashed border-blue-500/40 hover:border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 flex flex-col items-center justify-center cursor-pointer text-blue-300 transition-all">
+                      <span className="text-2xl">📷</span>
+                      <span className="text-[10px] font-bold mt-1">+ Thêm ảnh</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          files.slice(0, 3 - checkinImages.length).forEach((file) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              if (reader.result) {
+                                setCheckinImages((prev) => [...prev, reader.result as string].slice(0, 3));
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          });
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">
+                  Ghi chú tình trạng khi nhận (Tùy chọn)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="VD: Máy có vết trầy nhẹ ở nắp pin, đủ 2 pin 1 sạc kèm theo..."
+                  value={checkinNote}
+                  onChange={(e) => setCheckinNote(e.target.value)}
+                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
+                <button
+                  type="button"
+                  onClick={() => setCheckinRental(null)}
+                  disabled={isCheckingIn}
+                  className="px-4 py-2 bg-[#1c2436] text-slate-300 font-semibold rounded-xl text-xs hover:bg-[#253248] transition-colors cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCheckingIn || checkinImages.length === 0}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isCheckingIn ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Đang lưu...</span>
+                    </>
+                  ) : (
+                    <span>Lưu biên bản nhận máy</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal In & Tải Hợp đồng / Biên lai PDF (Issue 7) */}
+      {viewingReceiptRental && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn overflow-y-auto">
+          <div className="bg-[#141d2d] border border-indigo-500/40 w-full max-w-3xl rounded-2xl p-6 shadow-2xl relative space-y-5 my-8 text-white max-h-[90vh] overflow-y-auto">
+            {/* Top Toolbar */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📄</span>
+                <span className="font-bold text-sm text-white">Biên Lai & Hợp Đồng Điện Tử (SmartEquip E-Contract)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-indigo-600/30 cursor-pointer"
+                >
+                  <span>🖨️</span>
+                  <span>In / Lưu PDF (Ctrl + P)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingReceiptRental(null)}
+                  className="px-3 py-2 bg-[#1c2436] hover:bg-[#28354c] text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
+                >
+                  ✕ Đóng
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Area */}
+            <div className="bg-white text-slate-900 p-8 rounded-xl shadow-inner space-y-6 text-xs leading-relaxed font-sans">
+              {/* Document Header */}
+              <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
+                <div>
+                  <h1 className="text-xl font-black text-orange-600 uppercase tracking-tight">SmartEquip Platform</h1>
+                  <p className="text-[11px] text-slate-500">Nền tảng chia sẻ & cho thuê thiết bị công nghệ hàng đầu Việt Nam</p>
+                  <p className="text-[11px] text-slate-500">Hotline: 1900-8888 • Email: hotro@smartequip.vn • Website: smartequip.vn</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 font-extrabold text-[11px] rounded-full border border-emerald-300 uppercase">
+                    ✓ ĐÃ XÁC THỰC ĐIỆN TỬ
+                  </span>
+                  <p className="text-[11px] font-mono font-bold text-slate-700 mt-1">Mã đơn: #{viewingReceiptRental.rentalCode}</p>
+                  <p className="text-[10px] font-mono text-slate-500">Mã HĐ: {viewingReceiptRental.contract?.contractNumber || `HD-${viewingReceiptRental.rentalCode}`}</p>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div className="text-center py-2">
+                <h2 className="text-base font-black uppercase text-slate-900 tracking-wide">
+                  HỢP ĐỒNG THUÊ THIẾT BỊ VÀ BIÊN LAI THU TIỀN ĐIỆN TỬ
+                </h2>
+                <p className="text-[11px] text-slate-500 italic">
+                  (Căn cứ Bộ Luật Dân sự & Luật Giao dịch điện tử số 20/2023/QH15)
+                </p>
+              </div>
+
+              {/* Two Parties Information */}
+              <div className="grid grid-cols-2 gap-6 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900 uppercase text-[11px] border-b border-slate-200 pb-1">
+                    BÊN CHO THUÊ (BÊN A):
+                  </h3>
+                  <p><strong>Họ & Tên:</strong> {typeof viewingReceiptRental.owner === "object" ? viewingReceiptRental.owner?.name : "Nguyễn Văn Owner"}</p>
+                  <p><strong>Điện thoại:</strong> {typeof viewingReceiptRental.owner === "object" && viewingReceiptRental.owner?.phone ? viewingReceiptRental.owner.phone : "0909123456"}</p>
+                  <p><strong>Email:</strong> {typeof viewingReceiptRental.owner === "object" && viewingReceiptRental.owner?.email ? viewingReceiptRental.owner.email : "owner@smartequip.vn"}</p>
+                  <p><strong>Địa chỉ kho:</strong> {viewingReceiptRental.equipment?.location?.address || "Kho trung tâm SmartEquip Hub"}</p>
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900 uppercase text-[11px] border-b border-slate-200 pb-1">
+                    BÊN THUÊ (BÊN B):
+                  </h3>
+                  <p><strong>Họ & Tên:</strong> {typeof viewingReceiptRental.renter === "object" ? viewingReceiptRental.renter?.name : (user?.name || "Khách thuê SmartEquip")}</p>
+                  <p><strong>Điện thoại:</strong> {typeof viewingReceiptRental.renter === "object" && viewingReceiptRental.renter?.phone ? viewingReceiptRental.renter.phone : (user?.phone || "0988776655")}</p>
+                  <p><strong>Email:</strong> {typeof viewingReceiptRental.renter === "object" && viewingReceiptRental.renter?.email ? viewingReceiptRental.renter.email : (user?.email || "renter@smartequip.vn")}</p>
+                  <p><strong>Địa chỉ nhận hàng:</strong> {viewingReceiptRental.deliveryAddress || "Theo đăng ký thuê"}</p>
+                </div>
+              </div>
+
+              {/* Equipment & Rental Term Table */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-slate-900 uppercase text-[11px]">CHI TIẾT THIẾT BỊ VÀ CƯỚC THUÊ:</h3>
+                <table className="w-full border-collapse border border-slate-300 text-[11.5px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-800">
+                      <th className="border border-slate-300 p-2 text-left">Nội dung</th>
+                      <th className="border border-slate-300 p-2 text-center">Số lượng / Thời gian</th>
+                      <th className="border border-slate-300 p-2 text-right">Đơn giá</th>
+                      <th className="border border-slate-300 p-2 text-right">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="border border-slate-300 p-2">
+                        <strong>{viewingReceiptRental.equipment?.title || "Thiết bị thuê"}</strong>
+                        <div className="text-[10px] text-slate-500">
+                          Thời gian: {viewingReceiptRental.deliveryTime || "09:00"} ngày {new Date(viewingReceiptRental.startDate).toLocaleDateString("vi-VN")} đến {viewingReceiptRental.returnTime || "17:00"} ngày {new Date(viewingReceiptRental.endDate).toLocaleDateString("vi-VN")}
+                        </div>
+                      </td>
+                      <td className="border border-slate-300 p-2 text-center font-bold">
+                        {viewingReceiptRental.totalDays || 1} ngày
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right">
+                        {(viewingReceiptRental.dailyRate || viewingReceiptRental.equipment?.dailyRate || 0).toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right font-bold">
+                        {viewingReceiptRental.rentalFee.toLocaleString("vi-VN")} đ
+                      </td>
+                    </tr>
+                    {viewingReceiptRental.hasInsurance && (
+                      <tr>
+                        <td className="border border-slate-300 p-2">
+                          <strong>Gói Bảo Hiểm Rơi Vỡ Toàn Diện (+5%)</strong>
+                          <div className="text-[10px] text-slate-500">Miễn thường 80-100% chi phí sửa chữa khi xảy ra sự cố va đập nhẹ</div>
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center">1 gói</td>
+                        <td className="border border-slate-300 p-2 text-right">5% phí thuê</td>
+                        <td className="border border-slate-300 p-2 text-right font-bold text-purple-700">
+                          +{(viewingReceiptRental.insuranceFee || Math.round(viewingReceiptRental.rentalFee * 0.05)).toLocaleString("vi-VN")} đ
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="border border-slate-300 p-2">
+                        <strong>Tiền đặt cọc thiết bị</strong>
+                        <div className="text-[10px] text-slate-500">Áp dụng chính sách tín nhiệm SmartEquip TrustScore</div>
+                      </td>
+                      <td className="border border-slate-300 p-2 text-center">1 đơn</td>
+                      <td className="border border-slate-300 p-2 text-right">
+                        {viewingReceiptRental.depositAmount ? `${viewingReceiptRental.depositAmount.toLocaleString("vi-VN")} đ` : "0 đ"}
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right font-bold text-emerald-700">
+                        {viewingReceiptRental.depositAmount ? `${viewingReceiptRental.depositAmount.toLocaleString("vi-VN")} đ` : "0 đ (Miễn cọc)"}
+                      </td>
+                    </tr>
+                    {viewingReceiptRental.discountAmount ? (
+                      <tr>
+                        <td className="border border-slate-300 p-2 text-emerald-700">Mã giảm giá ưu đãi SmartEquip</td>
+                        <td className="border border-slate-300 p-2 text-center">1 lần</td>
+                        <td className="border border-slate-300 p-2 text-right">Voucher</td>
+                        <td className="border border-slate-300 p-2 text-right font-bold text-emerald-700">
+                          -{viewingReceiptRental.discountAmount.toLocaleString("vi-VN")} đ
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-bold text-slate-900">
+                      <td colSpan={3} className="border border-slate-300 p-2.5 text-right uppercase text-[12px]">
+                        TỔNG CỘNG THANH TOÁN:
+                      </td>
+                      <td className="border border-slate-300 p-2.5 text-right text-orange-600 text-sm font-black">
+                        {(viewingReceiptRental.totalAmount || viewingReceiptRental.rentalFee).toLocaleString("vi-VN")} đ
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Transaction & Payment Method Info */}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px] space-y-1">
+                <p><strong>Cổng thanh toán:</strong> PayOS VietQR tự động (Napas 247)</p>
+                <p><strong>Mã giao dịch / Order Code:</strong> {viewingReceiptRental.payment?.orderCode || viewingReceiptRental.payment?.transactionId || viewingReceiptRental.rentalCode}</p>
+                <p><strong>Trạng thái giao dịch:</strong> <span className="text-emerald-700 font-bold">✓ ĐÃ THANH TOÁN THÀNH CÔNG (PAID)</span></p>
+                <p><strong>Biên bản bàn giao ngoại quan:</strong> {viewingReceiptRental.handoverCheckin?.images?.length ? `Đã lưu ${viewingReceiptRental.handoverCheckin.images.length} ảnh kiểm tra lúc nhận máy` : "Kiểm tra trực tiếp khi nhận hàng"}</p>
+              </div>
+
+              {/* Digital Signature Stamps */}
+              <div className="grid grid-cols-2 gap-8 pt-4">
+                <div className="text-center space-y-10">
+                  <div>
+                    <h4 className="font-bold text-slate-900 uppercase text-[11px]">ĐẠI DIỆN BÊN CHO THUÊ (BÊN A)</h4>
+                    <p className="text-[10px] text-slate-500">(Ký, ghi rõ họ tên và đóng dấu)</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="inline-block border-2 border-emerald-600 rounded-lg p-2 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                      ✓ ĐÃ KÝ SỐ XÁC THỰC
+                      <div className="text-[9px] font-mono text-emerald-600">SmartEquip Digital ID: OWNER-VERIFIED</div>
+                    </div>
+                    <p className="font-bold text-slate-800">{typeof viewingReceiptRental.owner === "object" ? viewingReceiptRental.owner?.name : "Nguyễn Văn Owner"}</p>
+                  </div>
+                </div>
+
+                <div className="text-center space-y-10">
+                  <div>
+                    <h4 className="font-bold text-slate-900 uppercase text-[11px]">ĐẠI DIỆN BÊN THUÊ (BÊN B)</h4>
+                    <p className="text-[10px] text-slate-500">(Ký và xác nhận điều khoản hợp đồng)</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="inline-block border-2 border-indigo-600 rounded-lg p-2 bg-indigo-50 text-indigo-800 text-[10px] font-bold">
+                      ✓ ĐÃ KÝ ĐIỆN TỬ
+                      <div className="text-[9px] font-mono text-indigo-600">Timestamp: {viewingReceiptRental.contract?.signedAt ? new Date(viewingReceiptRental.contract.signedAt).toLocaleString("vi-VN") : new Date().toLocaleString("vi-VN")}</div>
+                    </div>
+                    <p className="font-bold text-slate-800">{viewingReceiptRental.contract?.renterSignature || (user?.name || "Khách Thuê")}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tiến Độ Khiếu Nại (Issue 10) */}
+      {viewingDisputeRental && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#141d2d] border border-rose-500/40 w-full max-w-xl rounded-2xl p-6 shadow-2xl relative space-y-5 text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span className="text-rose-400">📋</span> Tiến Độ Xử Lý Khiếu Nại #{viewingDisputeRental.rentalCode}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setViewingDisputeRental(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Rental & Dispute info summary */}
+            <div className="p-3.5 bg-[#172033] border border-[#223049] rounded-xl space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white text-sm">
+                  {viewingDisputeRental.equipment?.title || "Thiết bị"}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                  Đang xử lý khiếu nại
+                </span>
+              </div>
+              <div className="text-slate-300">
+                <strong>Lý do khiếu nại:</strong>{" "}
+                <span className="text-rose-200 italic">
+                  "{viewingDisputeRental.dispute?.reason || "Khách yêu cầu kiểm tra tình trạng máy / hoàn cọc"}"
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Thời gian gửi: {viewingDisputeRental.dispute?.disputedAt ? new Date(viewingDisputeRental.dispute.disputedAt).toLocaleString("vi-VN") : "Gần đây"}
+              </div>
+            </div>
+
+            {/* 4-Step Visual Stepper */}
+            <div className="space-y-4 pt-1 text-xs">
+              <div className="relative pl-7 pb-4 border-l-2 border-emerald-500">
+                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-black">
+                  ✓
+                </span>
+                <div className="font-bold text-emerald-400 text-xs">Bước 1: Tiếp nhận khiếu nại & Khóa ký quỹ</div>
+                <p className="text-slate-400 text-[11px] mt-0.5 leading-relaxed">
+                  Hệ thống SmartEquip đã tiếp nhận đơn và tự động tạm giữ toàn bộ số tiền cọc/tiền thuê tại tài khoản Escrow an toàn để chờ kết luận.
+                </p>
+              </div>
+
+              <div className="relative pl-7 pb-4 border-l-2 border-amber-500">
+                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-amber-400 animate-ping"></span>
+                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-[10px] font-bold text-black">
+                  2
+                </span>
+                <div className="font-bold text-amber-300 text-xs">Bước 2: Moderator đang thụ lý & Kiểm tra chứng cứ</div>
+                <p className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                  Chuyên viên hỗ trợ đang đối chiếu ảnh ngoại quan nhận máy ({viewingDisputeRental.handoverCheckin?.images?.length || 0} ảnh) và biên bản bàn giao của Shipper.
+                </p>
+              </div>
+
+              <div className="relative pl-7 pb-4 border-l-2 border-slate-700">
+                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-300">
+                  3
+                </span>
+                <div className="font-bold text-slate-400 text-xs">Bước 3: Đối soát giải trình hai bên</div>
+                <p className="text-slate-500 text-[11px] mt-0.5 leading-relaxed">
+                  Moderator làm việc với Chủ máy và Khách thuê trong phòng chat hỗ trợ để thống nhất mức hoàn tiền / bồi thường công bằng nhất.
+                </p>
+              </div>
+
+              <div className="relative pl-7">
+                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-300">
+                  4
+                </span>
+                <div className="font-bold text-slate-400 text-xs">Bước 4: Phán quyết cuối cùng & Giải ngân / Hoàn tiền</div>
+                <p className="text-slate-500 text-[11px] mt-0.5 leading-relaxed">
+                  Admin ra quyết định chuyển khoản hoàn tiền cọc về tài khoản của Khách thuê trong vòng 24 - 48 giờ làm việc.
+                </p>
+              </div>
+            </div>
+
+            {/* Hotline support */}
+            <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span>📞</span> Cần hỗ trợ khẩn cấp: <strong>1900-8888</strong> (8:00 - 22:00)
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = viewingDisputeRental;
+                  setViewingDisputeRental(null);
+                  setChatRental(target);
+                }}
+                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+              >
+                Nhắn tin với Chủ máy
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[#212c42]">
+              <button
+                type="button"
+                onClick={() => setViewingDisputeRental(null)}
+                className="px-4 py-2 bg-[#1c2436] hover:bg-[#253248] text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -18,6 +18,15 @@ const CATEGORIES = [
   "Phụ kiện khác",
 ];
 
+const CITIES = [
+  "Tất cả khu vực",
+  "TP. Hồ Chí Minh",
+  "Hà Nội",
+  "Đà Nẵng",
+  "Cần Thơ",
+  "Hải Phòng",
+];
+
 const PRICE_PRESETS = [
   { label: "Tất cả mức giá", min: "", max: "" },
   { label: "Dưới 200.000 đ", min: "0", max: "200000" },
@@ -40,11 +49,13 @@ export default function EquipmentListPage() {
 
   const keywordParam = searchParams.get("keyword") || "";
   const categoryParam = searchParams.get("category") || "all";
+  const cityParam = searchParams.get("city") || "all";
   const minPriceParam = searchParams.get("minPrice") || "";
   const maxPriceParam = searchParams.get("maxPrice") || "";
 
   const [keyword, setKeyword] = useState(keywordParam);
   const [category, setCategory] = useState(categoryParam);
+  const [city, setCity] = useState(cityParam);
   const [minPrice, setMinPrice] = useState(minPriceParam);
   const [maxPrice, setMaxPrice] = useState(maxPriceParam);
   const [cardImageIndices, setCardImageIndices] = useState<Record<string, number>>({});
@@ -74,6 +85,7 @@ export default function EquipmentListPage() {
       .getEquipments({
         keyword: keywordParam,
         category: categoryParam === "Tất cả danh mục" ? "all" : categoryParam,
+        city: cityParam === "Tất cả khu vực" ? "all" : cityParam,
         minPrice: minPriceParam ? Number(minPriceParam) : undefined,
         maxPrice: maxPriceParam ? Number(maxPriceParam) : undefined,
       })
@@ -84,17 +96,18 @@ export default function EquipmentListPage() {
 
   useEffect(() => {
     fetchEquipments();
-  }, [keywordParam, categoryParam, minPriceParam, maxPriceParam]);
+  }, [keywordParam, categoryParam, cityParam, minPriceParam, maxPriceParam]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    applyFilter(keyword, category, minPrice, maxPrice);
+    applyFilter(keyword, category, city, minPrice, maxPrice);
   };
 
-  const applyFilter = (k: string, c: string, min: string, max: string) => {
+  const applyFilter = (k: string, c: string, loc: string, min: string, max: string) => {
     const params: Record<string, string> = {};
     if (k) params.keyword = k;
     if (c && c !== "Tất cả danh mục" && c !== "all") params.category = c;
+    if (loc && loc !== "Tất cả khu vực" && loc !== "all") params.city = loc;
     if (min) params.minPrice = min;
     if (max) params.maxPrice = max;
     setSearchParams(params);
@@ -103,18 +116,25 @@ export default function EquipmentListPage() {
   const handleCategorySelect = (selectedCat: string) => {
     const val = selectedCat === "Tất cả danh mục" ? "all" : selectedCat;
     setCategory(val);
-    applyFilter(keyword, val, minPrice, maxPrice);
+    applyFilter(keyword, val, city, minPrice, maxPrice);
+  };
+
+  const handleCitySelect = (selectedCity: string) => {
+    const val = selectedCity === "Tất cả khu vực" ? "all" : selectedCity;
+    setCity(val);
+    applyFilter(keyword, category, val, minPrice, maxPrice);
   };
 
   const handlePricePreset = (min: string, max: string) => {
     setMinPrice(min);
     setMaxPrice(max);
-    applyFilter(keyword, category, min, max);
+    applyFilter(keyword, category, city, min, max);
   };
 
   const handleReset = () => {
     setKeyword("");
     setCategory("all");
+    setCity("all");
     setMinPrice("");
     setMaxPrice("");
     setSearchParams({});
@@ -349,6 +369,35 @@ export default function EquipmentListPage() {
                 </div>
               </div>
 
+              {/* City / Location Filter */}
+              <div className="pt-4 border-t border-[#212c42]">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+                  📍 Khu Vực / Thành Phố
+                </label>
+                <div className="space-y-1.5">
+                  {CITIES.map((c, idx) => {
+                    const isSelected =
+                      (c === "Tất cả khu vực" && (city === "all" || !city)) ||
+                      city.toLowerCase() === c.toLowerCase();
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleCitySelect(c)}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between ${
+                          isSelected
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                            : "text-slate-400 hover:bg-[#1b273d] hover:text-slate-200"
+                        }`}
+                      >
+                        <span>{c}</span>
+                        {isSelected && <span>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Price Filter */}
               <div className="pt-4 border-t border-[#212c42]">
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
@@ -398,7 +447,7 @@ export default function EquipmentListPage() {
 
                 <button
                   type="button"
-                  onClick={() => applyFilter(keyword, category, minPrice, maxPrice)}
+                  onClick={() => applyFilter(keyword, category, city, minPrice, maxPrice)}
                   className="w-full mt-3 py-2 bg-[#202d45] hover:bg-[#2a3a58] text-white font-bold rounded-xl text-xs transition-all"
                 >
                   Áp dụng giá
@@ -488,9 +537,17 @@ export default function EquipmentListPage() {
 
                       {/* Content */}
                       <div className="p-4 space-y-2">
-                        <h3 className="font-bold text-base text-white group-hover:text-orange-400 transition-colors line-clamp-1">
-                          {item.title}
-                        </h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-bold text-base text-white group-hover:text-orange-400 transition-colors line-clamp-1 flex-1">
+                            {item.title}
+                          </h3>
+                        </div>
+                        {item.location?.city && (
+                          <div className="flex items-center gap-1 text-[11px] text-blue-400 font-medium">
+                            <span>📍</span>
+                            <span>{item.location.city}</span>
+                          </div>
+                        )}
                         <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">
                           {item.description || "Thiết bị chính hãng, được kiểm tra định kỳ, đầy đủ linh phụ kiện."}
                         </p>

@@ -49,6 +49,18 @@ class RentalController {
   }
 
   /**
+   * UC_R10_CHECKIN: POST /api/rentals/:id/handover-checkin (Lưu ảnh ngoại quan lúc nhận máy)
+   */
+  async submitHandoverCheckin(req, res) {
+    const result = await rentalService.submitHandoverCheckin(req.params.id, req.user, req.body);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.rental,
+    });
+  }
+
+  /**
    * UC_R10: POST /api/rentals/:id/return (Yêu cầu trả thiết bị)
    */
   async requestReturn(req, res) {

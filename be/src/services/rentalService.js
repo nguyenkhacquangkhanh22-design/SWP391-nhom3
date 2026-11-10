@@ -32,15 +32,20 @@ class RentalService {
       throw new AppError(400, "Invalid start date or end date format");
     }
 
-    if (start >= end) {
-      throw new AppError(400, "End date must be after start date");
+    if (start > end) {
+      throw new AppError(400, "Ngày trả máy phải sau hoặc cùng ngày nhận máy");
     }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (start < today) {
-      throw new AppError(400, "Start date cannot be in the past");
+      throw new AppError(400, "Ngày bắt đầu thuê không được ở trong quá khứ");
     }
+
+    const startRange = new Date(start);
+    startRange.setHours(0, 0, 0, 0);
+    const endRange = new Date(end);
+    endRange.setHours(23, 59, 59, 999);
 
     const conflictQuery = {
       equipment: equipmentId,
@@ -63,9 +68,9 @@ class RentalService {
         ],
       },
       $or: [
-        { startDate: { $lte: start }, endDate: { $gt: start } },
-        { startDate: { $lt: end }, endDate: { $gte: end } },
-        { startDate: { $gte: start }, endDate: { $lte: end } },
+        { startDate: { $lte: startRange }, endDate: { $gte: startRange } },
+        { startDate: { $lte: endRange }, endDate: { $gte: endRange } },
+        { startDate: { $gte: startRange }, endDate: { $lte: endRange } },
       ],
     };
 
@@ -155,16 +160,28 @@ class RentalService {
     const discountAmount = Math.round(subtotalRentalFee * discountRate);
     const rentalFee = subtotalRentalFee - discountAmount;
 
+    // Gói bảo hiểm rơi vỡ tùy chọn (+5% giá thuê)
+    const hasInsurance = Boolean(rentalData.hasInsurance);
+    const insuranceFee = hasInsurance ? Math.round(subtotalRentalFee * 0.05) : 0;
+
     // Tính phí vận chuyển theo từng phương thức nhận và trả
     const receiveFee = (typeof DELIVERY_FEE_MAP !== "undefined" && DELIVERY_FEE_MAP[deliveryMethod]) ?? 30000;
     const returnFee = (typeof DELIVERY_FEE_MAP !== "undefined" && DELIVERY_FEE_MAP[returnMethod]) ?? 30000;
     const shippingFee = receiveFee + returnFee;
 
-    const totalAmount = rentalFee + shippingFee;
+    const totalAmount = rentalFee + shippingFee + insuranceFee;
 
     const rentalCode = `REQ-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const contractNumber = `HD-${Date.now().toString().slice(-6)}`;
-    const standardContractTerms = `Hợp đồng thuê thiết bị công nghệ SmartEquip số ${contractNumber} (Không yêu cầu tiền cọc). Người thuê cam kết sử dụng đúng quy chuẩn kỹ thuật, bảo quản nguyên vẹn linh kiện và hoàn trả đúng hẹn. Trường hợp hư hỏng hoặc mất mát linh kiện do lỗi chủ quan, người thuê chịu trách nhiệm bồi thường chi phí khắc phục thực tế.`;
+    const standardContractTerms = `HỢP ĐỒNG THUÊ THIẾT BỊ CÔNG NGHỆ SMARTEQUIP #${contractNumber}
+1. ĐIỀU KHOẢN SỬ DỤNG: Người thuê cam kết sử dụng thiết bị đúng kỹ thuật, bảo quản nguyên vẹn thân máy, ống kính và phụ kiện đi kèm.
+2. CÔNG THỨC PHỤ PHÍ QUÁ HẠN TRẢ MÁY:
+   - Trả trễ dưới 60 phút: Miễn phí hỗ trợ (Thời gian ân hạn).
+   - Trả trễ từ 1 đến 4 giờ: Phụ phí 30% đơn giá ngày (${Math.round(dailyRate * 0.3).toLocaleString("vi-VN")} đ).
+   - Trả trễ từ 4 đến 8 giờ: Phụ phí 60% đơn giá ngày (${Math.round(dailyRate * 0.6).toLocaleString("vi-VN")} đ).
+   - Trả trễ trên 8 giờ hoặc sang ngày kế tiếp: Phụ phí 100% đơn giá ngày (${dailyRate.toLocaleString("vi-VN")} đ/ngày).
+3. BIÊN BẢN BÀN GIAO & NGOẠI QUAN: Người thuê có quyền tải lên tối đa 3 ảnh chụp ngoại quan thực tế lúc vừa nhận máy để làm bằng chứng đối chiếu khi trả đồ.
+4. BẢO HIỂM RƠI VỠ: ${hasInsurance ? `ĐÃ ĐĂNG KÝ GÓI BẢO HIỂM TOÀN DIỆN (Phí: ${insuranceFee.toLocaleString("vi-VN")} đ - Miễn đền bù tối đa 70% chi phí sửa chữa rủi ro trầy xước/va chạm nhẹ).` : "KHÔNG ĐĂNG KÝ GÓI BẢO HIỂM (Người thuê chịu 100% chi phí nếu xảy ra hỏng hóc do bất cẩn)."}`;
 
     const rental = new Rental({
       rentalCode,
@@ -178,6 +195,9 @@ class RentalService {
       rentalFee,
       depositAmount,
       discountAmount,
+      shippingFee,
+      hasInsurance,
+      insuranceFee,
       totalAmount,
       status: "PENDING",
       deliveryAddress: deliveryAddress || renterUser.address || "",
@@ -185,7 +205,6 @@ class RentalService {
       returnTime: returnTime || "17:00",
       deliveryMethod: deliveryMethod || "motorcycle",
       returnMethod: returnMethod || "motorcycle",
-      shippingFee,
       renterNote: renterNote || notes || "",
       notes: notes || renterNote || "",
       contract: {
@@ -791,11 +810,63 @@ class RentalService {
   }
 
   /**
+   * UC_R10_CHECKIN: Xác nhận nhận máy & Lưu ảnh ngoại quan ban đầu (Handover Check-in)
+   */
+  async submitHandoverCheckin(rentalId, user, checkinData = {}) {
+    const { images = [], note = "" } = checkinData;
+
+    const rental = await Rental.findById(rentalId).populate("equipment owner");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const renterId = rental.renter?._id ? String(rental.renter._id) : String(rental.renter);
+    const currentUserId = String(user._id || user.id);
+    if (renterId !== currentUserId) {
+      throw new AppError(403, "Bạn không có quyền cập nhật biên bản nhận máy cho đơn này");
+    }
+
+    rental.handoverCheckin = {
+      receivedAt: new Date(),
+      images: Array.isArray(images) ? images : [],
+      note: String(note || "").trim(),
+      confirmedByRenter: true,
+    };
+
+    if (rental.status === "PAID" || rental.status === "CONFIRMED") {
+      rental.status = "ACTIVE";
+    }
+
+    await rental.save();
+
+    // Thông báo cho Owner
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: rental.owner?._id || rental.owner,
+          title: `📸 Khách đã nhận máy & lưu ảnh ngoại quan #${rental.rentalCode}`,
+          message: `Khách thuê (${user.name}) đã xác nhận nhận thiết bị "${rental.equipment?.title}" và lưu ${rental.handoverCheckin.images.length} ảnh kiểm tra ngoại quan ban đầu.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (e) {}
+
+    return {
+      success: true,
+      message: "Đã xác nhận nhận máy và lưu biên bản ảnh ngoại quan ban đầu thành công!",
+      rental: await Rental.findById(rental._id)
+        .populate("equipment", "title images dailyRate depositAmount category")
+        .populate("owner", "name email phone"),
+    };
+  }
+
+  /**
    * UC_R11: Review Equipment & Owner
-   * Gửi đánh giá sao (1-5) và bình luận sau khi hoàn thành đơn
+   * Gửi đánh giá sao (1-5) và bình luận sau khi hoàn thành đơn (kèm ảnh thực tế)
    */
   async reviewRental(rentalId, renterUser, reviewData) {
-    const { rating, comment } = reviewData;
+    const { rating, comment, reviewImages = [] } = reviewData;
 
     if (!rating || Number(rating) < 1 || Number(rating) > 5) {
       throw new AppError(400, "Điểm đánh giá phải từ 1 đến 5 sao");
@@ -822,6 +893,7 @@ class RentalService {
     rental.review = {
       rating: Number(rating),
       comment: comment || "",
+      reviewImages: Array.isArray(reviewImages) ? reviewImages : [],
       createdAt: now,
       reviewedAt: now,
     };

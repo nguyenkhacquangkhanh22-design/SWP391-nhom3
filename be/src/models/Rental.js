@@ -134,6 +134,14 @@ const rentalSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    hasInsurance: {
+      type: Boolean,
+      default: false,
+    },
+    insuranceFee: {
+      type: Number,
+      default: 0,
+    },
     renterNote: {
       type: String,
       trim: true,
@@ -215,6 +223,7 @@ const rentalSchema = new mongoose.Schema(
     review: {
       rating: { type: Number, min: 1, max: 5 },
       comment: { type: String, trim: true },
+      reviewImages: [{ type: String }],
       createdAt: { type: Date },
       reviewedAt: { type: Date },
     },
@@ -225,6 +234,12 @@ const rentalSchema = new mongoose.Schema(
       onTimeReturn: { type: Boolean, default: true },
       comment: { type: String, trim: true, default: "" },
       reviewedAt: { type: Date },
+    },
+    handoverCheckin: {
+      receivedAt: { type: Date },
+      images: [{ type: String }],
+      note: { type: String, trim: true },
+      confirmedByRenter: { type: Boolean, default: false },
     },
     cancellation: {
       cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

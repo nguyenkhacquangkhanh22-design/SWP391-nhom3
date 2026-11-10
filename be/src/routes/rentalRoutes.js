@@ -37,6 +37,9 @@ router.post("/:id/confirm-contract", requireObjectBody, asyncHandler(rentalContr
 // UC_R09: POST /api/rentals/:id/pay (Gửi xác nhận thanh toán QR chờ Rental Moderator duyệt)
 router.post("/:id/pay", requireObjectBody, asyncHandler(rentalController.payRental));
 
+// UC_R10_CHECKIN: POST /api/rentals/:id/handover-checkin (Lưu ảnh ngoại quan nhận máy)
+router.post("/:id/handover-checkin", requireObjectBody, asyncHandler(rentalController.submitHandoverCheckin));
+
 // UC_R10: POST /api/rentals/:id/return (Yêu cầu trả thiết bị)
 router.post("/:id/return", requireObjectBody, asyncHandler(rentalController.requestReturn));
 

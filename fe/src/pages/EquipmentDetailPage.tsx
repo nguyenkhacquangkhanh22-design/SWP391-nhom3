@@ -127,6 +127,7 @@ export default function EquipmentDetailPage() {
   const [returnTime, setReturnTime] = useState("17:00");
   const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
   const [returnMethod, setReturnMethod] = useState("motorcycle");
+  const [hasInsurance, setHasInsurance] = useState(false);
   const [quickVerifying, setQuickVerifying] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -200,7 +201,7 @@ export default function EquipmentDetailPage() {
     }
   }, [user]);
 
-  // Tính toán số ngày và số tiền tự động
+  // Tính toán số ngày và số tiền tự động (hỗ trợ thuê trong ngày startDate === endDate)
   let totalDays = 0;
   if (startDate && endDate) {
     const start = new Date(startDate);
@@ -209,6 +210,8 @@ export default function EquipmentDetailPage() {
       totalDays = Math.ceil(
         Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
       );
+    } else if (startDate === endDate) {
+      totalDays = 1; // Thuê trong ngày (Same-day rental)
     }
   }
 
@@ -228,13 +231,15 @@ export default function EquipmentDetailPage() {
   const subtotalRentalFee = dailyRate * totalDays;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
+  // Tính phí bảo hiểm rơi vỡ toàn diện (+5% phí thuê)
+  const insuranceFee = hasInsurance && totalDays > 0 ? Math.round(subtotalRentalFee * 0.05) : 0;
   // Tính phí giao nhận theo phương thức đã chọn (Yêu cầu 3)
   const receiveOption = getDeliveryOption(deliveryMethod);
   const returnOption = getReturnOption(returnMethod);
   const receiveFee = totalDays > 0 ? receiveOption.fee : 0;
   const returnFee = totalDays > 0 ? returnOption.fee : 0;
   const shippingFee = receiveFee + returnFee;
-  const totalAmount = rentalFee + shippingFee; // Miễn cọc: chỉ tính phí thuê + phí giao nhận
+  const totalAmount = rentalFee + shippingFee + insuranceFee; // Miễn cọc: tiền thuê + phí giao nhận + bảo hiểm (nếu có)
 
   const handleCreateRental = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,6 +278,7 @@ export default function EquipmentDetailPage() {
         deliveryMethod,
         returnMethod,
         deliveryAddress: deliveryAddress.trim(),
+        hasInsurance,
         renterNote: renterNote.trim(),
       });
       // Đã gửi đơn thành công -> Hiển thị popup thành công và thông báo toast
@@ -588,6 +594,23 @@ export default function EquipmentDetailPage() {
                           {rev.comment}
                         </p>
                       )}
+
+                      {/* Photo Reviews */}
+                      {rev.reviewImages && rev.reviewImages.length > 0 && (
+                        <div className="flex items-center gap-2 pl-10 pt-1.5 flex-wrap">
+                          {rev.reviewImages.map((imgUrl, imgIdx) => (
+                            <a
+                              key={imgIdx}
+                              href={imgUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-16 h-16 rounded-xl overflow-hidden border border-[#2b3a56] hover:border-orange-400 transition-all block cursor-pointer shadow-sm"
+                            >
+                              <img src={imgUrl} alt={`Ảnh review ${imgIdx + 1}`} className="w-full h-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -864,6 +887,31 @@ export default function EquipmentDetailPage() {
                   />
                 </div>
 
+                {/* Gói bảo hiểm rơi vỡ tùy chọn (+5%) */}
+                <div className="p-3.5 bg-gradient-to-r from-emerald-950/40 via-[#13232c] to-[#121c2c] border border-emerald-500/35 rounded-xl space-y-1.5 shadow-sm">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasInsurance}
+                      onChange={(e) => setHasInsurance(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-[#1b263b] border-emerald-500/40 cursor-pointer"
+                    />
+                    <div className="flex-1 text-xs">
+                      <div className="font-bold text-emerald-300 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span>🛡️</span> Gói Bảo Hiểm Toàn Diện (+5% phí)
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-400">
+                          {insuranceFee > 0 ? `+${insuranceFee.toLocaleString("vi-VN")} đ` : "+5%"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                        Khách được <strong>miễn đền bù tối đa 70%</strong> chi phí sửa chữa nếu thiết bị vô tình trầy xước, va quẹt nhẹ trong thời gian sử dụng.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
                 {/* Component Tự Động Tính Tạm Tổng Tiền */}
                 <div className="bg-[#101725] p-4 rounded-xl border border-[#1e2a40] space-y-2.5">
                   <div className="flex justify-between text-xs text-slate-400">
@@ -912,6 +960,14 @@ export default function EquipmentDetailPage() {
                       {returnFee === 0 ? "Miễn phí (0 đ)" : `+${returnFee.toLocaleString("vi-VN")} đ`}
                     </span>
                   </div>
+
+                  {/* Phí bảo hiểm nếu chọn */}
+                  {hasInsurance && (
+                    <div className="flex justify-between text-xs text-emerald-300 font-semibold bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/30">
+                      <span>🛡️ Bảo hiểm thiết bị (+5%):</span>
+                      <span>+{insuranceFee.toLocaleString("vi-VN")} đ</span>
+                    </div>
+                  )}
 
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Tiền cọc bảo đảm:</span>

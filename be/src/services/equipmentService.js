@@ -10,6 +10,7 @@ class EquipmentService {
     const {
       keyword,
       category,
+      city,
       minPrice,
       maxPrice,
       status,
@@ -27,7 +28,10 @@ class EquipmentService {
     // Không hiển thị thiết bị bị từ chối phê duyệt (cho phép cả approved, pending hoặc chưa phân loại)
     filter.approval_status = { $ne: "rejected" };
 
-    // Trạng thái khả dụng (hỗ trợ cả chữ thường và chữ hoa)
+    // Lọc theo khu vực / thành phố
+    if (city && typeof city === "string" && city.trim() && city !== "all" && city !== "Tất cả khu vực") {
+      filter["location.city"] = { $regex: city.trim(), $options: "i" };
+    }
     if (status && typeof status === "string" && status.trim() && status !== "all") {
       filter.status = { $regex: new RegExp(`^${status.trim()}$`, "i") };
     } else {
@@ -202,6 +206,7 @@ class EquipmentService {
         rentalCode: r.rentalCode,
         rating: r.review?.rating || 5,
         comment: r.review?.comment || "",
+        reviewImages: Array.isArray(r.review?.reviewImages) ? r.review.reviewImages : [],
         reviewedAt: r.review?.reviewedAt || r.review?.createdAt || r.createdAt,
         renterName: r.renter?.name || "Khách thuê SmartEquip",
         renterAvatar: r.renter?.avatarUrl,

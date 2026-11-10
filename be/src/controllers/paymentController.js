@@ -225,6 +225,44 @@ const paymentController = {
     }
 
     if (rental) {
+      const isCancelled = String(rental.status).toUpperCase() === "CANCELLED";
+      if (isCancelled) {
+        // Đơn đã hủy mà khách vẫn chuyển tiền -> Chuyển sang chế độ hoàn tiền refund_pending
+        rental.payment = rental.payment || {};
+        rental.payment.isPaid = true;
+        rental.payment.paidAt = new Date();
+        rental.payment.paymentStatus = "refund_pending";
+        rental.payment.amountPaid =
+          webhookData.amount || rental.totalAmount || rental.rentalFee;
+        rental.payment.transactionId =
+          webhookData.reference ||
+          webhookData.paymentLinkId ||
+          String(orderCode);
+        rental.cancellation = rental.cancellation || {
+          reason: "Khách quét mã thanh toán sau khi đơn đã bị hủy",
+          cancelledAt: new Date(),
+        };
+        rental.cancellation.refundInfo = rental.cancellation.refundInfo || {
+          refundAmount: webhookData.amount || rental.totalAmount || rental.rentalFee,
+          status: "pending",
+          note: "Thanh toán tự động ghi nhận trên đơn đã hủy. Hệ thống xếp vào danh sách hoàn tiền.",
+        };
+        await rental.save();
+
+        try {
+          const { getIO } = require("../config/socket");
+          const io = getIO();
+          io.emit("payment:refund_pending", {
+            rentalId: rental._id,
+            rentalCode: rental.rentalCode,
+            status: "CANCELLED",
+            message: `Đơn thuê #${rental.rentalCode} đã bị hủy. Hệ thống đã tiếp nhận và đang xử lý hoàn tiền.`,
+          });
+        } catch (e) {}
+
+        return res.status(200).json({ success: true, message: "Order cancelled, marked for refund" });
+      }
+
       // Cập nhật trạng thái đơn thành 'PAID' theo đúng yêu cầu
       const wasAlreadyPaid = Boolean(rental.payment?.isPaid && rental.status === "PAID");
       rental.status = "PAID";
@@ -314,6 +352,28 @@ const paymentController = {
       } catch (socketErr) {
         console.warn("Socket emit error on webhook:", socketErr?.message);
       }
+
+      // Gửi Email thông báo thanh toán thành công
+      try {
+        const populatedRental = await Rental.findById(rental._id).populate("renter equipment");
+        if (populatedRental?.renter?.email) {
+          const { sendRentalEmailNotification } = require("../utils/sendEmailNotification");
+          sendRentalEmailNotification({
+            to: populatedRental.renter.email,
+            subject: `✅ Xác nhận thanh toán thành công đơn thuê #${rental.rentalCode} - SmartEquip`,
+            htmlText: `
+              <h2>Thanh toán thành công!</h2>
+              <p>Xin chào <b>${populatedRental.renter.name}</b>,</p>
+              <p>Hệ thống SmartEquip đã nhận đủ số tiền <b>${(rental.payment.amountPaid || rental.totalAmount).toLocaleString("vi-VN")} đ</b> cho đơn thuê <b>#${rental.rentalCode}</b>.</p>
+              <p><b>Thiết bị:</b> ${populatedRental.equipment?.title || "Thiết bị điện tử"}</p>
+              <p><b>Thời gian thuê:</b> Từ ngày ${new Date(rental.startDate).toLocaleDateString("vi-VN")} đến ngày ${new Date(rental.endDate).toLocaleDateString("vi-VN")}</p>
+              <p>Chủ máy đang chuẩn bị thiết bị để bàn giao đúng hẹn cho bạn.</p>
+              <br/>
+              <p>Trân trọng,<br/>Đội ngũ SmartEquip</p>
+            `,
+          }).catch(() => {});
+        }
+      } catch (emailErr) {}
     } else {
       console.warn(
         `PayOS Webhook: Không tìm thấy đơn thuê cho orderCode: ${orderCode}, description: ${description}`
@@ -375,6 +435,32 @@ const paymentController = {
     }
 
     if (rental && paymentInfo.status === "PAID") {
+      const isCancelled = String(rental.status).toUpperCase() === "CANCELLED";
+      if (isCancelled) {
+        rental.payment = rental.payment || {};
+        rental.payment.isPaid = true;
+        rental.payment.paidAt = rental.payment.paidAt || new Date();
+        rental.payment.paymentStatus = "refund_pending";
+        rental.payment.amountPaid =
+          paymentInfo.amountPaid || paymentInfo.amount || rental.totalAmount;
+        rental.cancellation = rental.cancellation || {
+          reason: "Khách quét mã thanh toán sau khi đơn đã bị hủy",
+          cancelledAt: new Date(),
+        };
+        rental.cancellation.refundInfo = rental.cancellation.refundInfo || {
+          refundAmount: paymentInfo.amountPaid || paymentInfo.amount || rental.totalAmount,
+          status: "pending",
+          note: "Thanh toán tự động ghi nhận trên đơn đã hủy. Hệ thống xếp vào danh sách hoàn tiền.",
+        };
+        await rental.save();
+        return res.status(200).json({
+          success: true,
+          data: paymentInfo,
+          rentalStatus: "CANCELLED",
+          message: "Đơn thuê đã bị hủy. Khoản thanh toán đã được chuyển sang chế độ hoàn tiền.",
+        });
+      }
+
       const wasAlreadyPaid = Boolean(rental.payment?.isPaid && rental.status === "PAID");
       rental.status = "PAID";
       rental.payment = rental.payment || {};
@@ -462,6 +548,27 @@ const paymentController = {
       } catch (socketErr) {
         console.warn("Socket emit error on verifyPayment:", socketErr?.message);
       }
+
+      // Gửi Email thông báo thanh toán thành công
+      try {
+        const populatedRental = await Rental.findById(rental._id).populate("renter equipment");
+        if (populatedRental?.renter?.email) {
+          const { sendRentalEmailNotification } = require("../utils/sendEmailNotification");
+          sendRentalEmailNotification({
+            to: populatedRental.renter.email,
+            subject: `✅ Xác nhận thanh toán thành công đơn thuê #${rental.rentalCode} - SmartEquip`,
+            htmlText: `
+              <h2>Thanh toán thành công!</h2>
+              <p>Xin chào <b>${populatedRental.renter.name}</b>,</p>
+              <p>Hệ thống SmartEquip đã nhận đủ số tiền <b>${(rental.payment.amountPaid || rental.totalAmount).toLocaleString("vi-VN")} đ</b> cho đơn thuê <b>#${rental.rentalCode}</b>.</p>
+              <p><b>Thiết bị:</b> ${populatedRental.equipment?.title || "Thiết bị điện tử"}</p>
+              <p>Chủ máy đang chuẩn bị thiết bị để bàn giao cho bạn.</p>
+              <br/>
+              <p>Trân trọng,<br/>Đội ngũ SmartEquip</p>
+            `,
+          }).catch(() => {});
+        }
+      } catch (emailErr) {}
     }
 
     return res.status(200).json({

@@ -114,6 +114,7 @@ export interface EquipmentReview {
   rentalCode?: string;
   rating: number;
   comment: string;
+  reviewImages?: string[];
   reviewedAt: string;
   renterName: string;
   renterAvatar?: string;
@@ -153,6 +154,7 @@ export interface RentalReturnRequest {
 export interface RentalReview {
   rating: number;
   comment?: string;
+  reviewImages?: string[];
   reviewedAt?: string;
   createdAt?: string;
 }
@@ -245,6 +247,14 @@ export interface Rental {
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   extensions?: RentalExtension[];
+  hasInsurance?: boolean;
+  insuranceFee?: number;
+  handoverCheckin?: {
+    receivedAt?: string;
+    images: string[];
+    note?: string;
+    confirmedByRenter?: boolean;
+  };
   deliveryAddress?: string;
   deliveryTime?: string;
   returnTime?: string;
