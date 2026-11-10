@@ -651,7 +651,40 @@ async function getContracts(req, res) {
     .sort({ createdAt: -1 })
     .lean();
 
-  res.json({ contracts });
+  // Đồng bộ payment_status chuẩn xác từ đơn Rental
+  const Rental = require("../models/Rental");
+  const enrichedContracts = await Promise.all(
+    contracts.map(async (c) => {
+      if (c.payment_status === "paid") return c;
+
+      const rental = await Rental.findOne({
+        $or: [
+          { "contract.contractNumber": c.contract_code },
+          { rentalCode: c.contract_code.replace(/^HD-/, "") },
+          { _id: c.request_id },
+        ],
+      })
+        .select("status payment")
+        .lean();
+
+      if (rental) {
+        const isPaid =
+          rental.status === "PAID" ||
+          rental.payment?.isPaid === true ||
+          rental.payment?.paymentStatus === "paid";
+
+        if (isPaid) {
+          await RentalContract.updateOne({ _id: c._id }, { $set: { payment_status: "paid" } });
+          return { ...c, payment_status: "paid" };
+        } else if (rental.payment?.paymentStatus === "pending_confirmation") {
+          return { ...c, payment_status: "pending_confirmation" };
+        }
+      }
+      return c;
+    })
+  );
+
+  res.json({ contracts: enrichedContracts });
 }
 
 async function getPublishedContractTemplates(_req, res) {
@@ -1495,6 +1528,42 @@ async function createHandoverRecord(req, res) {
       400,
       "Chỉ có thể bàn giao thiết bị sau khi hợp đồng đã được Quản lý web phê duyệt và Người thuê đã ký tên xác nhận!"
     );
+  }
+
+  // Chặn cứng: Kiểm tra Người thuê đã hoàn tất thanh toán (PAID) hay chưa
+  const Rental = require("../models/Rental");
+  const linkedRental = await Rental.findOne({
+    $or: [
+      { "contract.contractNumber": contract.contract_code },
+      { rentalCode: contract.contract_code.replace(/^HD-/, "") },
+      { _id: contract.request_id },
+    ],
+  }).lean();
+
+  const isContractPaid = contract.payment_status === "paid" || contract.payment_status === "PAID";
+  const isRentalPaid = Boolean(
+    linkedRental &&
+      (linkedRental.status === "PAID" ||
+        linkedRental.payment?.isPaid === true ||
+        linkedRental.payment?.paymentStatus === "paid")
+  );
+
+  if (!isContractPaid && !isRentalPaid) {
+    const paymentMsg =
+      contract.payment_status === "pending_confirmation" ||
+      linkedRental?.payment?.paymentStatus === "pending_confirmation"
+        ? "Khách thuê đã gửi xác nhận chuyển khoản nhưng chưa được xác nhận nhận tiền."
+        : "Khách thuê chưa thanh toán phí thuê.";
+    throw new AppError(
+      400,
+      `Không thể lập biên bản bàn giao! ${paymentMsg} Hệ thống yêu cầu đơn thuê phải ở trạng thái ĐÃ THANH TOÁN (PAID) trước khi Chủ máy xuất kho bàn giao thiết bị.`
+    );
+  }
+
+  // Tự động đồng bộ payment_status cho contract nếu rental đã paid
+  if (isRentalPaid && contract.payment_status !== "paid") {
+    contract.payment_status = "paid";
+    await contract.save();
   }
 
   if (!physical_condition) {
