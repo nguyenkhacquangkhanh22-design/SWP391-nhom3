@@ -111,6 +111,18 @@ class RentalController {
   }
 
   /**
+   * UC_R10_EXT: POST /api/rentals/:id/extend (Gia hạn thời gian thuê)
+   */
+  async extendRental(req, res) {
+    const result = await rentalService.extendRental(req.params.id, req.user, req.body);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.rental,
+    });
+  }
+
+  /**
    * UC_R14: POST /api/rentals/:id/dispute (Gửi khiếu nại đơn thuê)
    */
   async submitDispute(req, res) {

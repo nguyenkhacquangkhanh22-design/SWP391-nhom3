@@ -1288,6 +1288,7 @@ class RentalService {
       "CONTRACT_SIGNED",
       "PAYMENT_PENDING",
       "PAYMENT_REJECTED",
+      "PAID",
       "CONFIRMED",
       "pending",
       "approved",
@@ -1299,10 +1300,16 @@ class RentalService {
     if (!cancellableStatuses.includes(rental.status) && !cancellableStatuses.includes(normStatus)) {
       throw new AppError(
         400,
-        `Không thể hủy đơn thuê ở trạng thái hiện tại: ${rental.status}. Chỉ có thể hủy đơn khi đang chờ duyệt, đã duyệt, hoặc đã ký.`
+        `Không thể hủy đơn thuê ở trạng thái hiện tại: ${rental.status}. Chỉ có thể hủy đơn khi đang chờ duyệt, đã duyệt, hoặc trước khi nhận bàn giao thiết bị.`
       );
     }
 
+    const isPaid =
+      rental.payment?.isPaid === true ||
+      rental.payment?.paymentStatus === "paid" ||
+      normStatus === "PAID";
+
+    const { bankName, accountNumber, accountName } = cancelData;
     rental.status = "CANCELLED";
     rental.cancellation = {
       cancelledBy: renterUser._id,
@@ -1310,8 +1317,18 @@ class RentalService {
       cancelledAt: new Date(),
     };
 
-    if (rental.payment && rental.payment.paymentStatus === "paid") {
-      rental.payment.paymentStatus = "refunded";
+    if (isPaid) {
+      rental.payment.paymentStatus = "refund_pending";
+      if (bankName || accountNumber || accountName) {
+        rental.cancellation.refundInfo = {
+          bankName: String(bankName || "").trim(),
+          accountNumber: String(accountNumber || "").trim(),
+          accountName: String(accountName || "").trim(),
+          refundAmount: rental.totalAmount || rental.rentalFee || 0,
+          status: "pending",
+          note: `Khách yêu cầu hoàn tiền khi hủy đơn #${rental.rentalCode}`,
+        };
+      }
     }
 
     await rental.save();
@@ -1322,6 +1339,18 @@ class RentalService {
         await Equipment.findByIdAndUpdate(rental.equipment, { status: "AVAILABLE" });
         await unlockEquipmentSchedule(rental.equipment, rental.rentalCode);
       } catch (e) { }
+    }
+
+    // Thông báo xác nhận hủy & hoàn tiền cho Renter
+    if (isPaid && UserNotification) {
+      try {
+        await UserNotification.create({
+          user_id: renterUser._id,
+          title: `📝 Đã ghi nhận yêu cầu hủy đơn & hoàn tiền #${rental.rentalCode}`,
+          message: `Yêu cầu hủy đơn và hoàn tiền ${(rental.totalAmount || rental.rentalFee || 0).toLocaleString("vi-VN")} đ của bạn đã được tiếp nhận. SmartEquip sẽ kiểm tra và hoàn tiền về STK ${accountNumber || "của bạn"} trong vòng 24 giờ.`,
+          related_record_id: rental._id,
+        });
+      } catch (err) {}
     }
 
     // Đồng bộ hủy RentalRequest liên quan
@@ -1338,10 +1367,130 @@ class RentalService {
     } catch (e) { }
 
     return {
-      message: "Rental request cancelled successfully",
+      message: isPaid
+        ? "Đã hủy đơn thuê thành công! Thông tin tài khoản nhận hoàn tiền của bạn đã được lưu, hệ thống sẽ hoàn tiền trong vòng 24h."
+        : "Hủy đơn thuê thành công.",
       rental: await Rental.findById(rental._id)
         .populate("equipment", "title images dailyRate")
         .populate("owner", "name email"),
+    };
+  }
+
+  /**
+   * UC_R10_EXT: Gia hạn thời gian thuê thiết bị (Request Rental Extension)
+   */
+  async extendRental(rentalId, renterUser, extendData = {}) {
+    const rawDays = Number(extendData?.extraDays);
+    const extraDays = Number.isInteger(rawDays) && rawDays > 0 ? rawDays : 1;
+    const note = (extendData?.note || "").trim();
+
+    const rental = await Rental.findById(rentalId).populate("equipment owner");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const renterId = rental.renter?._id ? String(rental.renter._id) : String(rental.renter);
+    const currentUserId = String(renterUser._id || renterUser.id);
+    if (renterId !== currentUserId) {
+      throw new AppError(403, "Bạn không có quyền gia hạn đơn thuê này");
+    }
+
+    const normStatus = String(rental.status).toUpperCase();
+    const extendableStatuses = [
+      "PAID",
+      "CONFIRMED",
+      "ACTIVE",
+      "IN_PROGRESS",
+    ];
+    if (!extendableStatuses.includes(normStatus)) {
+      throw new AppError(
+        400,
+        `Chỉ có thể gia hạn khi đơn đang trong quá trình thuê hoặc đã thanh toán (Trạng thái hiện tại: ${rental.status})`
+      );
+    }
+
+    // Tính ngày kết thúc mới
+    const currentEndDate = new Date(rental.endDate);
+    const newEndDate = new Date(currentEndDate);
+    newEndDate.setDate(newEndDate.getDate() + extraDays);
+
+    // Kiểm tra xem thiết bị có bị trùng lịch với đơn khác không
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const availCheck = await this.checkAvailability(
+      equipmentId,
+      currentEndDate,
+      newEndDate,
+      rental._id
+    );
+
+    if (!availCheck.available) {
+      throw new AppError(
+        400,
+        `Thiết bị đã có khách khác đặt trước trong khoảng thời gian này (từ ${currentEndDate.toLocaleDateString("vi-VN")} đến ${newEndDate.toLocaleDateString("vi-VN")}). Không thể gia hạn thêm ${extraDays} ngày.`
+      );
+    }
+
+    // Tính phụ phí gia hạn
+    const dailyRate = rental.dailyRate || rental.equipment?.dailyRate || 0;
+    const extraFee = dailyRate * extraDays;
+
+    rental.endDate = newEndDate;
+    rental.totalDays = (rental.totalDays || 0) + extraDays;
+    rental.rentalFee = (rental.rentalFee || 0) + extraFee;
+    rental.totalAmount = (rental.totalAmount || 0) + extraFee;
+
+    if (!Array.isArray(rental.extensions)) {
+      rental.extensions = [];
+    }
+
+    rental.extensions.push({
+      extendedAt: new Date(),
+      extraDays,
+      extraFee,
+      previousEndDate: currentEndDate,
+      newEndDate: newEndDate,
+      note,
+    });
+
+    await rental.save();
+
+    // Thông báo cho Renter & Owner
+    const ownerId = rental.owner?._id || rental.owner;
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: ownerId,
+          title: `⏳ Khách đã gia hạn đơn thuê #${rental.rentalCode}`,
+          message: `Khách thuê (${renterUser.name}) đã gia hạn thuê thiết bị "${rental.equipment?.title || "thiết bị"}" thêm ${extraDays} ngày (đến ngày ${newEndDate.toLocaleDateString("vi-VN")}). Phụ phí: ${extraFee.toLocaleString("vi-VN")} đ.`,
+          related_record_id: rental._id,
+        });
+
+        await UserNotification.create({
+          user_id: renterUser._id,
+          title: `✅ Gia hạn thuê thành công #${rental.rentalCode}`,
+          message: `Bạn đã gia hạn đơn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới là: ${rental.returnTime || "17:00"} ngày ${newEndDate.toLocaleDateString("vi-VN")}.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (e) {}
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      io.emit("rental:extended", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        extraDays,
+        extraFee,
+        newEndDate,
+      });
+    } catch (e) {}
+
+    return {
+      success: true,
+      message: `Gia hạn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới: ${newEndDate.toLocaleDateString("vi-VN")}.`,
+      rental,
     };
   }
 

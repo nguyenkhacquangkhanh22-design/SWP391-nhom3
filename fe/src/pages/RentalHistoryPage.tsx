@@ -102,10 +102,19 @@ export default function RentalHistoryPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [isDisputing, setIsDisputing] = useState(false);
 
-  // Modal hủy đơn (UC_R13)
-  const [cancellingRentalId, setCancellingRentalId] = useState<string | null>(null);
+  // Modal hủy đơn & Hoàn tiền (UC_R13)
+  const [cancellingRental, setCancellingRental] = useState<Rental | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [refundBankName, setRefundBankName] = useState("");
+  const [refundAccountNumber, setRefundAccountNumber] = useState("");
+  const [refundAccountName, setRefundAccountName] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Modal gia hạn thuê (UC_R10_EXT)
+  const [extendingRental, setExtendingRental] = useState<Rental | null>(null);
+  const [extraDays, setExtraDays] = useState(1);
+  const [extensionNote, setExtensionNote] = useState("");
+  const [isExtending, setIsExtending] = useState(false);
 
   // State thanh toán (UC_R09)
   const [payingRentalId, setPayingRentalId] = useState<string | null>(null);
@@ -348,21 +357,37 @@ export default function RentalHistoryPage() {
     }
   };
 
-  // Hủy đơn thuê (UC_R13)
+  // Hủy đơn thuê & Hoàn tiền (UC_R13)
   const handleCancelSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cancellingRentalId) return;
+    if (!cancellingRental) return;
     const finalReason = cancelReason.trim() || "Khách thay đổi kế hoạch";
+    const isPaid =
+      cancellingRental.payment?.isPaid === true ||
+      cancellingRental.payment?.paymentStatus === "paid" ||
+      String(cancellingRental.status).toUpperCase() === "PAID";
+
+    if (isPaid && (!refundBankName.trim() || !refundAccountNumber.trim() || !refundAccountName.trim())) {
+      setError("Vui lòng nhập đầy đủ thông tin Tên ngân hàng, Số tài khoản và Tên chủ tài khoản để nhận tiền hoàn.");
+      return;
+    }
+
     setIsCancelling(true);
     setError("");
     try {
-      const res = await smartEquipApi.cancelRental(token, cancellingRentalId, {
+      const res = await smartEquipApi.cancelRental(token, cancellingRental._id, {
         reason: finalReason,
+        bankName: refundBankName.trim(),
+        accountNumber: refundAccountNumber.trim(),
+        accountName: refundAccountName.trim(),
       });
       setNotice(res.message || "Hủy đơn thuê thành công.");
-      setCancellingRentalId(null);
+      setCancellingRental(null);
       setCancelReason("");
-      fetchHistory();
+      setRefundBankName("");
+      setRefundAccountNumber("");
+      setRefundAccountName("");
+      fetchHistory(true);
     } catch (err: any) {
       setError(err instanceof Error ? err.message : (err?.message || "Không thể hủy đơn thuê"));
     } finally {
@@ -370,8 +395,41 @@ export default function RentalHistoryPage() {
     }
   };
 
+  // Gia hạn thời gian thuê (UC_R10_EXT)
+  const handleExtendSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendingRental) return;
+    if (extraDays < 1) {
+      setError("Số ngày gia hạn thêm phải từ 1 ngày trở lên.");
+      return;
+    }
+    setIsExtending(true);
+    setError("");
+    try {
+      const res = await smartEquipApi.extendRental(token, extendingRental._id, {
+        extraDays,
+        note: extensionNote.trim(),
+      });
+      setNotice(res.message || `Gia hạn thuê thành công thêm ${extraDays} ngày!`);
+      setExtendingRental(null);
+      setExtraDays(1);
+      setExtensionNote("");
+      fetchHistory(true);
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : (err?.message || "Không thể gia hạn đơn thuê"));
+    } finally {
+      setIsExtending(false);
+    }
+  };
+
   const getStatusBadge = (status: string, paymentStatus?: string) => {
     const s = status.toUpperCase();
+    if (s === "CANCELLED" && paymentStatus === "refund_pending") {
+      return {
+        label: "Đã hủy • Đang xử lý hoàn tiền",
+        className: "bg-amber-500/15 text-amber-300 border-amber-500/40 font-semibold",
+      };
+    }
     if (s === "PAYMENT_PENDING" || paymentStatus === "pending_confirmation") {
       return {
         label: "⏳ Đã chuyển khoản • Chờ Chủ máy xác nhận",
@@ -659,12 +717,23 @@ export default function RentalHistoryPage() {
                 upperStatus === "IN_PROGRESS" ||
                 upperStatus === "RETURNED";
               const canCancel =
-                upperStatus === "PENDING" ||
-                upperStatus === "APPROVED" ||
-                upperStatus === "CONTRACT_PENDING" ||
-                upperStatus === "CONTRACT_SIGNED" ||
-                upperStatus === "PAYMENT_PENDING" ||
-                upperStatus === "PAYMENT_REJECTED";
+                (upperStatus === "PENDING" ||
+                  upperStatus === "CONTRACT_PENDING" ||
+                  upperStatus === "CONTRACT_SIGNED" ||
+                  upperStatus === "PAYMENT_PENDING" ||
+                  upperStatus === "PAYMENT_REJECTED" ||
+                  upperStatus === "APPROVED" ||
+                  upperStatus === "PAID") &&
+                !isReturned &&
+                !isCompleted;
+
+              const canExtend =
+                (upperStatus === "PAID" ||
+                  upperStatus === "ACTIVE" ||
+                  upperStatus === "CONFIRMED" ||
+                  upperStatus === "IN_PROGRESS") &&
+                !isReturned &&
+                !isCompleted;
 
               return (
                 <div
@@ -1174,11 +1243,35 @@ export default function RentalHistoryPage() {
                       <span>Nhắn tin với Chủ máy</span>
                     </button>
 
+                    {/* Nút gia hạn thuê (UC_R10_EXT) */}
+                    {canExtend && (
+                      <button
+                        onClick={() => {
+                          setExtendingRental(r);
+                          setExtraDays(1);
+                          setExtensionNote("");
+                          setError("");
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-purple-600/25 text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Gia hạn thêm ngày thuê cho đơn này"
+                      >
+                        <span>⏳</span>
+                        <span>Gia hạn thuê</span>
+                      </button>
+                    )}
+
                     {/* Nút hủy yêu cầu (UC_R13) */}
                     {canCancel && (
                       <button
-                        onClick={() => { setCancellingRentalId(r._id); setError(""); setCancelReason("Thay đổi kế hoạch"); }}
-                        className="px-3 py-1.5 bg-[#1c2436] hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 font-semibold rounded-xl text-xs border border-[#27344c] text-center"
+                        onClick={() => {
+                          setCancellingRental(r);
+                          setError("");
+                          setCancelReason("Thay đổi kế hoạch");
+                          setRefundBankName("");
+                          setRefundAccountNumber("");
+                          setRefundAccountName("");
+                        }}
+                        className="px-3 py-1.5 bg-[#1c2436] hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 font-semibold rounded-xl text-xs border border-[#27344c] text-center cursor-pointer"
                       >
                         Hủy yêu cầu
                       </button>
@@ -1475,28 +1568,209 @@ setNotice(
         />
       )}
 
-      {/* Modal Hủy yêu cầu (UC_R13) */}
-      {cancellingRentalId && (
+      {/* Modal Hủy yêu cầu & Hoàn tiền (UC_R13) */}
+      {cancellingRental && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-[#141d2d] border border-[#263550] w-full max-w-md rounded-2xl p-6 shadow-2xl relative space-y-4">
+          <div className="bg-[#141d2d] border border-[#263550] w-full max-w-lg rounded-2xl p-6 shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-[#212c42]">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span className="text-rose-400">🗑️</span> Xác Nhận Hủy Đơn Thuê
+                <span className="text-rose-400">🗑️</span> Xác Nhận Hủy Đơn Thuê #{cancellingRental.rentalCode}
               </h3>
               <button
                 type="button"
-                onClick={() => setCancellingRentalId(null)}
+                onClick={() => setCancellingRental(null)}
                 className="text-slate-400 hover:text-white text-lg font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Vui lòng chọn hoặc nhập lý do bạn muốn hủy đơn thuê này. Nếu bạn đã thanh toán, hệ thống sẽ tự động chuyển trạng thái hoàn tiền.
-            </p>
+            {(() => {
+              const isPaid =
+                cancellingRental.payment?.isPaid === true ||
+                cancellingRental.payment?.paymentStatus === "paid" ||
+                String(cancellingRental.status).toUpperCase() === "PAID";
 
-            <form onSubmit={handleCancelSubmit} className="space-y-3.5 text-xs">
+              return (
+                <form onSubmit={handleCancelSubmit} className="space-y-4 text-xs">
+                  {error && (
+                    <div className="p-3 bg-rose-950/70 border border-rose-500/60 rounded-xl text-xs text-rose-200 font-semibold flex items-center gap-2">
+                      <span>⚠️</span>
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  {isPaid ? (
+                    <div className="p-4 bg-gradient-to-r from-amber-950/80 to-emerald-950/50 border border-amber-500/50 rounded-xl space-y-2 text-xs">
+                      <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
+                        <span>💰</span>
+                        <span>Đơn hàng đã thanh toán: {(cancellingRental.totalAmount || cancellingRental.rentalFee).toLocaleString("vi-VN")} đ</span>
+                      </div>
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        Chính sách SmartEquip cam kết <strong>hoàn tiền 100%</strong> khi bạn hủy trước ngày nhận thiết bị. Vui lòng cung cấp tài khoản ngân hàng để bộ phận kế toán hoàn tiền trong vòng <strong>24 giờ</strong>:
+                      </p>
+
+                      <div className="space-y-2.5 pt-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-200 uppercase tracking-wider mb-1">
+                            Ngân hàng thụ hưởng <span className="text-rose-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="VD: Vietcombank, MB Bank, Techcombank, VPBank, ACB..."
+                            value={refundBankName}
+                            onChange={(e) => setRefundBankName(e.target.value)}
+                            required
+                            className="w-full bg-[#1b263b] border border-[#2b3a56] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-400"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-amber-200 uppercase tracking-wider mb-1">
+                              Số tài khoản <span className="text-rose-400">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Nhập số tài khoản"
+                              value={refundAccountNumber}
+                              onChange={(e) => setRefundAccountNumber(e.target.value)}
+                              required
+                              className="w-full bg-[#1b263b] border border-[#2b3a56] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-400 font-mono font-semibold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-amber-200 uppercase tracking-wider mb-1">
+                              Tên chủ tài khoản <span className="text-rose-400">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="NGUYEN VAN A"
+                              value={refundAccountName}
+                              onChange={(e) => setRefundAccountName(e.target.value.toUpperCase())}
+                              required
+                              className="w-full bg-[#1b263b] border border-[#2b3a56] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-400 font-bold uppercase"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Vui lòng chọn hoặc nhập lý do bạn muốn hủy đơn thuê này. Đơn chưa thanh toán sẽ được hủy ngay lập tức và thiết bị sẽ được mở lại cho người khác thuê.
+                    </p>
+                  )}
+
+                  {/* Gợi ý lý do nhanh (Quick Reason Chips) */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      Lý do thường gặp:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Thay đổi kế hoạch",
+                        "Đổi ngày thuê khác",
+                        "Tìm được thiết bị phù hợp hơn",
+                        "Lý do cá nhân",
+                        "Chưa sắp xếp được thời gian",
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setCancelReason(chip)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border cursor-pointer ${
+                            cancelReason === chip
+                              ? "bg-rose-600/30 border-rose-500 text-rose-200"
+                              : "bg-[#1b273d] border-[#2b3a56] text-slate-300 hover:border-slate-400 hover:text-white"
+                          }`}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Chi tiết lý do:
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Nhập chi tiết lý do bạn muốn hủy đơn..."
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-3 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
+                    <button
+                      type="button"
+                      onClick={() => setCancellingRental(null)}
+                      disabled={isCancelling}
+                      className="px-4 py-2 bg-[#1c2436] hover:bg-[#253248] text-slate-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCancelling}
+                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isCancelling ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          <span>Đang xử lý...</span>
+                        </>
+                      ) : (
+                        <span>{isPaid ? "Xác nhận hủy & Hoàn tiền" : "Xác nhận hủy đơn"}</span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Gia Hạn Thuê Thiết Bị (UC_R10_EXT) */}
+      {extendingRental && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#141d2d] border border-purple-500/40 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span className="text-purple-400">⏳</span> Gia Hạn Thuê Thiết Bị #{extendingRental.rentalCode}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setExtendingRental(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#172033] border border-[#223049] rounded-xl space-y-1 text-xs">
+              <div className="font-bold text-white text-sm">
+                {extendingRental.equipment?.title || "Thiết bị"}
+              </div>
+              <div className="text-slate-400">
+                Hạn trả máy hiện tại:{" "}
+                <strong className="text-amber-300">
+                  {extendingRental.returnTime || "17:00"} ngày {new Date(extendingRental.endDate).toLocaleDateString("vi-VN")}
+                </strong>
+              </div>
+              <div className="text-slate-400">
+                Đơn giá thuê:{" "}
+                <strong className="text-orange-400">
+                  {(extendingRental.dailyRate || extendingRental.equipment?.dailyRate || 0).toLocaleString("vi-VN")} đ / ngày
+                </strong>
+              </div>
+            </div>
+
+            <form onSubmit={handleExtendSubmit} className="space-y-4 text-xs">
               {error && (
                 <div className="p-3 bg-rose-950/70 border border-rose-500/60 rounded-xl text-xs text-rose-200 font-semibold flex items-center gap-2">
                   <span>⚠️</span>
@@ -1504,69 +1778,101 @@ setNotice(
                 </div>
               )}
 
-              {/* Gợi ý lý do nhanh (Quick Reason Chips) */}
+              {/* Chọn số ngày gia hạn thêm */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Lý do thường gặp (Bấm để chọn nhanh):
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Chọn số ngày gia hạn thêm:
                 </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    "Thay đổi kế hoạch",
-                    "Đổi ngày thuê khác",
-                    "Tìm được thiết bị phù hợp hơn",
-                    "Lý do cá nhân",
-                    "Chưa sắp xếp được thời gian",
-                  ].map((chip) => (
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[1, 2, 3, 5].map((d) => (
                     <button
-                      key={chip}
+                      key={d}
                       type="button"
-                      onClick={() => setCancelReason(chip)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
-                        cancelReason === chip
-                          ? "bg-rose-600/30 border-rose-500 text-rose-200"
-                          : "bg-[#1b273d] border-[#2b3a56] text-slate-300 hover:border-slate-400 hover:text-white"
+                      onClick={() => setExtraDays(d)}
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        extraDays === d
+                          ? "bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30"
+                          : "bg-[#1b263b] border-[#2b3a56] text-slate-300 hover:border-slate-400"
                       }`}
                     >
-                      {chip}
+                      +{d} ngày
                     </button>
                   ))}
                 </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 text-xs whitespace-nowrap">Hoặc nhập số ngày khác:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={extraDays}
+                    onChange={(e) => setExtraDays(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-24 bg-[#1b263b] border border-[#2b3a56] rounded-xl px-3 py-1.5 text-white text-xs font-bold text-center focus:outline-none focus:border-purple-400"
+                  />
+                  <span className="text-slate-400 text-xs">ngày</span>
+                </div>
               </div>
 
+              {/* Tóm tắt chi phí & Hạn trả mới */}
+              {(() => {
+                const currentEnd = new Date(extendingRental.endDate);
+                const newEnd = new Date(currentEnd);
+                newEnd.setDate(newEnd.getDate() + extraDays);
+                const extraFee = (extendingRental.dailyRate || extendingRental.equipment?.dailyRate || 0) * extraDays;
+
+                return (
+                  <div className="p-3.5 bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-500/40 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300">Hạn trả máy mới sau gia hạn:</span>
+                      <strong className="text-emerald-400 font-bold">
+                        {extendingRental.returnTime || "17:00"} ngày {newEnd.toLocaleDateString("vi-VN")}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-purple-500/20">
+                      <span className="text-slate-300">Phụ phí gia hạn ({extraDays} ngày):</span>
+                      <strong className="text-orange-400 text-sm font-black">
+                        +{extraFee.toLocaleString("vi-VN")} đ
+                      </strong>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Ghi chú thêm cho Chủ máy */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Chi tiết lý do:
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Ghi chú cho Chủ máy (Tùy chọn):
                 </label>
                 <textarea
-                  rows={3}
-                  placeholder="Nhập lý do hủy (hoặc chọn các lý do nhanh ở trên)..."
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-3 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors"
+                  rows={2}
+                  placeholder="VD: Cần quay thêm cảnh bổ sung vào chiều mai..."
+                  value={extensionNote}
+                  onChange={(e) => setExtensionNote(e.target.value)}
+                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 text-xs"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
                 <button
                   type="button"
-                  onClick={() => setCancellingRentalId(null)}
-                  disabled={isCancelling}
-                  className="px-4 py-2 bg-[#1c2436] hover:bg-[#253248] text-slate-300 font-semibold rounded-xl text-xs transition-colors"
+                  onClick={() => setExtendingRental(null)}
+                  disabled={isExtending}
+                  className="px-4 py-2 bg-[#1c2436] hover:bg-[#253248] text-slate-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
                 >
                   Đóng
                 </button>
                 <button
                   type="submit"
-                  disabled={isCancelling}
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
+                  disabled={isExtending}
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-purple-600/30 flex items-center gap-1.5 cursor-pointer"
                 >
-                  {isCancelling ? (
+                  {isExtending ? (
                     <>
                       <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      <span>Đang hủy...</span>
+                      <span>Đang gia hạn...</span>
                     </>
                   ) : (
-                    <span>Xác nhận hủy đơn</span>
+                    <span>Xác nhận gia hạn (+{extraDays} ngày)</span>
                   )}
                 </button>
               </div>

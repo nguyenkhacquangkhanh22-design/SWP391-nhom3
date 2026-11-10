@@ -252,11 +252,28 @@ export const smartEquipApi = {
     }>(`/api/rentals/history${qs ? `?${qs}` : ""}`, {}, token);
   },
 
+  // UC_R10_EXT: Gia hạn thời gian thuê thiết bị
+  extendRental: (
+    token: string,
+    rentalId: string,
+    data: { extraDays: number; note?: string },
+  ) =>
+    request<{ success: boolean; message: string; rental: Rental }>(
+      `/api/rentals/${rentalId}/extend`,
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
   // UC_R13: Hủy yêu cầu thuê
   cancelRental: (
     token: string,
     rentalId: string,
-    data: { reason: string },
+    data: {
+      reason: string;
+      bankName?: string;
+      accountNumber?: string;
+      accountName?: string;
+    },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/cancel`,

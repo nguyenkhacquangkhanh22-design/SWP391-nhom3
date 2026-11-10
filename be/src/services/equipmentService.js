@@ -184,6 +184,32 @@ class EquipmentService {
     equipment.owner = equipment.owner || equipment.owner_id;
     equipment.owner_id = equipment.owner_id || equipment.owner;
 
+    // Lấy danh sách đánh giá thực tế của các khách thuê trước
+    try {
+      const Rental = require("../models/Rental");
+      const pastRentals = await Rental.find({
+        equipment: id,
+        "review.rating": { $exists: true, $ne: null },
+      })
+        .select("rentalCode review renter createdAt")
+        .populate("renter", "name avatarUrl User_Id")
+        .sort({ "review.reviewedAt": -1, "review.createdAt": -1, updatedAt: -1 })
+        .limit(30)
+        .lean();
+
+      equipment.reviews = pastRentals.map((r) => ({
+        _id: r._id,
+        rentalCode: r.rentalCode,
+        rating: r.review?.rating || 5,
+        comment: r.review?.comment || "",
+        reviewedAt: r.review?.reviewedAt || r.review?.createdAt || r.createdAt,
+        renterName: r.renter?.name || "Khách thuê SmartEquip",
+        renterAvatar: r.renter?.avatarUrl,
+      }));
+    } catch (e) {
+      equipment.reviews = [];
+    }
+
     return equipment;
   }
 
