@@ -3,6 +3,9 @@ import type {
   BankAccount,
   PendingBankAccountItem,
   WithdrawalRequest,
+  WalletTransaction,
+  TransactionFilterParams,
+  TransactionsResponse,
 } from "../types/wallet";
 
 const getHeaders = (token?: string | null) => ({
@@ -17,6 +20,7 @@ export const walletApi = {
     const res = await axios.get<{
       success: boolean;
       walletBalance: number;
+      pendingBalance?: number;
       bankAccounts: BankAccount[];
     }>("/api/owners/bank-accounts", getHeaders(token));
     return res.data;
@@ -65,6 +69,35 @@ export const walletApi = {
       success: boolean;
       data: WithdrawalRequest[];
     }>("/api/owners/withdrawals", getHeaders(token));
+    return res.data;
+  },
+
+  // ================= UC_OWNER_08: LỊCH SỬ BIẾN ĐỘNG SỐ DƯ =================
+
+  // Lấy danh sách lịch sử biến động số dư (kèm bộ lọc & phân trang)
+  getOwnerTransactions: async (
+    token?: string | null,
+    params?: TransactionFilterParams
+  ) => {
+    const res = await axios.get<TransactionsResponse>(
+      "/api/owners/wallet/transactions",
+      {
+        ...getHeaders(token),
+        params,
+      }
+    );
+    return res.data;
+  },
+
+  // Xem chi tiết 1 giao dịch biến động số dư
+  getOwnerTransactionDetail: async (
+    token: string | null | undefined,
+    id: string
+  ) => {
+    const res = await axios.get<{
+      success: boolean;
+      data: WalletTransaction;
+    }>(`/api/owners/wallet/transactions/${id}`, getHeaders(token));
     return res.data;
   },
 

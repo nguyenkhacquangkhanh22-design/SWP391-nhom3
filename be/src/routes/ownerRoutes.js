@@ -73,4 +73,8 @@ router.delete("/bank-accounts/:accountId", asyncHandler(walletController.removeB
 router.post("/withdraw", asyncHandler(walletController.createWithdrawal));
 router.get("/withdrawals", asyncHandler(walletController.getOwnerWithdrawals));
 
+// 9. Lịch sử biến động số dư (UC_OWNER_08: Owner Balance History)
+router.get("/wallet/transactions", asyncHandler(walletController.getOwnerTransactions));
+router.get("/wallet/transactions/:id", asyncHandler(walletController.getOwnerTransactionDetail));
+
 module.exports = router;

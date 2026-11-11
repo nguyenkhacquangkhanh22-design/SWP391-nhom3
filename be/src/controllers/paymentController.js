@@ -259,9 +259,39 @@ const paymentController = {
         try {
           const User = require("../models/User");
           if (paidAmount > 0) {
-            await User.findByIdAndUpdate(ownerId, {
-              $inc: { walletBalance: paidAmount },
-            });
+            const ownerUser = await User.findById(ownerId);
+            const balanceBefore = ownerUser ? (ownerUser.walletBalance || 0) : 0;
+            const updatedOwner = await User.findByIdAndUpdate(
+              ownerId,
+              { $inc: { walletBalance: paidAmount } },
+              { new: true }
+            );
+            const balanceAfter = updatedOwner ? updatedOwner.walletBalance : balanceBefore + paidAmount;
+
+            // Ghi nhận lịch sử biến động số dư (UC_OWNER_08)
+            try {
+              const walletTransactionService = require("../services/walletTransactionService");
+              await walletTransactionService.recordTransaction({
+                ownerId,
+                type: "RENTAL_INCOME",
+                direction: "IN",
+                amount: paidAmount,
+                balanceBefore,
+                balanceAfter,
+                referenceId: rental._id,
+                referenceModel: "Rental",
+                referenceCode: rental.rentalCode || `#${rental._id.toString().slice(-6)}`,
+                description: `Nhận thanh toán tiền thuê từ đơn #${rental.rentalCode} (${equipmentTitle})`,
+                status: "SUCCESS",
+                metadata: {
+                  renterName,
+                  equipmentTitle,
+                  rentalCode: rental.rentalCode,
+                },
+              });
+            } catch (txnErr) {
+              console.warn("Ghi nhận biến động số dư ví thất bại:", txnErr.message);
+            }
           }
         } catch (walletErr) {
           console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);
@@ -408,9 +438,39 @@ const paymentController = {
         try {
           const User = require("../models/User");
           if (paidAmount > 0) {
-            await User.findByIdAndUpdate(ownerId, {
-              $inc: { walletBalance: paidAmount },
-            });
+            const ownerUser = await User.findById(ownerId);
+            const balanceBefore = ownerUser ? (ownerUser.walletBalance || 0) : 0;
+            const updatedOwner = await User.findByIdAndUpdate(
+              ownerId,
+              { $inc: { walletBalance: paidAmount } },
+              { new: true }
+            );
+            const balanceAfter = updatedOwner ? updatedOwner.walletBalance : balanceBefore + paidAmount;
+
+            // Ghi nhận lịch sử biến động số dư (UC_OWNER_08)
+            try {
+              const walletTransactionService = require("../services/walletTransactionService");
+              await walletTransactionService.recordTransaction({
+                ownerId,
+                type: "RENTAL_INCOME",
+                direction: "IN",
+                amount: paidAmount,
+                balanceBefore,
+                balanceAfter,
+                referenceId: rental._id,
+                referenceModel: "Rental",
+                referenceCode: rental.rentalCode || `#${rental._id.toString().slice(-6)}`,
+                description: `Nhận thanh toán tiền thuê từ đơn #${rental.rentalCode} (${equipmentTitle})`,
+                status: "SUCCESS",
+                metadata: {
+                  renterName,
+                  equipmentTitle,
+                  rentalCode: rental.rentalCode,
+                },
+              });
+            } catch (txnErr) {
+              console.warn("Ghi nhận biến động số dư ví thất bại:", txnErr.message);
+            }
           }
         } catch (walletErr) {
           console.warn("Cộng tiền ví trung gian cho Owner thất bại:", walletErr.message);

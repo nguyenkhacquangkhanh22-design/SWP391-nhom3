@@ -1,5 +1,7 @@
 const User = require("../models/User");
 const WithdrawalRequest = require("../models/WithdrawalRequest");
+const WalletTransaction = require("../models/WalletTransaction");
+const walletTransactionService = require("../services/walletTransactionService");
 const AppError = require("../utils/AppError");
 
 const walletController = {
@@ -69,6 +71,7 @@ const walletController = {
   /**
    * UC_W02: Lấy số dư ví trung gian và danh sách tài khoản ngân hàng của Owner
    * GET /api/owners/bank-accounts
+   * Bao gồm Số dư hiện tại (Available Balance) và Số dư đang chờ xử lý (Pending Balance)
    */
   async getOwnerBankAccountsAndBalance(req, res) {
     const user = await User.findById(req.user._id).select("walletBalance bankAccounts name email phone");
@@ -76,9 +79,17 @@ const walletController = {
       throw new AppError(404, "Không tìm thấy thông tin người dùng.");
     }
 
+    // Tính tổng số tiền đang đóng băng / chờ xử lý (lệnh rút PENDING)
+    const pendingWithdrawals = await WithdrawalRequest.find({
+      ownerId: req.user._id,
+      status: "PENDING",
+    }).select("amount");
+    const pendingBalance = pendingWithdrawals.reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+
     return res.status(200).json({
       success: true,
       walletBalance: user.walletBalance || 0,
+      pendingBalance,
       bankAccounts: user.bankAccounts || [],
     });
   },
@@ -209,6 +220,30 @@ const walletController = {
       status: "PENDING",
       createdAt: new Date(),
     });
+
+    // 5. Ghi nhận lịch sử biến động số dư (UC_OWNER_08)
+    try {
+      await walletTransactionService.recordTransaction({
+        ownerId: user._id,
+        type: "WITHDRAWAL",
+        direction: "OUT",
+        amount: withdrawAmount,
+        balanceBefore: currentBalance,
+        balanceAfter: user.walletBalance,
+        referenceId: withdrawal._id,
+        referenceModel: "WithdrawalRequest",
+        referenceCode: `WTH-${withdrawal._id.toString().slice(-6).toUpperCase()}`,
+        description: `Yêu cầu rút ${withdrawAmount.toLocaleString("vi-VN")} đ về ${account.bankName} (${account.accountNumber})`,
+        status: "PENDING",
+        metadata: {
+          bankName: account.bankName,
+          accountNumber: account.accountNumber,
+          accountHolderName: account.accountHolderName,
+        },
+      });
+    } catch (txnErr) {
+      console.warn("Ghi nhận biến động số dư rút tiền thất bại:", txnErr.message);
+    }
 
     return res.status(201).json({
       success: true,
@@ -377,6 +412,16 @@ const walletController = {
     withdrawal.adminNote = req.body?.note || "Admin xác nhận đã chuyển khoản giả lập thành công";
     await withdrawal.save();
 
+    // Cập nhật trạng thái giao dịch biến động số dư thành SUCCESS
+    try {
+      await WalletTransaction.findOneAndUpdate(
+        { referenceId: withdrawal._id, type: "WITHDRAWAL" },
+        { status: "SUCCESS" }
+      );
+    } catch (txnErr) {
+      console.warn("Cập nhật trạng thái giao dịch ví thất bại:", txnErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: `Đã xác nhận chuyển tiền ${withdrawal.amount.toLocaleString("vi-VN")} đ thành công cho ${withdrawal.bankInfoSnapshot.accountHolderName}.`,
@@ -406,8 +451,10 @@ const walletController = {
 
     // Hoàn tiền lại ví của Owner
     const user = await User.findById(withdrawal.ownerId);
+    let previousBal = 0;
     if (user) {
-      user.walletBalance = (user.walletBalance || 0) + withdrawal.amount;
+      previousBal = user.walletBalance || 0;
+      user.walletBalance = previousBal + withdrawal.amount;
       await user.save();
     }
 
@@ -417,11 +464,69 @@ const walletController = {
     withdrawal.completedAt = new Date();
     await withdrawal.save();
 
+    // Cập nhật giao dịch rút tiền cũ sang REJECTED và tạo giao dịch hoàn tiền WITHDRAWAL_REFUND
+    try {
+      await WalletTransaction.findOneAndUpdate(
+        { referenceId: withdrawal._id, type: "WITHDRAWAL" },
+        { status: "REJECTED" }
+      );
+
+      await walletTransactionService.recordTransaction({
+        ownerId: withdrawal.ownerId,
+        type: "WITHDRAWAL_REFUND",
+        direction: "IN",
+        amount: withdrawal.amount,
+        balanceBefore: previousBal,
+        balanceAfter: user ? user.walletBalance : previousBal + withdrawal.amount,
+        referenceId: withdrawal._id,
+        referenceModel: "WithdrawalRequest",
+        referenceCode: `REF-${withdrawal._id.toString().slice(-6).toUpperCase()}`,
+        description: `Hoàn tiền ví do lệnh rút bị từ chối (${withdrawal.adminNote})`,
+        status: "SUCCESS",
+        metadata: {
+          adminNote: withdrawal.adminNote,
+          originalAmount: withdrawal.amount,
+        },
+      });
+    } catch (txnErr) {
+      console.warn("Ghi nhận biến động số dư hoàn tiền thất bại:", txnErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: `Đã từ chối lệnh rút tiền và hoàn trả ${withdrawal.amount.toLocaleString("vi-VN")} đ vào ví của Owner.`,
       data: withdrawal,
       refundedBalance: user?.walletBalance,
+    });
+  },
+
+  /**
+   * UC_OWNER_08: Lấy danh sách lịch sử biến động số dư của Owner (kèm bộ lọc & phân trang)
+   * GET /api/owners/wallet/transactions
+   */
+  async getOwnerTransactions(req, res) {
+    const result = await walletTransactionService.getTransactions(req.user._id, req.query);
+    return res.status(200).json({
+      success: true,
+      data: result.transactions,
+      pagination: result.pagination,
+      summary: result.summary,
+    });
+  },
+
+  /**
+   * UC_OWNER_08: Xem chi tiết 1 giao dịch biến động số dư
+   * GET /api/owners/wallet/transactions/:id
+   */
+  async getOwnerTransactionDetail(req, res) {
+    const { id } = req.params;
+    const transaction = await walletTransactionService.getTransactionById(req.user._id, id);
+    if (!transaction) {
+      throw new AppError(404, "Không tìm thấy giao dịch hoặc bạn không có quyền xem.");
+    }
+    return res.status(200).json({
+      success: true,
+      data: transaction,
     });
   },
 };

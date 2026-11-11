@@ -746,6 +746,44 @@ async function verifyPayment(req, res) {
       note || "Rental Moderator đã đối chiếu chuyển khoản QR và xác nhận thanh toán thành công.";
     await rental.save();
 
+    // Cộng tiền ví trung gian cho Owner và ghi nhận biến động số dư (UC_OWNER_08)
+    const ownerId = rental.owner?._id || rental.owner;
+    const paidAmount = Number(rental.totalAmount) || Number(rental.rentalFee) || 0;
+    if (ownerId && paidAmount > 0) {
+      try {
+        const User = require("../models/User");
+        const ownerUser = await User.findById(ownerId);
+        const balanceBefore = ownerUser ? (ownerUser.walletBalance || 0) : 0;
+        const updatedOwner = await User.findByIdAndUpdate(
+          ownerId,
+          { $inc: { walletBalance: paidAmount } },
+          { new: true }
+        );
+        const balanceAfter = updatedOwner ? updatedOwner.walletBalance : balanceBefore + paidAmount;
+
+        const walletTransactionService = require("../services/walletTransactionService");
+        await walletTransactionService.recordTransaction({
+          ownerId,
+          type: "RENTAL_INCOME",
+          direction: "IN",
+          amount: paidAmount,
+          balanceBefore,
+          balanceAfter,
+          referenceId: rental._id,
+          referenceModel: "Rental",
+          referenceCode: rental.rentalCode || `#${rental._id.toString().slice(-6)}`,
+          description: `Nhận thanh toán tiền thuê từ đơn #${rental.rentalCode} (${rental.equipment?.title || "Thiết bị"})`,
+          status: "SUCCESS",
+          metadata: {
+            verifiedByModerator: true,
+            rentalCode: rental.rentalCode,
+          },
+        });
+      } catch (walletErr) {
+        console.warn("Cộng tiền ví trung gian khi Moderator duyệt thanh toán thất bại:", walletErr.message);
+      }
+    }
+
     const w1 = await notifyUsers(
       [rental.renter?._id || rental.renter],
       `✅ Đã xác nhận thanh toán QR đơn #${rental.rentalCode}`,
