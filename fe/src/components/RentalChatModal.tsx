@@ -468,7 +468,7 @@ export default function RentalChatModal({
                   className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[11px] rounded-lg shadow-md flex items-center gap-1 cursor-pointer"
                 >
                   <span>✍️</span>
-                  <span>Ký hợp đồng ngay</span>
+                  <span>Ký hợp đồng & Thanh toán</span>
                 </button>
               )}
             </div>

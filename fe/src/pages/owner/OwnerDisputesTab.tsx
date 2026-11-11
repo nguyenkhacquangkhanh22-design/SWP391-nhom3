@@ -107,62 +107,119 @@ export default function OwnerDisputesTab({ contracts, token, onError, onSuccess 
               <thead>
                 <tr>
                   <th>Mã khiếu nại</th>
-                  <th>Hợp đồng</th>
+                  <th>Hợp đồng / Đơn thuê</th>
                   <th>Người bị khiếu nại</th>
-                  <th>Tiêu đề & Lý do</th>
-                  <th>Số tiền yêu cầu bồi thường</th>
+                  <th>Mức độ & Lý do</th>
+                  <th>Bằng chứng</th>
+                  <th>Số tiền yêu cầu</th>
                   <th>Trạng thái</th>
                   <th>Kết luận giải quyết</th>
                 </tr>
               </thead>
               <tbody>
-                {disputes.map((d) => (
-                  <tr key={d._id}>
-                    <td>
-                      <strong style={{ color: "#fff" }}>{d.dispute_code}</strong>
-                      <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                        {new Date(d.createdAt).toLocaleDateString("vi-VN")}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
-                        {d.contract_id?.contract_code || "HĐ"}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500, color: "#fff" }}>{d.renter_id?.name}</div>
-                      <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                        {d.renter_id?.phone || d.renter_id?.email}
-                      </span>
-                    </td>
-                    <td>
-                      <strong style={{ color: "#fff" }}>{d.title}</strong>
-                      <div style={{ fontSize: "0.8rem", color: "var(--orange)" }}>{d.reason}</div>
-                      <div style={{ fontSize: "0.78rem", color: "var(--muted)", maxWidth: "250px" }}>
-                        {d.description}
-                      </div>
-                    </td>
-                    <td style={{ color: "#ef4444", fontWeight: 600 }}>
-                      {d.claimed_compensation.toLocaleString("vi-VN")} đ
-                    </td>
-                    <td>
-                      <span className={`status-badge status-${d.status}`}>
-                        {d.status === "pending_review"
-                          ? "⏳ Chờ thẩm định"
-                          : d.status === "investigating"
-                          ? "🔍 Đang điều tra"
-                          : d.status === "resolved"
-                          ? "✅ Đã giải quyết"
-                          : "❌ Bác bỏ"}
-                      </span>
-                    </td>
-                    <td style={{ maxWidth: "200px" }}>
-                      <span style={{ fontSize: "0.82rem", color: d.resolution_note ? "#10b981" : "var(--muted)" }}>
-                        {d.resolution_note || "Đang xử lý hồ sơ..."}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {disputes.map((d) => {
+                  const level = d.damageLevel || d.damage_level;
+                  const images = d.evidenceImages || d.evidence_urls || [];
+                  const comp = d.claimedAmount ?? d.claimed_compensation ?? 0;
+                  const renter = d.renter_id || (d.rentalOrderId as any)?.renterId;
+                  const orderCode = d.contract_id?.contract_code || (d.rentalOrderId as any)?.rentalCode || "Đơn thuê";
+                  const resolved = d.status === "resolved" || d.status === "RESOLVED_REFUND_OWNER";
+                  const rejected = d.status === "dismissed" || d.status === "REJECTED";
+                  const isPending = d.status === "pending_review" || d.status === "PENDING_ADMIN_REVIEW";
+
+                  return (
+                    <tr key={d._id}>
+                      <td>
+                        <strong style={{ color: "#fff" }}>{d.dispute_code || (d as any).code}</strong>
+                        <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                          {new Date(d.createdAt).toLocaleDateString("vi-VN")}
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: "0.85rem", color: "#38bdf8", fontWeight: 600 }}>
+                          #{orderCode}
+                        </span>
+                        {(d.rentalOrderId as any)?.equipmentTitle && (
+                          <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                            {(d.rentalOrderId as any).equipmentTitle}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500, color: "#fff" }}>{renter?.name || "Khách thuê"}</div>
+                        <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                          {renter?.phone || renter?.email}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                          {level === "MINOR" && (
+                            <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: "6px", background: "rgba(16, 185, 129, 0.2)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)", fontWeight: 700 }}>
+                              🟢 Nhẹ
+                            </span>
+                          )}
+                          {level === "SEVERE" && (
+                            <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: "6px", background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.3)", fontWeight: 700 }}>
+                              🟡 Nặng
+                            </span>
+                          )}
+                          {level === "TOTAL_LOSS" && (
+                            <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: "6px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid rgba(239, 68, 68, 0.3)", fontWeight: 700 }}>
+                              🔴 Hỏng hoàn toàn
+                            </span>
+                          )}
+                          <strong style={{ color: "#fff", fontSize: "0.85rem" }}>{d.title || d.reason}</strong>
+                        </div>
+                        <div style={{ fontSize: "0.78rem", color: "var(--muted)", maxWidth: "250px" }}>
+                          {d.description || d.reason}
+                        </div>
+                      </td>
+                      <td>
+                        {images.length > 0 ? (
+                          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", maxWidth: "90px" }}>
+                            {images.slice(0, 3).map((img, idx) => (
+                              <a key={idx} href={img} target="_blank" rel="noreferrer">
+                                <img
+                                  src={img}
+                                  alt="Bằng chứng"
+                                  style={{ width: "26px", height: "26px", objectFit: "cover", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.15)" }}
+                                />
+                              </a>
+                            ))}
+                            {images.length > 3 && (
+                              <span style={{ fontSize: "0.7rem", color: "var(--muted)", alignSelf: "center" }}>
+                                +{images.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Không có</span>
+                        )}
+                      </td>
+                      <td style={{ color: "#ef4444", fontWeight: 700 }}>
+                        {comp.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td>
+                        <span className={`status-badge status-${d.status}`}>
+                          {isPending
+                            ? "⏳ Chờ Admin duyệt"
+                            : d.status === "investigating"
+                            ? "🔍 Đang điều tra"
+                            : resolved
+                            ? "✅ Đã bồi thường"
+                            : rejected
+                            ? "❌ Bác bỏ"
+                            : d.status}
+                        </span>
+                      </td>
+                      <td style={{ maxWidth: "200px" }}>
+                        <span style={{ fontSize: "0.82rem", color: d.adminNote || d.resolution_note ? (resolved ? "#10b981" : "#f87171") : "var(--muted)" }}>
+                          {d.adminNote || d.resolution_note || "Đang xử lý hồ sơ..."}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

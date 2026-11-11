@@ -1675,7 +1675,7 @@ button[class*="bg-orange-"]:hover {
 /* Tabs Navigation - Modern Floating Pill Bar */
 .owner-tabs-nav {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   background: rgba(14, 21, 37, 0.82);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1689,24 +1689,28 @@ button[class*="bg-orange-"]:hover {
 }
 
 .owner-tabs-nav::-webkit-scrollbar {
-  display: none; /* Hide Chrome/Safari/Edge scrollbar */
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 .owner-tab-btn {
   background: transparent;
   color: #94a3b8;
   border: 1px solid transparent;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 11px;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   position: relative;
+  flex-shrink: 0;
 }
 
 .owner-tab-btn:hover {
@@ -2919,8 +2923,8 @@ textarea.input-field {
 
 .marketplace-hero-gradient-text {
   background: linear-gradient(135deg, #ffffff 25%, #f97316 75%, #fb923c 100%);
-  -webkit-background-clip: text;
   background-clip: text;
+  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -3330,9 +3334,9 @@ textarea.input-field {
   line-height: 1.4;
   margin: 0 0 10px;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
   -webkit-box-orient: vertical;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   transition: color 0.2s ease;
 }

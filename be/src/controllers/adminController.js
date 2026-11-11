@@ -678,10 +678,14 @@ async function getDisputeDetail(req, res) {
 
 async function resolveDispute(req, res) {
   const { id } = req.params;
-  const { status, compensation_approved, resolution_note } = req.body;
+  let { status, compensation_approved, resolution_note } = req.body;
+
+  // Chuẩn hóa status
+  if (status === "RESOLVED_REFUND_OWNER") status = "resolved";
+  if (status === "REJECTED") status = "dismissed";
 
   if (!status || !["resolved", "dismissed", "investigating"].includes(status)) {
-    throw new AppError(400, "Trạng thái phán quyết không hợp lệ ('resolved', 'dismissed', 'investigating')");
+    throw new AppError(400, "Trạng thái phán quyết không hợp lệ ('resolved', 'dismissed', 'investigating', 'RESOLVED_REFUND_OWNER', 'REJECTED')");
   }
 
   const dispute = await Dispute.findById(id).populate("contract_id");
@@ -704,6 +708,48 @@ async function resolveDispute(req, res) {
   }
 
   await dispute.save();
+
+  // Cập nhật trạng thái đơn Rental liên quan (nếu có)
+  const targetRentalId = dispute.rentalOrderId || dispute.rental_id;
+  if (targetRentalId) {
+    try {
+      const rental = await Rental.findById(targetRentalId);
+      if (rental) {
+        rental.status = "COMPLETED";
+        rental.dispute = rental.dispute || {};
+        rental.dispute.status = status === "resolved" ? "RESOLVED_REFUND_OWNER" : "REJECTED";
+        rental.dispute.compensationApproved = approvedAmount;
+        rental.dispute.adminNote = resolution_note ? resolution_note.trim() : "";
+        rental.dispute.isLocked = false;
+        await rental.save();
+      }
+    } catch (rErr) {
+      console.warn("Update rental on dispute resolve error:", rErr.message);
+    }
+  }
+
+  // Cộng tiền bồi thường vào ví của Owner nếu phán quyết chấp thuận bồi thường
+  if (status === "resolved" && approvedAmount > 0) {
+    try {
+      await User.findByIdAndUpdate(dispute.owner_id, {
+        $inc: { walletBalance: approvedAmount },
+      });
+      const walletTransactionService = require("../services/walletTransactionService");
+      if (typeof walletTransactionService?.createTransaction === "function") {
+        await walletTransactionService.createTransaction({
+          user_id: dispute.owner_id,
+          type: "COMPENSATION",
+          amount: approvedAmount,
+          balance_after: 0,
+          description: `Tiền bồi thường hư hỏng thiết bị phán quyết tranh chấp #${dispute.dispute_code}`,
+          reference_code: dispute.dispute_code,
+          status: "SUCCESS",
+        });
+      }
+    } catch (walletErr) {
+      console.warn("Credit owner wallet compensation error:", walletErr.message);
+    }
+  }
 
   // If resolved or dismissed, handle financial settlement (UC_A16)
   let settlement = null;

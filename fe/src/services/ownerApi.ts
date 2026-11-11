@@ -442,6 +442,22 @@ export const ownerApi = {
       token
     ),
 
+  submitRentalDamageReport: (
+    token: string,
+    rentalId: string,
+    data: {
+      damageLevel: "MINOR" | "SEVERE" | "TOTAL_LOSS";
+      reason: string;
+      evidenceImages: string[];
+      claimedAmount: number;
+    }
+  ) =>
+    request<{ message: string; dispute: Dispute }>(
+      `/api/owner/rentals/${rentalId}/damage-report`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
   getSupportTickets: (token: string) =>
     request<{ tickets: SupportTicket[] }>("/api/owner/support-tickets", { method: "GET" }, token),
 

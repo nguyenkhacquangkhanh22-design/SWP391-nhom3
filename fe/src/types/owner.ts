@@ -245,16 +245,32 @@ export interface OwnerApplication {
 export interface Dispute {
   _id: string;
   dispute_code: string;
-  contract_id: { _id: string; contract_code: string; title: string };
-  owner_id: string;
-  renter_id: { _id: string; name: string; email: string; phone?: string };
+  contract_id?: { _id: string; contract_code: string; title: string };
+  rentalOrderId?: {
+    _id: string;
+    rentalCode?: string;
+    equipmentId?: { _id: string; title: string; images?: string[] };
+    equipmentTitle?: string;
+    renterId?: { _id: string; name: string; email: string; phone?: string };
+    totalCost?: number;
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+  };
+  owner_id?: string;
+  renter_id?: { _id: string; name: string; email: string; phone?: string };
   title: string;
-  reason: string;
-  description: string;
-  evidence_urls: string[];
-  claimed_compensation: number;
-  status: "pending_review" | "investigating" | "resolved" | "dismissed";
+  reason?: string;
+  description?: string;
+  damageLevel?: "MINOR" | "SEVERE" | "TOTAL_LOSS";
+  damage_level?: "MINOR" | "SEVERE" | "TOTAL_LOSS";
+  evidenceImages?: string[];
+  evidence_urls?: string[];
+  claimedAmount?: number;
+  claimed_compensation?: number;
+  status: "pending_review" | "PENDING_ADMIN_REVIEW" | "investigating" | "resolved" | "RESOLVED_REFUND_OWNER" | "dismissed" | "REJECTED";
   resolution_note?: string;
+  adminNote?: string;
   createdAt: string;
 }
 

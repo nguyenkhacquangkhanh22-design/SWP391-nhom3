@@ -272,9 +272,15 @@ const rentalSchema = new mongoose.Schema(
     dispute: {
       reason: { type: String, trim: true },
       description: { type: String, trim: true },
+      damageLevel: { type: String, enum: ["MINOR", "SEVERE", "TOTAL_LOSS"], default: "MINOR" },
       evidenceImages: [{ type: String }],
+      claimedAmount: { type: Number, default: 0 },
+      compensationApproved: { type: Number, default: 0 },
       disputedAt: { type: Date },
       status: { type: String, default: "open" },
+      adminNote: { type: String, default: "" },
+      disputeId: { type: mongoose.Schema.Types.ObjectId, ref: "Dispute" },
+      isLocked: { type: Boolean, default: false },
     },
   },
   {

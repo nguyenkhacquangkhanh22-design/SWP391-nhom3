@@ -7,6 +7,7 @@ import ContractPdfModal from "../../components/ContractPdfModal";
 import OwnerEditContractModal from "../../components/OwnerEditContractModal";
 import OwnerCancelRentalModal from "../../components/OwnerCancelRentalModal";
 import OwnerReviewRenterModal from "../../components/OwnerReviewRenterModal";
+import OwnerDamageReportModal from "../../components/owner/OwnerDamageReportModal";
 
 interface Props {
   requests?: RentalRequest[];
@@ -37,6 +38,7 @@ export default function OwnerRequestsTab({
   const [previewBillUrl, setPreviewBillUrl] = useState<string | null>(null);
   const [cancellingRental, setCancellingRental] = useState<Rental | null>(null);
   const [reviewingRental, setReviewingRental] = useState<Rental | null>(null);
+  const [damageReportRental, setDamageReportRental] = useState<Rental | null>(null);
 
   const fetchDirectRentals = async (): Promise<Rental[] | undefined> => {
     if (!token) return;
@@ -588,6 +590,54 @@ export default function OwnerRequestsTab({
                             )
                           )}
 
+                          {/* NÚT KHIẾU NẠI HƯ HỎNG THIẾT BỊ (REPORT DAMAGE) */}
+                          {(upperStatus === "COMPLETED" ||
+                            upperStatus === "RETURNED" ||
+                            upperStatus === "completed" ||
+                            upperStatus === "returned" ||
+                            upperStatus === "DISPUTED" ||
+                            upperStatus === "disputed" ||
+                            Boolean(r.dispute?.disputeId)) && (
+                            r.dispute?.disputeId || upperStatus === "DISPUTED" || upperStatus === "disputed" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: "8px",
+                                  fontSize: "0.75rem",
+                                  background: "rgba(239, 68, 68, 0.15)",
+                                  border: "1px solid #ef4444",
+                                  color: "#f87171",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                                title="Đơn thuê đang trong quá trình khiếu nại - Chờ Admin phân xử bồi thường"
+                              >
+                                ⚠️ Đang khiếu nại
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setDamageReportRental(r)}
+                                className="button button-quiet"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  borderRadius: "10px",
+                                  width: "auto",
+                                  color: "#f87171",
+                                  borderColor: "rgba(239, 68, 68, 0.4)",
+                                  background: "rgba(239, 68, 68, 0.12)",
+                                  fontWeight: "bold",
+                                }}
+                                title="Báo cáo máy bị móp méo, trầy xước, hỏng hóc hoặc thiếu linh kiện kèm hình ảnh"
+                              >
+                                ⚠️ Báo hư hỏng
+                              </button>
+                            )
+                          )}
+
                           {/* NÚT CHỦ ĐỘNG HỦY ĐƠN / SỰ CỐ THIẾT BỊ TRƯỚC BÀN GIAO */}
                           {upperStatus !== "IN_PROGRESS" &&
                             upperStatus !== "ACTIVE" &&
@@ -737,6 +787,21 @@ export default function OwnerRequestsTab({
             onRefresh();
           }}
           onError={onError}
+        />
+      )}
+
+      {/* MODAL KHIẾU NẠI HƯ HỎNG THIẾT BỊ (REPORT DAMAGE) */}
+      {damageReportRental && (
+        <OwnerDamageReportModal
+          isOpen={Boolean(damageReportRental)}
+          rental={damageReportRental as any}
+          token={token}
+          onClose={() => setDamageReportRental(null)}
+          onSuccess={() => {
+            onSuccess("Đã gửi hồ sơ khiếu nại hư hỏng lên Admin thành công. Đơn hàng chuyển sang trạng thái Đang tranh chấp.");
+            void fetchDirectRentals();
+            onRefresh();
+          }}
         />
       )}
     </div>

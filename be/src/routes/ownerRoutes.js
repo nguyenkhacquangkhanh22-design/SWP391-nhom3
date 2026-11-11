@@ -73,6 +73,11 @@ router.get("/revenue-history", asyncHandler(ownerController.getRevenueAndRentalH
 // 7. Disputes & Support Tickets (UC_O17, UC_O18)
 router.get("/disputes", asyncHandler(ownerController.getOwnerDisputes));
 router.post("/disputes", asyncHandler(ownerController.submitRentalDispute));
+router.post("/rentals/:id/damage-report", (req, res, next) => {
+  req.body = req.body || {};
+  req.body.rentalOrderId = req.params.id;
+  ownerController.submitRentalDispute(req, res, next);
+});
 router.get("/support-tickets", asyncHandler(ownerController.getOwnerSupportTickets));
 router.post("/support-tickets", asyncHandler(ownerController.submitSupportTicket));
 router.post("/support-tickets/:id/reply", asyncHandler(ownerController.replySupportTicket));

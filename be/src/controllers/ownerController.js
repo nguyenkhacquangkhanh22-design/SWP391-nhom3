@@ -1969,50 +1969,207 @@ async function getRevenueAndRentalHistory(req, res) {
 }
 
 // -----------------------------------------------------------------------------
-// 7. Disputes & Support Tickets (UC_O17, UC_O18)
+// 7. Disputes & Support Tickets (UC_O17, UC_O18, UC03)
 // -----------------------------------------------------------------------------
-// UC_O17: Submit Rental Dispute
+// UC_O17 / UC03: Submit Equipment Damage Dispute / Report
 async function submitRentalDispute(req, res) {
-  const { contract_id, title, reason, description, evidence_urls, claimed_compensation } = req.body;
+  const {
+    contract_id,
+    contractId,
+    rentalOrderId,
+    rentalId,
+    rental_id,
+    title,
+    reason,
+    description,
+    evidence_urls,
+    evidenceImages,
+    claimed_compensation,
+    claimedAmount,
+    damageLevel,
+    damage_level,
+  } = req.body;
 
-  if (!contract_id || !title || !reason || !description) {
-    throw new AppError(400, "Vui lòng nhập đầy đủ hợp đồng, tiêu đề, lý do và mô tả khiếu nại");
+  const targetRentalId = rentalOrderId || rentalId || rental_id;
+  const targetContractId = contract_id || contractId;
+
+  if (!reason || (!targetRentalId && !targetContractId)) {
+    throw new AppError(400, "Vui lòng chọn đơn thuê/hợp đồng và nhập mô tả chi tiết hư hỏng");
   }
 
-  if (claimed_compensation !== undefined && Number(claimed_compensation) < 0) {
+  const finalClaimed = Number(claimedAmount !== undefined ? claimedAmount : claimed_compensation) || 0;
+  if (finalClaimed < 0) {
     throw new AppError(400, "Số tiền yêu cầu bồi thường không được là số âm (phải ≥ 0)");
   }
 
-  const contract = await RentalContract.findOne({
-    _id: contract_id,
-    owner_id: req.user._id,
-  });
+  // 1. Kiểm tra đơn thuê / hợp đồng thuộc quyền sở hữu của Owner
+  let rental = null;
+  let contract = null;
 
-  if (!contract) {
-    throw new AppError(404, "Không tìm thấy hợp đồng liên quan");
+  if (targetRentalId) {
+    rental = await Rental.findOne({
+      _id: targetRentalId,
+      owner: req.user._id,
+    }).populate("renter equipment");
   }
 
+  if (targetContractId) {
+    contract = await RentalContract.findOne({
+      _id: targetContractId,
+      owner_id: req.user._id,
+    }).populate("renter_id");
+    if (!rental && contract) {
+      rental = await Rental.findOne({
+        $or: [{ "contract.contractNumber": contract.contract_code }, { rentalCode: contract.contract_code }],
+      }).populate("renter equipment");
+    }
+  }
+
+  if (!rental && !contract) {
+    throw new AppError(404, "Không tìm thấy đơn thuê hoặc hợp đồng liên quan thuộc quyền quản lý của bạn");
+  }
+
+  // 2. Điều kiện tiên quyết: Đơn thuê phải đang ở trạng thái Hoàn trả hoặc Đã hoàn thành
+  const validReturningStatuses = [
+    "RETURN_REQUESTED", "RETURNING", "RETURN_PENDING", "RETURNED", "COMPLETED", "ACTIVE", "IN_PROGRESS",
+    "return_requested", "returning", "return_pending", "returned", "completed", "active", "in_progress"
+  ];
+  const currentUpper = String(rental?.status || contract?.status || "").toUpperCase();
+  if (rental && !validReturningStatuses.map(s => s.toUpperCase()).includes(currentUpper)) {
+    throw new AppError(400, `Chỉ có thể khiếu nại hư hỏng khi đơn đang ở trạng thái Hoàn trả hoặc Đã nhận máy (Trạng thái hiện tại: ${rental.status})`);
+  }
+
+  // 3. Luồng ngoại lệ 3a: Kiểm tra thời hạn 24 giờ kể từ khi nhận lại thiết bị
+  const returnTimestamp = rental?.returnInfo?.returnTime || rental?.handoverCheckin?.receivedAt || rental?.updatedAt;
+  if (["RETURNED", "COMPLETED"].includes(currentUpper) && returnTimestamp) {
+    const elapsedHours = (Date.now() - new Date(returnTimestamp).getTime()) / (1000 * 60 * 60);
+    if (elapsedHours > 24) {
+      throw new AppError(400, "Đã quá thời hạn 24 giờ kể từ khi xác nhận nhận lại thiết bị để gửi khiếu nại hư hỏng.");
+    }
+  }
+
+  // 4. Luồng ngoại lệ 4a: Bắt buộc phải có ít nhất 1 hình ảnh hoặc video minh chứng
+  const rawImages = Array.isArray(evidenceImages) && evidenceImages.length > 0
+    ? evidenceImages
+    : Array.isArray(evidence_urls) && evidence_urls.length > 0
+    ? evidence_urls
+    : [];
+  const images = rawImages.filter((img) => typeof img === "string" && img.trim().length > 0);
+
+  if (images.length === 0) {
+    throw new AppError(400, "Vui lòng tải lên ít nhất 1 hình ảnh hoặc video bằng chứng hư hỏng thiết bị lúc nhận lại.");
+  }
+
+  const finalDamageLevel = damageLevel || damage_level || "MINOR";
+  const renterId = rental?.renter?._id || rental?.renter || contract?.renter_id?._id || contract?.renter_id;
+  const equipTitle = rental?.equipment?.title || contract?.title || "Thiết bị thuê";
+  const displayTitle = title?.trim() || `Khiếu nại hư hỏng thiết bị "${equipTitle}" (Đơn #${rental?.rentalCode || contract?.contract_code})`;
+
+  // 5. Tạo bản ghi Dispute
   const dispute = await Dispute.create({
     dispute_code: generateCode("KN"),
-    contract_id: contract._id,
+    rentalOrderId: rental?._id,
+    rental_id: rental?._id,
+    contract_id: contract?._id,
+    ownerId: req.user._id,
     owner_id: req.user._id,
-    renter_id: contract.renter_id,
-    title: title.trim(),
+    renterId: renterId,
+    renter_id: renterId,
+    damageLevel: finalDamageLevel,
+    damage_level: finalDamageLevel,
+    title: displayTitle,
     reason: reason.trim(),
-    description: description.trim(),
-    evidence_urls: Array.isArray(evidence_urls) ? evidence_urls : [],
-    claimed_compensation: Number(claimed_compensation) || 0,
-    status: "pending_review",
+    description: description ? description.trim() : reason.trim(),
+    evidenceImages: images,
+    evidence_urls: images,
+    claimedAmount: finalClaimed,
+    claimed_compensation: finalClaimed,
+    status: "PENDING_ADMIN_REVIEW",
   });
 
+  // 6. Chuyển trạng thái đơn sang DISPUTED và đóng băng cọc / giao dịch
+  if (rental) {
+    rental.status = "DISPUTED";
+    rental.dispute = {
+      reason: reason.trim(),
+      description: description ? description.trim() : reason.trim(),
+      damageLevel: finalDamageLevel,
+      evidenceImages: images,
+      claimedAmount: finalClaimed,
+      disputedAt: new Date(),
+      status: "PENDING_ADMIN_REVIEW",
+      disputeId: dispute._id,
+      isLocked: true,
+    };
+    await rental.save();
+  }
+
+  // Khóa Settlement thanh toán để chờ phán quyết của Admin
+  try {
+    await Settlement.updateMany(
+      { $or: [{ contract_id: contract?._id }, { rental_id: rental?._id }] },
+      { $set: { payout_status: "frozen", dispute_id: dispute._id } }
+    );
+  } catch (settleErr) {
+    console.warn("Freeze settlement on dispute error:", settleErr.message);
+  }
+
+  // 7. Gửi thông báo tới Người thuê (Renter) và Quản trị viên (Admin)
+  try {
+    const damageLevelLabel =
+      finalDamageLevel === "TOTAL_LOSS"
+        ? "Hỏng hoàn toàn"
+        : finalDamageLevel === "SEVERE"
+        ? "Nặng (móp méo/hỏng chức năng)"
+        : "Nhẹ (trầy xước)";
+
+    if (renterId) {
+      await UserNotification.create({
+        user_id: renterId,
+        title: "⚠️ Thiết bị đơn thuê bị khiếu nại hư hỏng",
+        message: `Chủ máy đã gửi khiếu nại hư hỏng mức độ "${damageLevelLabel}" cho đơn #${rental?.rentalCode || contract?.contract_code}. Số tiền yêu cầu bồi thường: ${finalClaimed.toLocaleString("vi-VN")} đ. Ban quản trị Admin đang tiếp nhận xử lý.`,
+        type: "rental",
+        related_record_id: rental?._id || contract?._id,
+      });
+    }
+
+    await notifyManagers(
+      "📢 Khiếu nại hư hỏng thiết bị mới từ Owner",
+      `Chủ máy vừa tạo khiếu nại hư hỏng #${dispute.dispute_code} cho đơn #${rental?.rentalCode || contract?.contract_code} (Mức độ: ${damageLevelLabel}). Yêu cầu bồi thường: ${finalClaimed.toLocaleString("vi-VN")} đ. Vui lòng xem xét hồ sơ và phân xử.`,
+      dispute._id
+    );
+  } catch (notifErr) {
+    console.warn("Notification error on dispute submit:", notifErr.message);
+  }
+
+  // 8. Bắn Socket realtime
+  try {
+    const io = getIO();
+    io.emit("dispute:created", {
+      disputeId: dispute._id,
+      disputeCode: dispute.dispute_code,
+      rentalCode: rental?.rentalCode,
+      damageLevel: finalDamageLevel,
+      claimedAmount: finalClaimed,
+      ownerId: String(req.user._id),
+      renterId: String(renterId || ""),
+    });
+  } catch (sockErr) {
+    console.warn("Socket error on dispute submit:", sockErr.message);
+  }
+
   res.status(201).json({
-    message: "Gửi khiếu nại thành công. Đội ngũ kiểm duyệt sẽ xử lý trong vòng 24 giờ.",
+    success: true,
+    message: "Gửi khiếu nại hư hỏng thành công. Đơn hàng đã chuyển sang trạng thái tranh chấp để Quản trị viên phân xử.",
     dispute,
   });
 }
 
 async function getOwnerDisputes(req, res) {
-  const disputes = await Dispute.find({ owner_id: req.user._id })
+  const disputes = await Dispute.find({
+    $or: [{ owner_id: req.user._id }, { ownerId: req.user._id }],
+  })
+    .populate("rentalOrderId", "rentalCode totalAmount status startDate endDate equipment")
     .populate("contract_id", "contract_code title")
     .populate("renter_id", "name email phone")
     .sort({ createdAt: -1 })
