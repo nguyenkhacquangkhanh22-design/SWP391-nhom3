@@ -4,11 +4,13 @@ import { useAuth } from "../app/AuthProvider";
 import Brand from "./Brand";
 import { authApi } from "../services/authApi";
 import { getSocket } from "../services/socket";
+import ShotToGearModal from "./ai/ShotToGearModal";
 
 export default function Navbar() {
   const { user, token, signOut } = useAuth();
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -54,10 +56,11 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#121927]/90 backdrop-blur-md border-b border-[#243048]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand */}
-        <Brand />
+    <>
+      <header className="sticky top-0 z-40 bg-[#121927]/90 backdrop-blur-md border-b border-[#243048]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Brand */}
+          <Brand />
 
         {/* Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
@@ -73,6 +76,14 @@ export default function Navbar() {
           >
             Tìm thiết bị
           </Link>
+          <button
+            type="button"
+            onClick={() => setIsAiModalOpen(true)}
+            className="text-slate-300 hover:text-orange-400 flex items-center gap-1.5 transition-colors font-medium cursor-pointer"
+          >
+            <span className="text-orange-400">◎</span>
+            <span>Tìm máy theo ảnh mẫu</span>
+          </button>
           {user && (
             <Link
               to="/rentals/history"
@@ -85,6 +96,14 @@ export default function Navbar() {
 
         {/* User Actions */}
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsAiModalOpen(true)}
+            className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#1a2336] border border-[#2b3752] hover:border-orange-500/50 text-slate-200 text-xs font-medium cursor-pointer"
+            title="Tìm máy theo ảnh mẫu"
+          >
+            <span className="text-orange-400">◎</span> Tìm theo ảnh
+          </button>
           {user ? (
             <div className="flex items-center gap-3">
               <Link
@@ -134,5 +153,11 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+
+      <ShotToGearModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+      />
+    </>
   );
 }

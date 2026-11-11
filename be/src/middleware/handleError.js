@@ -35,8 +35,9 @@ function handleError(error, _req, res, _next) {
       ? error.statusCode
       : 500;
 
-  if (statusCode >= 500) {
-    console.error("Request failed:", error);
+  console.error(`\x1b[31m[BE ERROR ${statusCode}]\x1b[0m ${_req?.method || ""} ${_req?.originalUrl || ""} - ${error.message}`);
+  if (statusCode >= 500 && error.stack) {
+    console.error(error.stack);
   }
 
   return res.status(statusCode).json({

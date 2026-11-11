@@ -14,6 +14,7 @@ const ownerRegistrationRoutes = require("./routes/ownerRegistrationRoutes");
 const moderatorRoutes = require("./routes/moderatorRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 const handleError = require("./middleware/handleError");
 
 const app = express();
@@ -41,6 +42,25 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
+  next();
+});
+
+// Logger hiển thị chi tiết request và tốc độ phản hồi trên Terminal
+app.use((req, res, next) => {
+  const start = Date.now();
+  const { method, originalUrl } = req;
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    let coloredStatus = `\x1b[32m${status}\x1b[0m`;
+    if (status >= 500) coloredStatus = `\x1b[31m${status}\x1b[0m`;
+    else if (status >= 400) coloredStatus = `\x1b[33m${status}\x1b[0m`;
+    else if (status >= 300) coloredStatus = `\x1b[36m${status}\x1b[0m`;
+
+    console.log(`[BE HTTP] ${method} ${originalUrl} -> ${coloredStatus} (${duration}ms)`);
+  });
+
   next();
 });
 
@@ -83,6 +103,7 @@ app.use("/api/owner-registration", ownerRegistrationRoutes);
 app.use("/api/moderator", moderatorRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.use(handleError);
 

@@ -15,6 +15,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.0",
     "google-auth-library": "^11.1.0",
+    "groq-sdk": "^1.6.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
     "multer": "^2.5.0",

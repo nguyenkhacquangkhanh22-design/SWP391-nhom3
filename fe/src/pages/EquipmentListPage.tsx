@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import ShotToGearModal from "../components/ai/ShotToGearModal";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Equipment } from "../types/smartequip";
 
@@ -37,6 +38,7 @@ export default function EquipmentListPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
   const [aiMatches, setAiMatches] = useState<Record<string, { score: number; reason: string }> | null>(null);
+  const [isShotModalOpen, setIsShotModalOpen] = useState(false);
 
   const keywordParam = searchParams.get("keyword") || "";
   const categoryParam = searchParams.get("category") || "all";
@@ -204,27 +206,57 @@ export default function EquipmentListPage() {
             </button>
           </form>
 
-          {/* AI Filter & Advisor Assistant Bar */}
-          <div className="mt-4 p-4 bg-gradient-to-r from-purple-950/60 via-indigo-950/50 to-slate-900 border border-purple-500/40 rounded-2xl shadow-xl space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">✨</span>
-                <span className="text-sm font-bold text-white">
-                  Trợ Lý AI Lọc & Tư Vấn Thiết Bị Thông Minh
-                </span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wider">
-                  AI Powered
-                </span>
+          {/* Smart Suggest & Photo Matcher Assistant Bar */}
+          <div className="mt-4 p-4 sm:p-5 bg-[#141d2d] border border-[#223049] rounded-2xl shadow-lg space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="11" y1="8" x2="11" y2="14" />
+                    <line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white tracking-tight">
+                      Tư Vấn Thiết Bị Theo Nhu Cầu Dự Án
+                    </h3>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                      Smart Suggest
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Nhập mô tả dự án hoặc tải ảnh phong cách bạn muốn quay để hệ thống tự động lọc combo tối ưu
+                  </p>
+                </div>
               </div>
-              {aiAdvice && (
+
+              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                 <button
                   type="button"
-                  onClick={handleClearAi}
-                  className="text-xs text-purple-300 hover:text-white underline self-start sm:self-auto cursor-pointer"
+                  onClick={() => setIsShotModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#1b263b] hover:bg-[#23324d] border border-[#2c3e5e] hover:border-orange-500/40 text-slate-200 hover:text-white text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                  title="Tải ảnh hoặc chọn khung hình mẫu để tìm thiết bị"
                 >
-                  ✕ Tắt lọc AI (Về mặc định)
+                  <svg className="w-3.5 h-3.5 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  <span>Tìm theo ảnh mẫu</span>
                 </button>
-              )}
+
+                {aiAdvice && (
+                  <button
+                    type="button"
+                    onClick={handleClearAi}
+                    className="text-xs text-slate-400 hover:text-rose-400 px-2 py-1 transition-colors cursor-pointer"
+                  >
+                    ✕ Đặt lại
+                  </button>
+                )}
+              </div>
             </div>
 
             <form
@@ -232,12 +264,16 @@ export default function EquipmentListPage() {
                 e.preventDefault();
                 void handleAiFilter();
               }}
-              className="flex items-center gap-2 bg-[#0d1424] p-1.5 rounded-xl border border-purple-500/30 focus-within:border-purple-400 transition-all shadow-inner"
+              className="flex items-center gap-2 bg-[#0d1424] p-1.5 rounded-xl border border-[#223049] focus-within:border-orange-500/50 transition-all shadow-inner"
             >
-              <span className="text-purple-400 pl-2.5">🤖</span>
+              <div className="pl-2.5 text-slate-500">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
               <input
                 type="text"
-                placeholder="Nhập nhu cầu bằng tiếng Việt (VD: Cần máy ảnh chụp kỷ yếu chân dung đẹp, combo quay vlog dưới 500k...)"
+                placeholder="Nhập yêu cầu (ví dụ: máy ảnh quay vlog du lịch nhỏ gọn, combo chụp kỷ yếu chân dung ngoại cảnh, flycam 4K...)"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 className="w-full bg-transparent border-none px-2 py-1.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
@@ -245,31 +281,28 @@ export default function EquipmentListPage() {
               <button
                 type="submit"
                 disabled={aiLoading || !aiPrompt.trim()}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-all shadow-md shadow-purple-600/30 whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-all shadow-md shadow-orange-600/20 whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
               >
                 {aiLoading ? (
                   <>
                     <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    <span>AI đang phân tích...</span>
+                    <span>Đang lọc...</span>
                   </>
                 ) : (
-                  <>
-                    <span>✨</span>
-                    <span>AI Lọc Máy</span>
-                  </>
+                  <span>Gợi ý máy</span>
                 )}
               </button>
             </form>
 
             {/* Quick scenario prompt chips */}
             <div className="flex items-center gap-1.5 flex-wrap text-xs">
-              <span className="text-[11px] text-slate-400 font-semibold mr-1">Gợi ý nhanh:</span>
+              <span className="text-[11px] text-slate-400 font-medium mr-1">Nhu cầu phổ biến:</span>
               {[
-                { label: "🎬 Combo Quay Vlog Du Lịch", prompt: "Combo máy ảnh nhỏ gọn chống rung tốt để quay vlog du lịch youtube" },
-                { label: "📸 Chụp Kỷ Yếu & Chân Dung", prompt: "Máy ảnh chụp chân dung kỷ yếu xóa phông đẹp sắc nét" },
-                { label: "🚁 Flycam Quay Trên Cao 4K", prompt: "Flycam drone quay video 4k trên cao góc rộng" },
-                { label: "🎙️ Thu Âm Podcast & Talkshow", prompt: "Bộ micro thu âm podcast phỏng vấn không dây âm thanh trong trẻo" },
-                { label: "💰 Thiết bị giá rẻ dưới 300k", prompt: "Thiết bị chụp quay giá rẻ dưới 300000 đ một ngày" },
+                { label: "Quay Vlog du lịch", prompt: "Combo máy ảnh nhỏ gọn chống rung tốt để quay vlog du lịch youtube" },
+                { label: "Chụp kỷ yếu & chân dung", prompt: "Máy ảnh chụp chân dung kỷ yếu xóa phông đẹp sắc nét" },
+                { label: "Flycam quay 4K", prompt: "Flycam drone quay video 4k trên cao góc rộng" },
+                { label: "Thu âm podcast & talkshow", prompt: "Bộ micro thu âm podcast phỏng vấn không dây âm thanh trong trẻo" },
+                { label: "Ngân sách dưới 300k/ngày", prompt: "Thiết bị chụp quay giá rẻ dưới 300000 đ một ngày" },
               ].map((chip, idx) => (
                 <button
                   key={idx}
@@ -278,7 +311,7 @@ export default function EquipmentListPage() {
                     setAiPrompt(chip.prompt);
                     void handleAiFilter(chip.prompt);
                   }}
-                  className="px-2.5 py-1 rounded-lg bg-[#141b2e] hover:bg-purple-900/40 border border-purple-500/20 hover:border-purple-400/50 text-slate-300 hover:text-purple-200 text-[11px] font-medium transition-all cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-[#0e1626] hover:bg-[#1a253a] border border-[#223049] hover:border-orange-500/40 text-slate-300 hover:text-white text-[11px] transition-all cursor-pointer"
                 >
                   {chip.label}
                 </button>
@@ -287,16 +320,16 @@ export default function EquipmentListPage() {
 
             {/* AI Advice Box */}
             {aiAdvice && (
-              <div className="mt-2 p-3 bg-purple-900/30 border border-purple-500/40 rounded-xl text-xs text-purple-200 flex items-start gap-2.5 animate-fadeIn">
-                <span className="text-lg shrink-0">💡</span>
+              <div className="mt-2 p-3 bg-[#162236] border border-orange-500/30 rounded-xl text-xs text-slate-200 flex items-start gap-2.5 animate-fadeIn">
+                <span className="text-orange-400 font-bold shrink-0 mt-0.5">ℹ</span>
                 <div className="space-y-0.5">
                   <div className="font-bold text-white text-[12px] flex items-center gap-2">
-                    <span>Lời Khuyên & Tư Vấn Từ Trợ Lý AI:</span>
+                    <span>Đề xuất thiết bị phù hợp nhất:</span>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
-                      ✓ Đã xếp hạng theo độ phù hợp
+                      ✓ Đã xếp hạng ưu tiên
                     </span>
                   </div>
-                  <p className="leading-relaxed text-slate-200">{aiAdvice}</p>
+                  <p className="leading-relaxed text-slate-300">{aiAdvice}</p>
                 </div>
               </div>
             )}
@@ -548,6 +581,11 @@ export default function EquipmentListPage() {
           </section>
         </div>
       </main>
+
+      <ShotToGearModal
+        isOpen={isShotModalOpen}
+        onClose={() => setIsShotModalOpen(false)}
+      />
     </div>
   );
 }
