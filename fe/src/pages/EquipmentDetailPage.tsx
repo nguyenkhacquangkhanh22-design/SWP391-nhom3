@@ -339,7 +339,7 @@ export default function EquipmentDetailPage() {
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-10 py-8 w-full flex-1">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs text-slate-400 mb-6">
           <Link to="/" className="hover:text-white">
@@ -367,11 +367,34 @@ export default function EquipmentDetailPage() {
               {currentImgUrl ? (
                 <>
                   <img
+                    key={currentImgUrl}
                     src={currentImgUrl}
                     alt={equipment.title}
                     draggable={false}
+                    onLoad={(e) => {
+                      e.currentTarget.style.display = "block";
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (fallback && fallback.dataset.fallback === "true") {
+                        fallback.style.display = "none";
+                      }
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (fallback && fallback.dataset.fallback === "true") {
+                        fallback.style.display = "flex";
+                      }
+                    }}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                   />
+                  <div
+                    data-fallback="true"
+                    style={{ display: "none" }}
+                    className="w-full h-full items-center justify-center flex-col gap-2 text-slate-500 bg-[#141d2d]"
+                  >
+                    <span className="text-6xl">📷</span>
+                    <span className="text-xs">Chưa tải được ảnh thiết bị</span>
+                  </div>
 
                   {imagesList.length > 1 && (
                     <>

@@ -164,7 +164,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-[#0f1623] text-slate-100 flex flex-col font-sans">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full flex-1 space-y-8">
+      <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-10 py-8 w-full flex-1 space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#222d42]">
           <div>
@@ -247,7 +247,7 @@ export default function ProfilePage() {
           {notifications.length === 0 && !notificationError ? (
             <p className="text-slate-500 text-xs py-2 text-center">Bạn chưa có thông báo mới.</p>
           ) : (
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
               {notifications.map((notification) => (
                 <div
                   key={notification._id}
@@ -307,47 +307,49 @@ export default function ProfilePage() {
               </h2>
 
               <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Họ và tên *</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500"
-                    required
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold text-slate-400 mb-1">Họ và tên *</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Email (Cố định)</label>
-                  <input
-                    type="email"
-                    value={user.email}
-                    disabled
-                    className="w-full bg-[#141b2b] border border-[#232d42] rounded-xl px-3 py-2 text-slate-500 cursor-not-allowed"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-semibold text-slate-400 mb-1">Email (Cố định)</label>
+                    <input
+                      type="email"
+                      value={user.email}
+                      disabled
+                      className="w-full bg-[#141b2b] border border-[#232d42] rounded-xl px-3 py-2 text-slate-500 cursor-not-allowed"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Số điện thoại</label>
-                  <input
-                    type="tel"
-                    placeholder="VD: 0912345678"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-semibold text-slate-400 mb-1">Số điện thoại</label>
+                    <input
+                      type="tel"
+                      placeholder="VD: 0912345678"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Địa chỉ giao nhận</label>
-                  <input
-                    type="text"
-                    placeholder="VD: Số 45, Đường 3/2, Quận 10, TP.HCM"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
-                  />
+                  <div>
+                    <label className="block font-semibold text-slate-400 mb-1">Địa chỉ giao nhận</label>
+                    <input
+                      type="text"
+                      placeholder="VD: Số 45, Đường 3/2, Quận 10, TP.HCM"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full bg-[#1b253b] border border-[#2d3a54] rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center text-xs text-slate-400 pt-2 border-t border-[#222d42]">
@@ -372,28 +374,30 @@ export default function ProfilePage() {
               </h2>
 
               <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
-                <div>
-                  <PasswordInput
-                    id="current-password"
-                    label="Mật khẩu hiện tại"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    required
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <PasswordInput
+                      id="current-password"
+                      label="Mật khẩu hiện tại"
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <PasswordInput
-                    id="new-password"
-                    label="Mật khẩu mới (tối thiểu 8 ký tự)"
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
+                  <div>
+                    <PasswordInput
+                      id="new-password"
+                      label="Mật khẩu mới (tối thiểu 8 ký tự)"
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -463,23 +467,25 @@ export default function ProfilePage() {
                     />
                   </div>
 
-                  <ImageUploadField
-                    id="kyc-front"
-                    label="Ảnh mặt trước CCCD"
-                    value={idCardFront}
-                    onChange={setIdCardFront}
-                    required={true}
-                    placeholder="https://.../id_front.jpg"
-                  />
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <ImageUploadField
+                      id="kyc-front"
+                      label="Ảnh mặt trước CCCD"
+                      value={idCardFront}
+                      onChange={setIdCardFront}
+                      required={true}
+                      placeholder="https://.../id_front.jpg"
+                    />
 
-                  <ImageUploadField
-                    id="kyc-back"
-                    label="Ảnh mặt sau CCCD"
-                    value={idCardBack}
-                    onChange={setIdCardBack}
-                    required={true}
-                    placeholder="https://.../id_back.jpg"
-                  />
+                    <ImageUploadField
+                      id="kyc-back"
+                      label="Ảnh mặt sau CCCD"
+                      value={idCardBack}
+                      onChange={setIdCardBack}
+                      required={true}
+                      placeholder="https://.../id_back.jpg"
+                    />
+                  </div>
 
                   <ImageUploadField
                     id="kyc-selfie"

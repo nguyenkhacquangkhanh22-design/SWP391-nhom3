@@ -2,6 +2,19 @@ const OwnerApplication = require("../models/OwnerApplication");
 const User = require("../models/User");
 const AppError = require("../utils/AppError");
 
+async function syncUserKycFromApplication(userId, identityCard, idFront, idBack) {
+  const applicantUser = await User.findById(userId);
+  if (applicantUser && applicantUser.kycStatus !== "verified") {
+    applicantUser.kycStatus = "pending";
+    if (!applicantUser.kycDocument) applicantUser.kycDocument = {};
+    applicantUser.kycDocument.idNumber = identityCard;
+    applicantUser.kycDocument.idCardFront = idFront || "";
+    applicantUser.kycDocument.idCardBack = idBack || "";
+    applicantUser.kycDocument.submittedAt = new Date();
+    await applicantUser.save();
+  }
+}
+
 // UC_O02: Register Owner Account (Guest / Renter submits registration)
 async function submitOwnerApplication(req, res) {
   const userId = req.user._id;
@@ -17,8 +30,13 @@ async function submitOwnerApplication(req, res) {
     identity_card_front,
     identity_card_back,
     business_license,
+    certificates,
     notes,
   } = req.body;
+
+  const normalizedCertificates = Array.isArray(certificates)
+    ? certificates.filter((item) => typeof item === "string" && item.trim()).slice(0, 5)
+    : [];
 
   if (
     !phone ||
@@ -57,10 +75,13 @@ async function submitOwnerApplication(req, res) {
     existingApp.identity_card_front = identity_card_front || "";
     existingApp.identity_card_back = identity_card_back || "";
     existingApp.business_license = business_license || "";
+    existingApp.certificates = normalizedCertificates;
     existingApp.notes = notes || "";
     existingApp.status = "pending";
     existingApp.admin_note = "";
     await existingApp.save();
+
+    await syncUserKycFromApplication(userId, identity_card.trim(), identity_card_front, identity_card_back);
 
     return res.json({
       message: "Hồ sơ đăng ký Owner đã được cập nhật lại và gửi tới System Admin phê duyệt",
@@ -82,21 +103,13 @@ async function submitOwnerApplication(req, res) {
     identity_card_front: identity_card_front || "",
     identity_card_back: identity_card_back || "",
     business_license: business_license || "",
+    certificates: normalizedCertificates,
     notes: notes || "",
     status: "pending",
   });
 
   // Đồng bộ KYC của User sang pending để Moderator/Admin xác thực danh tính
-  const applicantUser = await User.findById(userId);
-  if (applicantUser && applicantUser.kycStatus !== "verified") {
-    applicantUser.kycStatus = "pending";
-    if (!applicantUser.kycDocument) applicantUser.kycDocument = {};
-    applicantUser.kycDocument.idNumber = identity_card.trim();
-    applicantUser.kycDocument.idCardFront = identity_card_front || "";
-    applicantUser.kycDocument.idCardBack = identity_card_back || "";
-    applicantUser.kycDocument.submittedAt = new Date();
-    await applicantUser.save();
-  }
+  await syncUserKycFromApplication(userId, identity_card.trim(), identity_card_front, identity_card_back);
 
   res.status(201).json({
     message: "Nộp hồ sơ đăng ký trở thành Owner thành công. Vui lòng chờ System Admin phê duyệt.",

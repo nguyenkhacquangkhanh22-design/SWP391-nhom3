@@ -186,7 +186,7 @@ export default function EquipmentListPage() {
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-10 py-8 w-full flex-1">
         {/* Top Header & Search Bar */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -324,9 +324,9 @@ export default function EquipmentListPage() {
         </div>
 
         {/* 2-Column Layout: Sidebar Filter & Equipment Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[270px_1fr] gap-8">
           {/* Left Sidebar Filter */}
-          <aside className="lg:col-span-1 space-y-6">
+          <aside className="space-y-6">
             <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-5 shadow-lg space-y-6 sticky top-24">
               <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
                 <h3 className="font-bold text-sm text-white flex items-center gap-2">
@@ -457,7 +457,7 @@ export default function EquipmentListPage() {
           </aside>
 
           {/* Right Product Grid */}
-          <section className="lg:col-span-3">
+          <section className="min-w-0">
             {loading ? (
               <div className="py-24 text-center space-y-3">
                 <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -482,7 +482,7 @@ export default function EquipmentListPage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
                 {equipments.map((item) => (
                   <div
                     key={item._id}
@@ -494,10 +494,33 @@ export default function EquipmentListPage() {
                         {item.images && item.images.length > 0 ? (
                           <>
                             <img
+                              key={item.images[cardImageIndices[item._id] || 0] || item.images[0]}
                               src={item.images[cardImageIndices[item._id] || 0] || item.images[0]}
                               alt={item.title}
+                              onLoad={(e) => {
+                                e.currentTarget.style.display = "block";
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback && fallback.dataset.fallback === "true") {
+                                  fallback.style.display = "none";
+                                }
+                              }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback && fallback.dataset.fallback === "true") {
+                                  fallback.style.display = "flex";
+                                }
+                              }}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
+                            <div
+                              data-fallback="true"
+                              style={{ display: "none" }}
+                              className="w-full h-full items-center justify-center flex-col gap-1 text-slate-500 bg-[#1b273d]"
+                            >
+                              <span className="text-4xl">📷</span>
+                              <span className="text-[11px]">Ảnh thiết bị</span>
+                            </div>
                             {item.images.length > 1 && (
                               <>
                                 <button

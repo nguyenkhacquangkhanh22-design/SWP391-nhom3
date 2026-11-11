@@ -55,7 +55,7 @@ export default function HomePage() {
       </section>
 
       {/* Categories & Stats */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+      <section className="py-16 px-4 sm:px-6 lg:px-10 max-w-[1680px] mx-auto w-full">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-3xl font-bold text-white">
             Danh Mục Thiết Bị Nổi Bật
@@ -92,8 +92,8 @@ export default function HomePage() {
       </section>
 
       {/* Trust & Protection Policies */}
-      <section className="py-16 bg-[#131b29] border-y border-[#202b3f] px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+      <section className="py-16 bg-[#131b29] border-y border-[#202b3f] px-4 sm:px-6 lg:px-10">
+        <div className="max-w-[1680px] mx-auto">
           <div className="text-center mb-12">
             <span className="text-xs font-bold text-orange-400 uppercase tracking-widest">
               AN TÂM TUYỆT ĐỐI
@@ -133,7 +133,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="mt-auto py-8 border-t border-[#1e273a] text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             © 2026 SmartEquip Platform. Hotline: {info?.contact.hotline || "1900 8888"} - Email: {info?.contact.email || "support@smartequip.vn"}
           </div>

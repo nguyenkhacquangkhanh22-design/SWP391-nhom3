@@ -9,6 +9,7 @@ import AdminKycTab from "../../components/admin/AdminKycTab";
 import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
 import Brand from "../../components/Brand";
+import { isPdfDocument, openDocumentDataUrl } from "../../components/ImageUploadField";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
 import { getSocket } from "../../services/socket";
@@ -78,6 +79,7 @@ export default function AdminDashboard() {
     note: string;
   } | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [ownerDocPreview, setOwnerDocPreview] = useState<{ title: string; url: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -692,27 +694,58 @@ export default function AdminDashboard() {
                         <td>
                           <div>CCCD: <strong style={{ color: "#fff" }}>{app.identity_card}</strong></div>
                           <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "2px" }}>{app.address}</div>
-                          <div style={{ marginTop: "4px", display: "flex", gap: "6px" }}>
+                          <div style={{ marginTop: "6px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
                             {app.identity_card_front && (
-                              <a
-                                href={app.identity_card_front}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ fontSize: "0.75rem", color: "var(--orange)" }}
+                              <button
+                                type="button"
+                                onClick={() => setOwnerDocPreview({ title: `CCCD mặt trước - ${app.applicant_name}`, url: app.identity_card_front || "" })}
+                                style={{ fontSize: "0.75rem", color: "var(--orange)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 600 }}
                               >
                                 [Ảnh CCCD trước]
-                              </a>
+                              </button>
                             )}
                             {app.identity_card_back && (
-                              <a
-                                href={app.identity_card_back}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ fontSize: "0.75rem", color: "var(--orange)" }}
+                              <button
+                                type="button"
+                                onClick={() => setOwnerDocPreview({ title: `CCCD mặt sau - ${app.applicant_name}`, url: app.identity_card_back || "" })}
+                                style={{ fontSize: "0.75rem", color: "var(--orange)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 600 }}
                               >
                                 [Ảnh CCCD sau]
-                              </a>
+                              </button>
                             )}
+                            {app.business_license && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const docUrl = app.business_license || "";
+                                  if (isPdfDocument(docUrl)) {
+                                    openDocumentDataUrl(docUrl);
+                                  } else {
+                                    setOwnerDocPreview({ title: `Giấy phép kinh doanh - ${app.applicant_name}`, url: docUrl });
+                                  }
+                                }}
+                                style={{ fontSize: "0.75rem", color: "#38bdf8", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 600 }}
+                              >
+                                [Giấy phép KD]
+                              </button>
+                            )}
+                            {Array.isArray(app.certificates) &&
+                              app.certificates.map((certUrl, certIdx) => (
+                                <button
+                                  key={certIdx}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isPdfDocument(certUrl)) {
+                                      openDocumentDataUrl(certUrl);
+                                    } else {
+                                      setOwnerDocPreview({ title: `Chứng chỉ #${certIdx + 1} - ${app.applicant_name}`, url: certUrl });
+                                    }
+                                  }}
+                                  style={{ fontSize: "0.75rem", color: "#34d399", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 600 }}
+                                >
+                                  [Chứng chỉ #{certIdx + 1}]
+                                </button>
+                              ))}
                           </div>
                         </td>
                         <td>
@@ -2522,6 +2555,50 @@ export default function AdminDashboard() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {ownerDocPreview && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "rgba(0,0,0,0.85)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+            onClick={() => setOwnerDocPreview(null)}
+          >
+            <div
+              style={{
+                background: "#131c2e",
+                border: "1px solid #2b3a55",
+                borderRadius: "14px",
+                padding: "16px",
+                maxWidth: "760px",
+                width: "100%",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <strong style={{ color: "#fff", fontSize: "0.95rem" }}>{ownerDocPreview.title}</strong>
+                <button
+                  type="button"
+                  onClick={() => setOwnerDocPreview(null)}
+                  style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", borderRadius: "8px", padding: "5px 10px", cursor: "pointer" }}
+                >
+                  ✕ Đóng
+                </button>
+              </div>
+              <img
+                src={ownerDocPreview.url}
+                alt={ownerDocPreview.title}
+                style={{ width: "100%", maxHeight: "75vh", objectFit: "contain", borderRadius: "10px", background: "#000" }}
+              />
             </div>
           </div>
         )}

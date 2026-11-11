@@ -65,6 +65,10 @@ const ownerApplicationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    certificates: {
+      type: [String],
+      default: [],
+    },
     notes: {
       type: String,
       default: "",

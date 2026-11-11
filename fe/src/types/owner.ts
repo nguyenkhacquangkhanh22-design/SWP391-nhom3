@@ -235,6 +235,7 @@ export interface OwnerApplication {
   identity_card_front?: string;
   identity_card_back?: string;
   business_license?: string;
+  certificates?: string[];
   notes?: string;
   status: "pending" | "approved" | "rejected";
   admin_note?: string;

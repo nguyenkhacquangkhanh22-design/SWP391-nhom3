@@ -7,14 +7,15 @@ interface ImageUploadFieldProps {
   onChange: (value: string) => void;
   required?: boolean;
   disabled?: boolean;
+  acceptPdf?: boolean;
   hint?: string;
   placeholder?: string;
 }
 
 /**
- * Nén và đọc file ảnh sang Base64 chuẩn bị nộp KYC
+ * Nén và đọc file ảnh sang Base64 chuẩn bị nộp hồ sơ
  */
-async function processImageFile(file: File): Promise<string> {
+export async function processImageFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
       reject(new Error("Vui lòng chọn một file hình ảnh hợp lệ (JPG, PNG, WEBP)."));
@@ -59,6 +60,51 @@ async function processImageFile(file: File): Promise<string> {
   });
 }
 
+/**
+ * Xử lý file ảnh hoặc PDF (nếu được phép) sang Base64 DataURL
+ */
+export async function processDocumentFile(file: File, allowPdf = false): Promise<string> {
+  if (allowPdf && file.type === "application/pdf") {
+    if (file.size > 3 * 1024 * 1024) {
+      throw new Error("File PDF vượt quá giới hạn 3MB. Vui lòng nén nhỏ hơn hoặc tải ảnh chụp.");
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Lỗi khi đọc file PDF."));
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+  }
+  return processImageFile(file);
+}
+
+export function openDocumentDataUrl(url: string) {
+  if (!url) return;
+  if (url.startsWith("data:")) {
+    try {
+      const [meta, base64] = url.split(",");
+      const mimeMatch = meta.match(/data:([^;]+)/);
+      const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      return;
+    } catch {
+      // Fallback below
+    }
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function isPdfDocument(value: string) {
+  return value.startsWith("data:application/pdf") || /\.pdf(\?|$)/i.test(value);
+}
+
 export default function ImageUploadField({
   id,
   label,
@@ -66,6 +112,7 @@ export default function ImageUploadField({
   onChange,
   required = false,
   disabled = false,
+  acceptPdf = false,
   hint,
   placeholder = "https://.../photo.jpg",
 }: ImageUploadFieldProps) {
@@ -75,6 +122,9 @@ export default function ImageUploadField({
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [imageLoadError, setImageLoadError] = useState(false);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+
+  const isPdfValue = isPdfDocument(value);
 
   // Đồng bộ urlDraft khi value thay đổi từ ngoài
   useEffect(() => {
@@ -94,11 +144,11 @@ export default function ImageUploadField({
     setImageLoadError(false);
     setIsProcessing(true);
     try {
-      const dataUrl = await processImageFile(file);
+      const dataUrl = await processDocumentFile(file, acceptPdf);
       onChange(dataUrl);
       setShowUrlInput(false);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Lỗi tải ảnh lên.");
+      setErrorMsg(err instanceof Error ? err.message : "Lỗi tải tệp lên.");
     } finally {
       setIsProcessing(false);
       if (fileInputRef.current) {
@@ -157,7 +207,7 @@ export default function ImageUploadField({
         ref={fileInputRef}
         id={id}
         type="file"
-        accept="image/*"
+        accept={acceptPdf ? "image/*,application/pdf" : "image/*"}
         onChange={handleFileChange}
         disabled={disabled || isProcessing}
         className="hidden"
@@ -173,22 +223,42 @@ export default function ImageUploadField({
         </div>
       )}
 
-      {/* Khi ĐÃ có ảnh được chọn hoặc nhập thành công */}
+      {/* Khi ĐÃ có tệp/ảnh được chọn hoặc nhập thành công */}
       {value ? (
         <div className="border border-[#2a3852] bg-[#131b2c] rounded-xl p-3 flex flex-col sm:flex-row items-center gap-3">
           <div className="relative group shrink-0">
-            {imageLoadError ? (
+            {isPdfValue ? (
+              <button
+                type="button"
+                onClick={() => openDocumentDataUrl(value)}
+                className="w-24 h-20 sm:w-28 sm:h-20 rounded-lg border border-indigo-500/40 bg-indigo-950/30 hover:bg-indigo-950/50 flex flex-col items-center justify-center p-2 text-center cursor-pointer transition-colors"
+                title="Bấm để mở xem tài liệu PDF"
+              >
+                <span className="text-2xl">📄</span>
+                <span className="text-[10px] font-bold text-indigo-300 mt-1">Xem file PDF</span>
+              </button>
+            ) : imageLoadError ? (
               <div className="w-24 h-20 sm:w-28 sm:h-20 rounded-lg border border-rose-500/40 bg-rose-950/20 flex flex-col items-center justify-center p-1 text-center">
                 <span className="text-base">⚠️</span>
                 <span className="text-[9px] text-rose-400 mt-1 leading-tight">Link ảnh lỗi</span>
               </div>
             ) : (
-              <img
-                src={value}
-                alt={label}
-                onError={() => setImageLoadError(true)}
-                className="w-24 h-20 sm:w-28 sm:h-20 object-cover rounded-lg border border-[#303f5c] bg-[#0c1322] shadow"
-              />
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(true)}
+                className="block relative rounded-lg overflow-hidden border border-[#303f5c] bg-[#0c1322] shadow cursor-zoom-in group"
+                title="Bấm để phóng to xem ảnh"
+              >
+                <img
+                  src={value}
+                  alt={label}
+                  onError={() => setImageLoadError(true)}
+                  className="w-24 h-20 sm:w-28 sm:h-20 object-cover group-hover:opacity-85 transition-opacity"
+                />
+                <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                  🔍
+                </span>
+              </button>
             )}
           </div>
 
@@ -199,41 +269,42 @@ export default function ImageUploadField({
                   ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
                   : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
               }`}>
-                {imageLoadError ? "✕ Lỗi hiển thị" : "✓ Đã tải ảnh lên"}
+                {imageLoadError ? "✕ Lỗi hiển thị" : isPdfValue ? "✓ Đã tải PDF lên" : "✓ Đã tải ảnh lên"}
               </span>
               <span className="text-[11px] text-slate-400 truncate max-w-[200px]" title={value}>
-                {value.startsWith("data:") ? "Ảnh tải từ máy tính" : value}
+                {value.startsWith("data:") ? "Tệp tải lên từ thiết bị" : value}
               </span>
             </div>
 
-            <div className="flex items-center gap-2 pt-1 flex-wrap">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled || isProcessing}
-                className="px-2.5 py-1 bg-[#1e2a42] hover:bg-[#283858] disabled:opacity-50 text-slate-200 border border-[#354668] rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
-              >
-                <span>📷</span> Chọn ảnh khác
-              </button>
+            {!disabled && (
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessing}
+                  className="px-2.5 py-1 bg-[#1e2a42] hover:bg-[#283858] disabled:opacity-50 text-slate-200 border border-[#354668] rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <span>📷</span> {isPdfValue ? "Chọn tệp khác" : "Chọn ảnh khác"}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setShowUrlInput(!showUrlInput)}
-                disabled={disabled}
-                className="px-2.5 py-1 bg-[#1e2a42] hover:bg-[#283858] disabled:opacity-50 text-slate-300 border border-[#354668] rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1"
-              >
-                <span>🔗</span> Đổi link URL
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUrlInput(!showUrlInput)}
+                  className="px-2.5 py-1 bg-[#1e2a42] hover:bg-[#283858] text-slate-300 border border-[#354668] rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🔗</span> Đổi link URL
+                </button>
 
-              <button
-                type="button"
-                onClick={handleClear}
-                disabled={disabled || isProcessing}
-                className="px-2.5 py-1 bg-rose-600/10 hover:bg-rose-600/20 disabled:opacity-50 text-rose-400 border border-rose-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
-              >
-                <span>🗑️</span> Xóa
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  disabled={isProcessing}
+                  className="px-2.5 py-1 bg-rose-600/10 hover:bg-rose-600/20 disabled:opacity-50 text-rose-400 border border-rose-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🗑️</span> Xóa
+                </button>
+              </div>
+            )}
 
             {showUrlInput && (
               <div className="pt-2 flex gap-1.5">
@@ -303,25 +374,33 @@ export default function ImageUploadField({
 
               <div>
                 <p className="text-xs font-semibold text-slate-300 group-hover:text-orange-400 transition-colors">
-                  {isProcessing ? "Đang xử lý ảnh..." : "Bấm vào để chọn ảnh từ thiết bị"}
+                  {isProcessing
+                    ? "Đang xử lý tệp..."
+                    : acceptPdf
+                    ? "Bấm vào để chọn ảnh hoặc file PDF từ thiết bị"
+                    : "Bấm vào để chọn ảnh từ thiết bị"}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Hỗ trợ JPG, PNG, WEBP (tự động tối ưu dung lượng)
+                  {acceptPdf
+                    ? "Hỗ trợ JPG, PNG, WEBP hoặc PDF (tối đa 3MB)"
+                    : "Hỗ trợ JPG, PNG, WEBP (tự động tối ưu dung lượng)"}
                 </p>
               </div>
             </div>
           </div>
 
           {/* Nút bấm chuyển đổi dán link ảnh */}
-          <div className="text-right">
-            <button
-              type="button"
-              onClick={() => setShowUrlInput(!showUrlInput)}
-              className="text-[11px] text-slate-400 hover:text-orange-400 underline underline-offset-2 transition-colors"
-            >
-              {showUrlInput ? "Ẩn nhập link ảnh" : "Hoặc dán liên kết ảnh (URL)"}
-            </button>
-          </div>
+          {!disabled && (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => setShowUrlInput(!showUrlInput)}
+                className="text-[11px] text-slate-400 hover:text-orange-400 underline underline-offset-2 transition-colors cursor-pointer"
+              >
+                {showUrlInput ? "Ẩn nhập link URL" : "Hoặc dán liên kết (URL)"}
+              </button>
+            </div>
+          )}
 
           {/* Ô nhập liên kết URL với nút Áp dụng để người dùng nhập hoàn tất */}
           {showUrlInput && (
@@ -353,6 +432,33 @@ export default function ImageUploadField({
               </p>
             </div>
           )}
+        </div>
+      )}
+      {isZoomOpen && value && !isPdfValue && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsZoomOpen(false)}
+        >
+          <div
+            className="relative max-w-3xl w-full bg-[#111827] border border-[#2a3852] rounded-2xl p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#223049]">
+              <span className="text-xs font-bold text-slate-200">{label}</span>
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(false)}
+                className="px-2.5 py-1 rounded-lg bg-[#1e293b] hover:bg-[#334155] text-slate-200 text-xs font-bold cursor-pointer"
+              >
+                ✕ Đóng
+              </button>
+            </div>
+            <img
+              src={value}
+              alt={label}
+              className="w-full max-h-[75vh] object-contain rounded-xl bg-black"
+            />
+          </div>
         </div>
       )}
     </div>

@@ -591,7 +591,7 @@ export default function RentalHistoryPage() {
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-10 py-8 w-full flex-1">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -1549,7 +1549,7 @@ export default function RentalHistoryPage() {
                     )}
 
                     {/* Nút theo dõi tiến độ khiếu nại (Issue 10) */}
-                    {(upperStatus === "DISPUTED" || Boolean(r.dispute)) && (
+                    {(upperStatus === "DISPUTED" || Boolean(r.dispute?.reason) || Boolean(r.dispute?.disputedAt)) && (
                       <button
                         onClick={() => setViewingDisputeRental(r)}
                         className="px-3 py-2 bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 font-bold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
