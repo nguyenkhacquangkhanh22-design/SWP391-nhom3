@@ -862,7 +862,8 @@ export default function RentalHistoryPage() {
                 r.contract?.signedAt ||
                 upperStatus === "CONTRACT_SIGNED"
               );
-              const canSign = isApproved && !isPaidConfirmed && !r.contract?.termsAccepted; // Cho phép Người thuê ký trực tiếp ngay khi đơn được duyệt!
+              // Chỉ hiển thị Ký hợp đồng & Thanh toán khi đã được duyệt VÀ người thuê đã đồng ý ký HĐ trong chat!
+              const canSign = isApproved && hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted;
               const canPay = (upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_REJECTED") && !isWaitingPaymentApproval && !isPaymentVerifying;
               const canReturn =
                 upperStatus === "PAID" ||
@@ -1013,7 +1014,7 @@ export default function RentalHistoryPage() {
                         <div className="mt-2.5 p-2.5 bg-blue-950/40 border border-blue-500/40 rounded-xl text-xs text-blue-300 flex items-start gap-2 shadow-sm">
                           <span className="text-base shrink-0">💬</span>
                           <div>
-                            <b>Đơn thuê đã được duyệt:</b> Hãy bấm vào nút <b>"💬 Nhắn tin với Chủ máy"</b> bên dưới để trao đổi, thống nhất các điều khoản và bấm <b>"Đồng ý ký hợp đồng"</b> trong khung chat để mở chức năng Ký & Thanh toán.
+                            <b>Đơn thuê đã được duyệt:</b> Vui lòng bấm nút <b>"💬 Vào chat Đồng ý ký HĐ"</b> (hoặc <b>"💬 Nhắn tin với Chủ máy"</b>) bên dưới để xem hợp đồng và bấm <b>"Đồng ý ký hợp đồng"</b> trong đoạn chat. Sau đó nút <b>"✍️ Ký hợp đồng & Thanh toán"</b> mới hiển thị.
                           </div>
                         </div>
                       )}
@@ -1021,7 +1022,7 @@ export default function RentalHistoryPage() {
                         <div className="mt-2.5 p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-300 flex items-start gap-2 shadow-sm">
                           <span className="text-base shrink-0">🎉</span>
                           <div>
-                            <b>Hai bên đã thống nhất thỏa thuận!</b> Vui lòng bấm vào nút <b>"✍️ Ký hợp đồng & Thanh toán"</b> bên dưới để hoàn tất nhận máy.
+                            <b>Hai bên đã thống nhất thỏa thuận trong chat!</b> Vui lòng bấm vào nút <b>"✍️ Ký hợp đồng & Thanh toán"</b> bên dưới để ký hợp đồng và chuyển khoản nhận máy.
                           </div>
                         </div>
                       )}
@@ -1292,7 +1293,7 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng khi đã được duyệt */}
+                    {/* Nút ký hợp đồng khi đã được duyệt VÀ đã đồng ý trong chat */}
                     {canSign ? (
                       <button
                         onClick={() => setSigningRental(r)}
@@ -1301,7 +1302,16 @@ export default function RentalHistoryPage() {
                         <span>✍️</span>
                         <span>Ký hợp đồng & Thanh toán</span>
                       </button>
-) : null}
+                    ) : isApproved && !hasAgreedToSign ? (
+                      <button
+                        onClick={() => setChatRental(r)}
+                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-blue-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
+                        title="Vào đoạn chat để trao đổi điều khoản và bấm Đồng ý ký hợp đồng"
+                      >
+                        <span>💬</span>
+                        <span>Vào chat Đồng ý ký HĐ</span>
+                      </button>
+                    ) : null}
 
 {/* Nút thanh toán (UC_R09) - PayOS VietQR tự động & Quét QR thủ công */}
                     {canPay && (

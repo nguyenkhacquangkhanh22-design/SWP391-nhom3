@@ -419,7 +419,61 @@ export default function RentalChatModal({
           </div>
         </div>
 
-
+        {/* Pinned Contract Bar: Trạng thái & Nút Đồng ý ký hợp đồng cho Người thuê */}
+        {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
+          <div className="px-4 py-2.5 bg-gradient-to-r from-[#111c2e] via-[#15253d] to-[#111c2e] border-b border-blue-500/30 flex items-center justify-between gap-3 text-xs flex-wrap">
+            <div className="flex items-center gap-2 text-slate-200 min-w-0">
+              <span className="text-base text-blue-400 shrink-0">📄</span>
+              <span className="truncate">
+                Hợp đồng: <strong className="text-orange-400 font-mono">#{currentRental.contract?.contractNumber || currentRental.rentalCode}</strong>
+                {currentRental.contract?.agreedToSign ? (
+                  <span className="ml-2 text-emerald-400 font-semibold">✓ Đã đồng ý trong chat</span>
+                ) : (
+                  <span className="ml-2 text-amber-300 font-medium">(Chưa xác nhận đồng ý)</span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onViewContract) onViewContract(currentRental);
+                  setShowPdfModal(true);
+                }}
+                className="px-2.5 py-1 bg-[#1e2a3f] hover:bg-[#283854] text-slate-300 text-[11px] font-semibold rounded-lg border border-slate-700 cursor-pointer"
+              >
+                Xem HĐ
+              </button>
+              {!currentRental.contract?.agreedToSign ? (
+                <button
+                  type="button"
+                  onClick={handleAgreeToSign}
+                  disabled={agreeing}
+                  className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[11px] rounded-lg shadow-md flex items-center gap-1 animate-pulse disabled:opacity-50 cursor-pointer"
+                  title="Bấm để đồng ý điều khoản trong đoạn chat và mở quyền Ký hợp đồng & Thanh toán"
+                >
+                  <span>✍️</span>
+                  <span>{agreeing ? "Đang lưu..." : "Đồng ý ký hợp đồng"}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onAgreeToSign) {
+                      onAgreeToSign(currentRental);
+                    } else {
+                      setShowSignModal(true);
+                    }
+                  }}
+                  className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[11px] rounded-lg shadow-md flex items-center gap-1 cursor-pointer"
+                >
+                  <span>✍️</span>
+                  <span>Ký hợp đồng ngay</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Messages Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0d1422]">
@@ -509,17 +563,23 @@ export default function RentalChatModal({
                           <span>Xem hợp đồng</span>
                         </button>
 
-                        {/* Nút Ký hợp đồng cho Renter ngay trên thẻ HĐ */}
+                        {/* Nút Đồng ý ký hợp đồng cho Renter ngay trên thẻ HĐ */}
                         {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
                           <button
                             type="button"
                             onClick={handleAgreeToSign}
                             disabled={agreeing}
                             className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
-                            title="Xác nhận đồng ý điều khoản và ký hợp đồng ngay"
+                            title="Xác nhận đồng ý điều khoản trong đoạn chat để mở quyền Ký hợp đồng & Thanh toán"
                           >
                             <span>✍️</span>
-                            <span>{agreeing ? "Đang mở..." : "Ký hợp đồng ngay"}</span>
+                            <span>
+                              {agreeing
+                                ? "Đang lưu..."
+                                : currentRental.contract?.agreedToSign
+                                ? "Ký hợp đồng ngay"
+                                : "Đồng ý ký hợp đồng"}
+                            </span>
                           </button>
                         )}
                       </div>
