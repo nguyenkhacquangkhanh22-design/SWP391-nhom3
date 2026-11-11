@@ -231,6 +231,9 @@ export default function OwnerPortal() {
   }
 
   function handleTabChange(tab: typeof activeTab) {
+    if (tab !== "contracts") {
+      setRequestForContract(null);
+    }
     setActiveTab(tab);
     setError("");
     setSuccess("");

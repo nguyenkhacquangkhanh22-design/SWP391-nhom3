@@ -58,47 +58,16 @@ export default function OwnerRequestsTab({
     void fetchDirectRentals();
   }, [token]);
 
-  // Thao tác duyệt đơn thuê trực tiếp (Owner duyệt -> Tự động chuyển sang tab Hợp đồng thuê để lập hợp đồng)
+  // Thao tác duyệt đơn thuê trực tiếp (Owner chỉ duyệt đơn, không tự động chuyển tab)
   async function handleApproveDirectRental(rental: Rental) {
     setIsProcessing(true);
     onError("");
     onSuccess("");
     try {
-      const res = await ownerApi.respondOwnerRental(token, rental._id, "approve");
-      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Hệ thống chuyển sang mục Hợp đồng thuê để lập hợp đồng.`);
+      await ownerApi.respondOwnerRental(token, rental._id, "approve");
+      onSuccess(`✅ Đã duyệt đơn thuê #${rental.rentalCode}! Bạn có thể chuyển sang tab "Hợp đồng thuê" để tiến hành lập hợp đồng.`);
       await fetchDirectRentals();
       onRefresh();
-
-      // Sử dụng RentalRequest chính thức được Backend đồng bộ và trả về trực tiếp từ DB
-      const matchingReq = (requests || []).find(
-        (rq) => rq.request_code === rental.rentalCode || String(rq._id) === String(rental._id)
-      );
-
-      const requestObj: RentalRequest =
-        res?.rentalRequest ||
-        matchingReq ||
-        ({
-          _id: rental._id,
-          request_code: rental.rentalCode,
-          renter_name: typeof rental.renter === "object" ? rental.renter?.name : "Khách thuê",
-          renter_email: typeof rental.renter === "object" ? rental.renter?.email : "",
-          renter_phone: typeof rental.renter === "object" ? rental.renter?.phone : "",
-          equipment_id:
-            typeof rental.equipment === "object"
-              ? rental.equipment
-              : ({ _id: rental.equipment, title: "Thiết bị thuê" } as any),
-          start_date: rental.startDate,
-          end_date: rental.endDate,
-          rental_fee: rental.totalAmount || rental.rentalFee || 0,
-          deposit_amount: 0,
-          status: "approved",
-          delivery_address: rental.deliveryAddress,
-          duration_days: rental.totalDays || 1,
-        } as any);
-
-      if (onCreateContract) {
-        onCreateContract(requestObj);
-      }
     } catch (err) {
       onError(err instanceof Error ? err.message : "Duyệt đơn thuê thất bại.");
     } finally {
@@ -153,9 +122,10 @@ export default function OwnerRequestsTab({
           </h2>
           <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: "0.88rem" }}>
             Luồng trực tiếp: <strong style={{ color: "#fb923c" }}>1. Khách đặt thuê</strong> ➔{" "}
-            <strong style={{ color: "#38bdf8" }}>2. Chủ máy duyệt & Lập/Sửa HĐ</strong> ➔{" "}
-            <strong style={{ color: "#a855f7" }}>3. Khách ký & Chuyển khoản QR</strong> ➔{" "}
-            <strong style={{ color: "#10b981" }}>4. Bạn xác nhận nhận tiền & Giao thiết bị</strong>.
+            <strong style={{ color: "#38bdf8" }}>2. Chủ máy duyệt đơn</strong> ➔{" "}
+            <strong style={{ color: "#a855f7" }}>3. Sang tab "Hợp đồng thuê" để lập & ký HĐ</strong> ➔{" "}
+            <strong style={{ color: "#10b981" }}>4. Khách ký & Thanh toán</strong> ➔{" "}
+            <strong style={{ color: "#f59e0b" }}>5. Bàn giao thiết bị</strong>.
           </p>
         </div>
 
@@ -414,7 +384,7 @@ export default function OwnerRequestsTab({
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                          {/* NÚT DUYỆT ĐƠN KHI PENDING -> CHUYỂN SANG LẬP HỢP ĐỒNG */}
+                          {/* NÚT DUYỆT ĐƠN CHO THUÊ (Chỉ duyệt đơn tại đây) */}
                           {isPendingOwner && (
                             <button
                               type="button"
@@ -441,14 +411,14 @@ export default function OwnerRequestsTab({
                               title={
                                 conflictingOrder
                                   ? `Trùng lịch với đơn #${conflictingOrder.rentalCode}`
-                                  : "Duyệt đơn và chuyển sang tab Hợp đồng thuê để lập hợp đồng"
+                                  : "Duyệt chấp nhận đơn thuê này"
                               }
                             >
-                              {conflictingOrder ? "⚠️ Trùng lịch" : "✅ Duyệt & Lập HĐ"}
+                              {conflictingOrder ? "⚠️ Trùng lịch" : "✅ Duyệt đơn"}
                             </button>
                           )}
 
-                          {/* NÚT LẬP HỢP ĐỒNG KHI ĐÃ DUYỆT */}
+                          {/* NÚT CHUYỂN SANG TAB HỢP ĐỒNG KHI ĐÃ DUYỆT */}
                           {isApproved && (
                             <button
                               type="button"
@@ -473,11 +443,11 @@ export default function OwnerRequestsTab({
                                 } as any);
                                 onCreateContract?.(requestObj);
                               }}
-                              className="button button-primary"
-                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto" }}
+                              className="button button-secondary"
+                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto", borderColor: "#f97316", color: "#fb923c" }}
                               title="Chuyển sang tab Hợp đồng thuê để lập hợp đồng"
                             >
-                              📝 Lập HĐ
+                              Sang tab HĐ ➔
                             </button>
                           )}
 
