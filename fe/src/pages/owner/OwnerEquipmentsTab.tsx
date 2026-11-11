@@ -643,9 +643,8 @@ export default function OwnerEquipmentsTab({
         <div className="owner-equipment-grid">
           {equipments.map((eq) => {
             const isHiddenByMembership = Boolean(
-              (eq as any).membership_hidden ||
-              (eq as any).isActive === false ||
-              !membershipActive
+              !membershipActive ||
+              ((eq as any).membership_hidden && !membershipActive)
             );
             return (
             <div

@@ -224,11 +224,17 @@ async function activatePaidOrder(orderCode, amount, paymentReference = "") {
       // Tự động mở lại toàn bộ bài đăng bị ẩn do hết hạn gói cước (cả owner_id và owner)
       await Equipment.updateMany(
         {
-          $or: [
-            { owner_id: membership.owner_id },
-            { owner: membership.owner_id },
+          $and: [
+            {
+              $or: [
+                { owner_id: membership.owner_id },
+                { owner: membership.owner_id },
+              ],
+            },
+            {
+              $or: [{ membership_hidden: true }, { isActive: false }, { visibility: "hidden" }],
+            },
           ],
-          $or: [{ membership_hidden: true }, { isActive: false }],
         },
         {
           $set: {
@@ -331,6 +337,41 @@ async function expireMemberships() {
   });
   const activeIdsSet = new Set(activeOwnerIds.map((id) => id.toString()));
 
+  // 2b. Đảm bảo toàn bộ bài đăng của các Owner ĐANG CÒN HẠN luôn được mở công khai
+  if (activeOwnerIds.length > 0) {
+    await Equipment.updateMany(
+      {
+        $and: [
+          {
+            $or: [
+              { owner_id: { $in: activeOwnerIds } },
+              { owner: { $in: activeOwnerIds } },
+            ],
+          },
+          {
+            $or: [
+              { membership_hidden: true },
+              { isActive: false },
+              { visibility: "hidden" },
+            ],
+          },
+          {
+            approval_status: { $ne: "rejected" },
+            visibility: { $ne: "draft" },
+          },
+        ],
+      },
+      {
+        $set: {
+          isActive: true,
+          visibility: "published",
+          membership_hidden: false,
+          hidden_reason: "",
+        },
+      }
+    );
+  }
+
   // 3. Tìm các chủ máy không còn gói cước active
   const allOwners = await User.find({ role: "owner" }).select("_id").lean();
   const inactiveOwnerIds = allOwners
@@ -341,14 +382,20 @@ async function expireMemberships() {
     // 4. Tự động ẩn toàn bộ bài đăng (Equipment) của các Owner hết hạn gói cước
     await Equipment.updateMany(
       {
-        $or: [
-          { owner_id: { $in: inactiveOwnerIds } },
-          { owner: { $in: inactiveOwnerIds } },
-        ],
-        $or: [
-          { visibility: "published" },
-          { isActive: true },
-          { membership_hidden: { $ne: true } },
+        $and: [
+          {
+            $or: [
+              { owner_id: { $in: inactiveOwnerIds } },
+              { owner: { $in: inactiveOwnerIds } },
+            ],
+          },
+          {
+            $or: [
+              { visibility: "published" },
+              { isActive: true },
+              { membership_hidden: { $ne: true } },
+            ],
+          },
         ],
       },
       {

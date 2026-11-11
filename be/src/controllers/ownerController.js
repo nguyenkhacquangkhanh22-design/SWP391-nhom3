@@ -113,6 +113,37 @@ async function getOverview(req, res) {
 // -----------------------------------------------------------------------------
 async function getOwnerEquipments(req, res) {
   const ownerId = req.user._id;
+
+  // Auto-sync: If owner has active membership, ensure their equipments are active and unhidden
+  try {
+    const OwnerMembership = require("../models/OwnerMembership");
+    const now = new Date();
+    const hasActiveMembership = await OwnerMembership.exists({
+      owner_id: ownerId,
+      status: "active",
+      expires_at: { $gt: now },
+    });
+
+    if (hasActiveMembership) {
+      await Equipment.updateMany(
+        {
+          $or: [{ owner_id: ownerId }, { owner: ownerId }],
+          membership_hidden: true,
+        },
+        {
+          $set: {
+            membership_hidden: false,
+            isActive: true,
+            visibility: "published",
+            hidden_reason: "",
+          },
+        }
+      );
+    }
+  } catch (syncErr) {
+    console.warn("Auto-sync owner equipments error:", syncErr.message);
+  }
+
   const equipments = await Equipment.find({
     $or: [{ owner_id: ownerId }, { owner: ownerId }],
   })
