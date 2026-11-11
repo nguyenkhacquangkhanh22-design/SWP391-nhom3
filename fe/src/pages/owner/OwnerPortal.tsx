@@ -450,15 +450,41 @@ export default function OwnerPortal() {
             )}
           </div>
 
-          <Link to="/equipments" className="button button-quiet" style={{ fontSize: "0.85rem" }}>
+          <Link
+            to="/equipments"
+            className="button button-quiet"
+            style={{
+              fontSize: "0.85rem",
+              borderRadius: "10px",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              padding: "7px 14px",
+            }}
+          >
             Chợ thiết bị 🔍
           </Link>
-          <Link to="/profile" className="button button-secondary" style={{ fontSize: "0.85rem" }}>
-            👤 {user?.name || "Hồ sơ"}
+          <Link
+            to="/profile"
+            className="button button-secondary"
+            style={{
+              fontSize: "0.85rem",
+              borderRadius: "10px",
+              padding: "7px 14px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span>👤</span>
+            <span style={{ fontWeight: 600 }}>{user?.name || "Hồ sơ"}</span>
           </Link>
           <button
             className="button button-quiet"
-            style={{ fontSize: "0.85rem" }}
+            style={{
+              fontSize: "0.85rem",
+              borderRadius: "10px",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              padding: "7px 14px",
+            }}
             onClick={() => void signOut()}
           >
             Đăng xuất ↗

@@ -383,7 +383,7 @@ export default function OwnerRequestsTab({
                         )}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
                           {/* NÚT DUYỆT ĐƠN CHO THUÊ (Chỉ duyệt đơn tại đây) */}
                           {isPendingOwner && (
                             <button
@@ -405,6 +405,8 @@ export default function OwnerRequestsTab({
                               style={{
                                 padding: "6px 14px",
                                 fontSize: "0.8rem",
+                                borderRadius: "10px",
+                                fontWeight: 700,
                                 width: "auto",
                                 ...(conflictingOrder ? { borderColor: "#ef4444", color: "#f87171" } : {}),
                               }}
@@ -444,7 +446,16 @@ export default function OwnerRequestsTab({
                                 onCreateContract?.(requestObj);
                               }}
                               className="button button-secondary"
-                              style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto", borderColor: "#f97316", color: "#fb923c" }}
+                              style={{
+                                padding: "6px 12px",
+                                fontSize: "0.8rem",
+                                borderRadius: "10px",
+                                width: "auto",
+                                borderColor: "#f97316",
+                                color: "#fb923c",
+                                background: "rgba(249, 115, 22, 0.12)",
+                                fontWeight: 600,
+                              }}
                               title="Chuyển sang tab Hợp đồng thuê để lập hợp đồng"
                             >
                               Sang tab HĐ ➔
@@ -458,7 +469,17 @@ export default function OwnerRequestsTab({
                               onClick={() => handleConfirmDirectPayment(r._id, r.rentalCode)}
                               disabled={isProcessing}
                               className="button"
-                              style={{ background: "#059669", color: "#fff", padding: "6px 14px", fontSize: "0.8rem", width: "auto", fontWeight: "bold" }}
+                              style={{
+                                background: "linear-gradient(135deg, #059669, #10b981)",
+                                color: "#fff",
+                                padding: "6px 14px",
+                                fontSize: "0.8rem",
+                                borderRadius: "10px",
+                                width: "auto",
+                                fontWeight: "bold",
+                                border: "none",
+                                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
+                              }}
                             >
                               ✅ Xác nhận đã nhận tiền (Gửi hàng)
                             </button>
@@ -469,7 +490,18 @@ export default function OwnerRequestsTab({
                             type="button"
                             onClick={() => setChatRental(r)}
                             className="button button-secondary"
-                            style={{ padding: "6px 12px", fontSize: "0.8rem", width: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            style={{
+                              padding: "6px 12px",
+                              fontSize: "0.8rem",
+                              borderRadius: "10px",
+                              width: "auto",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              background: "rgba(56, 189, 248, 0.1)",
+                              borderColor: "rgba(56, 189, 248, 0.35)",
+                              color: "#38bdf8",
+                            }}
                             title="Nhắn tin với khách thuê & gửi hợp đồng"
                           >
                             <span>💬</span> Nhắn tin
@@ -480,7 +512,15 @@ export default function OwnerRequestsTab({
                             type="button"
                             onClick={() => setViewingContractRental(r)}
                             className="button button-quiet"
-                            style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto" }}
+                            style={{
+                              padding: "6px 10px",
+                              fontSize: "0.8rem",
+                              borderRadius: "10px",
+                              width: "auto",
+                              background: "rgba(255, 255, 255, 0.05)",
+                              borderColor: "rgba(255, 255, 255, 0.12)",
+                              color: "#cbd5e1",
+                            }}
                             title="Mở bản hợp đồng PDF"
                           >
                             📄 HĐ PDF
@@ -491,7 +531,15 @@ export default function OwnerRequestsTab({
                             type="button"
                             onClick={() => setEditingContractRental(r)}
                             className="button button-quiet"
-                            style={{ padding: "6px 10px", fontSize: "0.8rem", width: "auto", color: "#38bdf8", borderColor: "#0284c7" }}
+                            style={{
+                              padding: "6px 10px",
+                              fontSize: "0.8rem",
+                              borderRadius: "10px",
+                              width: "auto",
+                              color: "#38bdf8",
+                              borderColor: "rgba(2, 132, 199, 0.4)",
+                              background: "rgba(2, 132, 199, 0.08)",
+                            }}
                             title="Chỉnh sửa điều khoản, biểu phí hợp đồng theo thỏa thuận"
                           >
                             ✏️ Sửa HĐ
@@ -503,7 +551,7 @@ export default function OwnerRequestsTab({
                               <span
                                 style={{
                                   padding: "4px 8px",
-                                  borderRadius: "6px",
+                                  borderRadius: "8px",
                                   fontSize: "0.75rem",
                                   background: "rgba(245, 158, 11, 0.15)",
                                   border: "1px solid #f59e0b",
@@ -525,11 +573,13 @@ export default function OwnerRequestsTab({
                                 style={{
                                   padding: "6px 10px",
                                   fontSize: "0.8rem",
+                                  borderRadius: "10px",
                                   width: "auto",
-                                  background: "#f59e0b",
+                                  background: "linear-gradient(135deg, #f59e0b, #d97706)",
                                   color: "#111827",
                                   fontWeight: "bold",
                                   border: "none",
+                                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.3)",
                                 }}
                                 title="Đánh giá khách thuê & chấm điểm uy tín"
                               >
@@ -551,9 +601,11 @@ export default function OwnerRequestsTab({
                                 style={{
                                   padding: "6px 10px",
                                   fontSize: "0.8rem",
+                                  borderRadius: "10px",
                                   width: "auto",
                                   color: "#f87171",
-                                  borderColor: "rgba(239, 68, 68, 0.4)",
+                                  borderColor: "rgba(239, 68, 68, 0.35)",
+                                  background: "rgba(239, 68, 68, 0.08)",
                                 }}
                                 title="Chủ động hủy đơn / Sự cố thiết bị đột xuất"
                               >

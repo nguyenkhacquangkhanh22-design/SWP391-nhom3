@@ -475,7 +475,7 @@ export default function OwnerContractsTab({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: "10px",
           marginTop: "14px",
           marginBottom: "14px",
@@ -487,35 +487,45 @@ export default function OwnerContractsTab({
               ? "rgba(16, 185, 129, 0.45)"
               : st.state === "current"
               ? "rgba(249, 115, 22, 0.65)"
-              : "var(--border)";
+              : "rgba(255, 255, 255, 0.08)";
           const bg =
             st.state === "done"
-              ? "rgba(16, 185, 129, 0.08)"
+              ? "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.04))"
               : st.state === "current"
-              ? "rgba(249, 115, 22, 0.12)"
-              : "#111827";
+              ? "linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(249, 115, 22, 0.05))"
+              : "rgba(15, 23, 42, 0.65)";
           const titleColor =
             st.state === "done"
               ? "#34d399"
               : st.state === "current"
               ? "#fb923c"
               : "#94a3b8";
+          const icon =
+            st.state === "done" ? "✓ " : st.state === "current" ? "⚡ " : "○ ";
 
           return (
             <div
               key={st.num}
               style={{
-                padding: "10px 12px",
-                borderRadius: "10px",
+                padding: "12px 14px",
+                borderRadius: "12px",
                 border: `1px solid ${borderColor}`,
                 background: bg,
+                backdropFilter: "blur(8px)",
+                boxShadow:
+                  st.state === "current"
+                    ? "0 4px 14px rgba(249, 115, 22, 0.2)"
+                    : st.state === "done"
+                    ? "0 2px 8px rgba(16, 185, 129, 0.15)"
+                    : "none",
+                transition: "all 0.2s ease",
               }}
             >
-              <div style={{ fontSize: "0.8rem", fontWeight: 700, color: titleColor }}>
-                {st.state === "done" ? "✓ " : st.state === "current" ? "● " : "○ "}
-                {st.label}
+              <div style={{ fontSize: "0.82rem", fontWeight: 700, color: titleColor, display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>{icon}</span>
+                <span>{st.label}</span>
               </div>
-              <div style={{ fontSize: "0.73rem", color: "var(--muted)", marginTop: "3px" }}>
+              <div style={{ fontSize: "0.74rem", color: st.state === "current" ? "#fdba74" : "#94a3b8", marginTop: "4px" }}>
                 {st.sub}
               </div>
             </div>
