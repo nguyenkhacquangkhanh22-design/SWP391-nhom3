@@ -20,6 +20,8 @@ async function browseEquipments(req, res) {
   const query = {
     visibility: { $in: ["published", "PUBLISHED", undefined] },
     approval_status: { $ne: "rejected" },
+    membership_hidden: { $ne: true },
+    isActive: { $ne: false },
   };
 
   if (status) {
@@ -70,6 +72,8 @@ async function getEquipmentPublicDetail(req, res) {
   const equipment = await Equipment.findOne({
     _id: id,
     visibility: { $in: ["published", "maintenance"] },
+    membership_hidden: { $ne: true },
+    isActive: { $ne: false },
   })
     .populate("owner_id", "name email trust_score createdAt")
     .lean();
@@ -92,8 +96,8 @@ async function requestRental(req, res) {
   }
 
   const equipment = await Equipment.findById(id);
-  if (!equipment || equipment.visibility !== "published") {
-    throw new AppError(404, "Thiết bị không khả dụng để thuê");
+  if (!equipment || equipment.visibility !== "published" || equipment.membership_hidden || equipment.isActive === false) {
+    throw new AppError(404, "Thiết bị không khả dụng để thuê (chủ sở hữu chưa gia hạn gói)");
   }
 
   if (String(equipment.owner_id) === String(renter._id)) {

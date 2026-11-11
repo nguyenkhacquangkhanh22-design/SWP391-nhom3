@@ -18,6 +18,7 @@ router.use(authenticate, authorize("owner", "systemadmin", "admin"));
 // 1. Dashboard Overview (UC_O01)
 router.get("/membership", asyncHandler(ownerMembershipController.getMembership));
 router.get("/membership/orders/:orderCode", asyncHandler(ownerMembershipController.getOrderStatus));
+router.post("/membership/orders/:orderCode/simulate-pay", asyncHandler(ownerMembershipController.simulatePayment));
 router.post("/membership/trial", asyncHandler(ownerMembershipController.startTrial));
 router.post("/membership/checkout", asyncHandler(ownerMembershipController.createCheckout));
 router.get("/overview", asyncHandler(ownerController.getOverview));

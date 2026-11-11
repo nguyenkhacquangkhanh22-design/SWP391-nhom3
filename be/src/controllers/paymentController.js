@@ -315,6 +315,21 @@ const paymentController = {
         console.warn("Socket emit error on webhook:", socketErr?.message);
       }
     } else {
+      // Kiểm tra xem có phải đơn thanh toán gói thành viên Owner Membership không
+      try {
+        const ownerMembershipService = require("../services/ownerMembershipService");
+        const membershipOrder = await ownerMembershipService.activatePaidOrder(orderCode, {
+          transaction_ref: webhookData.reference || String(orderCode),
+          payos_response: webhookData,
+        });
+        if (membershipOrder) {
+          console.log(`PayOS Webhook: Đã kích hoạt gói cước hội viên cho orderCode ${orderCode}`);
+          return res.status(200).json({ success: true, type: "membership" });
+        }
+      } catch (memErr) {
+        console.warn("PayOS Webhook: activate membership order error:", memErr.message);
+      }
+
       console.warn(
         `PayOS Webhook: Không tìm thấy đơn thuê cho orderCode: ${orderCode}, description: ${description}`
       );

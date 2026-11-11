@@ -105,8 +105,18 @@ async function startTrial(ownerId) {
       );
 
       await Equipment.updateMany(
-        { owner_id: ownerId, membership_hidden: true },
-        { $set: { visibility: "published", membership_hidden: false, hidden_reason: "" } },
+        {
+          $or: [{ owner_id: ownerId }, { owner: ownerId }],
+          $or: [{ membership_hidden: true }, { isActive: false }],
+        },
+        {
+          $set: {
+            isActive: true,
+            visibility: "published",
+            membership_hidden: false,
+            hidden_reason: "",
+          },
+        },
         { session },
       );
     });
@@ -211,11 +221,38 @@ async function activatePaidOrder(orderCode, amount, paymentReference = "") {
       membership.payment_reference = paymentReference;
       await membership.save({ session });
 
+      // Tự động mở lại toàn bộ bài đăng bị ẩn do hết hạn gói cước (cả owner_id và owner)
       await Equipment.updateMany(
-        { owner_id: membership.owner_id, membership_hidden: true },
-        { $set: { visibility: "published", membership_hidden: false, hidden_reason: "" } },
+        {
+          $or: [
+            { owner_id: membership.owner_id },
+            { owner: membership.owner_id },
+          ],
+          $or: [{ membership_hidden: true }, { isActive: false }],
+        },
+        {
+          $set: {
+            isActive: true,
+            visibility: "published",
+            membership_hidden: false,
+            hidden_reason: "",
+          },
+        },
         { session },
       );
+
+      // Tạo thông báo UserNotification mở lại bài đăng
+      try {
+        const UserNotification = require("../models/UserNotification");
+        await UserNotification.create({
+          user_id: membership.owner_id,
+          title: "🎉 Gói hội viên đã kích hoạt thành công",
+          message: "Chúc mừng bạn! Gói hội viên tháng đã được kích hoạt. Tất cả bài đăng thiết bị trước đây bị ẩn đã được tự động mở lại trên chợ thiết bị SmartEquip.",
+          link: "/owner",
+        });
+      } catch (notifErr) {
+        console.warn("Lỗi tạo thông báo kích hoạt membership:", notifErr.message);
+      }
     });
   } finally {
     await session.endSession();
@@ -229,52 +266,124 @@ async function getOrderForOwner(orderCode, ownerId) {
   if (!Number.isSafeInteger(parsedOrderCode) || parsedOrderCode <= 0) {
     throw new AppError(400, "Mã đơn thanh toán không hợp lệ.");
   }
-  const membership = await OwnerMembership.findOne({
+  let membership = await OwnerMembership.findOne({
     order_code: parsedOrderCode,
     owner_id: ownerId,
-  })
-    .select("plan amount status order_code expires_at paid_at")
-    .lean();
+  });
   if (!membership) {
     throw new AppError(404, "Không tìm thấy đơn membership.");
   }
+
+  // Nếu trạng thái vẫn là pending_payment, chủ động đối soát với PayOS để cập nhật ngay lập tức
+  if (membership.status === "pending_payment") {
+    try {
+      const payos = getPayOS();
+      const paymentInfo = await payos.paymentRequests.get(parsedOrderCode);
+      if (paymentInfo && (paymentInfo.status === "PAID" || paymentInfo.status === "paid")) {
+        membership = await activatePaidOrder(
+          parsedOrderCode,
+          paymentInfo.amount,
+          paymentInfo.transactions?.[0]?.reference || "PayOS Check",
+        );
+      }
+    } catch (payosErr) {
+      // Bỏ qua nếu chưa thanh toán xong
+    }
+  }
+
   return membership;
+}
+
+async function simulateMembershipPayment(orderCode, ownerId) {
+  const parsedOrderCode = Number(orderCode);
+  const membership = await OwnerMembership.findOne({
+    order_code: parsedOrderCode,
+    owner_id: ownerId,
+  });
+  if (!membership) {
+    throw new AppError(404, "Không tìm thấy đơn membership.");
+  }
+  return await activatePaidOrder(
+    parsedOrderCode,
+    membership.amount,
+    "SIMULATED_TEST",
+  );
 }
 
 async function expireMemberships() {
   const now = new Date();
+
+  // 1. Tìm các gói cước đang active nhưng đã quá hạn expires_at
+  const expiredMemberships = await OwnerMembership.find({
+    status: "active",
+    expires_at: { $lte: now },
+  }).select("owner_id expires_at");
+
   await OwnerMembership.updateMany(
     { status: "active", expires_at: { $lte: now } },
     { $set: { status: "expired" } },
   );
 
-  const [owners, activeOwnerIds] = await Promise.all([
-    User.find({ role: "owner" }).select("_id").lean(),
-    OwnerMembership.distinct("owner_id", {
-      status: "active",
-      expires_at: { $gt: now },
-    }),
-  ]);
-  const activeIds = new Set(activeOwnerIds.map((id) => id.toString()));
-  const inactiveOwnerIds = owners
+  // 2. Tìm tất cả owners có gói cước active còn hạn
+  const activeOwnerIds = await OwnerMembership.distinct("owner_id", {
+    status: "active",
+    expires_at: { $gt: now },
+  });
+  const activeIdsSet = new Set(activeOwnerIds.map((id) => id.toString()));
+
+  // 3. Tìm các chủ máy không còn gói cước active
+  const allOwners = await User.find({ role: "owner" }).select("_id").lean();
+  const inactiveOwnerIds = allOwners
     .map((owner) => owner._id)
-    .filter((id) => !activeIds.has(id.toString()));
+    .filter((id) => !activeIdsSet.has(id.toString()));
 
   if (inactiveOwnerIds.length) {
+    // 4. Tự động ẩn toàn bộ bài đăng (Equipment) của các Owner hết hạn gói cước
     await Equipment.updateMany(
       {
-        owner_id: { $in: inactiveOwnerIds },
-        visibility: "published",
-        membership_hidden: { $ne: true },
+        $or: [
+          { owner_id: { $in: inactiveOwnerIds } },
+          { owner: { $in: inactiveOwnerIds } },
+        ],
+        $or: [
+          { visibility: "published" },
+          { isActive: true },
+          { membership_hidden: { $ne: true } },
+        ],
       },
       {
         $set: {
+          isActive: false,
           visibility: "hidden",
           membership_hidden: true,
-          hidden_reason: "Gói membership đã hết hạn",
+          hidden_reason: "Gói hội viên tháng của bạn đã hết hạn. Bài đăng đang tạm ẩn.",
         },
       },
     );
+
+    // 5. Gửi thông báo UserNotification cho các owner bị hết hạn
+    const UserNotification = require("../models/UserNotification");
+    for (const m of expiredMemberships) {
+      if (!activeIdsSet.has(m.owner_id.toString())) {
+        try {
+          const recentNotif = await UserNotification.findOne({
+            user_id: m.owner_id,
+            title: "⚠️ Gói cước hội viên tháng đã hết hạn",
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          });
+          if (!recentNotif) {
+            await UserNotification.create({
+              user_id: m.owner_id,
+              title: "⚠️ Gói cước hội viên tháng đã hết hạn",
+              message: `Gói hội viên tháng của bạn đã hết hạn. Tất cả bài đăng thiết bị đã được tạm ẩn. Vui lòng gia hạn để tiếp tục hiển thị bài đăng và cho thuê!`,
+              link: "/owner",
+            });
+          }
+        } catch (notifErr) {
+          console.warn("Lỗi gửi thông báo hết hạn membership:", notifErr.message);
+        }
+      }
+    }
   }
 }
 
@@ -290,7 +399,10 @@ async function requireActiveMembership(req, _res, next) {
 
     if (!membership) {
       await expireMemberships();
-      throw new AppError(403, "Bạn cần có membership còn hạn để đăng bài cho thuê.");
+      throw new AppError(
+        403,
+        "Gói hội viên tháng của bạn đã hết hạn. Vui lòng gia hạn để tiếp tục đăng bài.",
+      );
     }
     return next();
   } catch (error) {
@@ -318,6 +430,7 @@ module.exports = {
   createCheckout,
   activatePaidOrder,
   getOrderForOwner,
+  simulateMembershipPayment,
   startMembershipExpiryService,
   requireActiveMembership,
   requireMembershipToPublish,

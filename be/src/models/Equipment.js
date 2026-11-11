@@ -98,6 +98,11 @@ const equipmentSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     images: {
       type: [String],
       default: [],

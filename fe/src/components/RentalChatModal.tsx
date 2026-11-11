@@ -567,17 +567,31 @@ export default function RentalChatModal({
                         {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
                           <button
                             type="button"
-                            onClick={handleAgreeToSign}
+                            onClick={() => {
+                              if (currentRental.contract?.agreedToSign) {
+                                if (onAgreeToSign) {
+                                  onAgreeToSign(currentRental);
+                                } else {
+                                  setShowSignModal(true);
+                                }
+                              } else {
+                                handleAgreeToSign();
+                              }
+                            }}
                             disabled={agreeing}
                             className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
-                            title="Xác nhận đồng ý điều khoản trong đoạn chat để mở quyền Ký hợp đồng & Thanh toán"
+                            title={
+                              currentRental.contract?.agreedToSign
+                                ? "Mở popup ký hợp đồng và thanh toán"
+                                : "Xác nhận đồng ý điều khoản trong đoạn chat để mở quyền Ký hợp đồng & Thanh toán"
+                            }
                           >
                             <span>✍️</span>
                             <span>
                               {agreeing
                                 ? "Đang lưu..."
                                 : currentRental.contract?.agreedToSign
-                                ? "Ký hợp đồng ngay"
+                                ? "Ký hợp đồng & Thanh toán"
                                 : "Đồng ý ký hợp đồng"}
                             </span>
                           </button>

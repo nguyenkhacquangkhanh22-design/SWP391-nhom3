@@ -59,10 +59,22 @@ async function handlePayOSWebhook(req, res) {
   res.json({ error: 0, message: "Webhook processed", data: null });
 }
 
+async function simulatePayment(req, res) {
+  const order = await ownerMembershipService.simulateMembershipPayment(
+    req.params.orderCode,
+    req.user._id,
+  );
+  res.json({
+    message: "Giả lập thanh toán membership thành công. Các bài đăng đã được tự động mở lại!",
+    order,
+  });
+}
+
 module.exports = {
   getMembership,
   startTrial,
   createCheckout,
   getOrderStatus,
+  simulatePayment,
   handlePayOSWebhook,
 };
