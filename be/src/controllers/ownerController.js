@@ -69,7 +69,10 @@ async function getOverview(req, res) {
       visibility: "published",
       status: "available",
     }),
-    RentalRequest.countDocuments({ owner_id: ownerId, status: "pending" }),
+    RentalRequest.countDocuments({
+      owner_id: ownerId,
+      status: { $in: ["pending", "pending_moderator"] },
+    }),
     RentalContract.countDocuments({
       owner_id: ownerId,
       status: { $in: ["signed", "active"] },
@@ -313,6 +316,10 @@ async function updateEquipment(req, res) {
   if (cancellation_policy !== undefined) equipment.cancellation_policy = cancellation_policy;
   if (visibility && ["published", "hidden", "draft"].includes(visibility)) {
     equipment.visibility = visibility;
+    equipment.membership_hidden = false;
+    if (visibility === "published") {
+      equipment.hidden_reason = "";
+    }
   }
 
   await equipment.save();
@@ -341,6 +348,10 @@ async function toggleEquipmentVisibility(req, res) {
   }
 
   equipment.visibility = visibility;
+  equipment.membership_hidden = false;
+  if (visibility === "published") {
+    equipment.hidden_reason = "";
+  }
   await equipment.save();
 
   res.json({
@@ -438,7 +449,7 @@ async function submitEquipmentStatusUpdateRequest(req, res) {
 }
 
 // -----------------------------------------------------------------------------
-// 3. Rental Requests (UC_O07: Approve / Reject Rental Request forwarded by Web Manager)
+// 3. Rental Requests (UC_O07: Approve / Reject requests sent directly by renters)
 // -----------------------------------------------------------------------------
 async function getRentalRequests(req, res) {
   const ownerId = req.user._id;
@@ -601,7 +612,7 @@ async function respondRentalRequest(req, res) {
   rentalReq.responded_at = new Date();
   await rentalReq.save();
 
-  // Notify Renter and Web Manager
+  // Notify the renter about the Owner's decision.
   try {
     if (rentalReq.renter_id) {
       await UserNotification.create({
@@ -627,7 +638,7 @@ async function respondRentalRequest(req, res) {
       rentalReq._id
     );
   } catch (err) {
-    console.error("Failed to notify renter/moderator on request response:", err);
+    console.error("Failed to notify renter about request response:", err);
   }
 
   res.json({
@@ -722,7 +733,7 @@ async function getContractDetail(req, res) {
   res.json({ contract });
 }
 
-// UC_O12: Owner creates Rental Contract from accepted request and sends to Web Manager (Moderator) for approval
+// UC_O12: Owner creates a rental contract from an accepted request
 async function createRentalContract(req, res) {
   const ownerId = req.user._id;
   const {
@@ -925,9 +936,9 @@ Hai bên thống nhất lập Hợp đồng thuê thiết bị chuẩn với cá
 ĐIỀU 6: ĐIỀU KHOẢN BỔ SUNG CỦA OWNER
 ${special_conditions || "Không có điều khoản bổ sung đặc biệt."}
 
-ĐIỀU 7: QUY TRÌNH PHÊ DUYỆT CỦA QUẢN LÝ WEB & CHỮ KÝ NGƯỜI THUÊ
-7.1. Hợp đồng này được Bên A (Owner) lập sau khi duyệt yêu cầu thuê do Quản lý web chuyển tiếp, và gửi lên cho Quản lý web kiểm duyệt nội dung.
-7.2. Sau khi Quản lý web phê duyệt hợp lệ, Quản lý web gửi Hợp đồng này tới Bên B (Người thuê) để Bên B ký tên điện tử xác nhận hiệu lực hợp đồng.`;
+ĐIỀU 7: LẬP HỢP ĐỒNG VÀ CHỮ KÝ ĐIỆN TỬ
+7.1. Hợp đồng này được Bên A (Owner) lập sau khi chấp nhận yêu cầu thuê.
+7.2. Owner gửi hợp đồng trực tiếp tới Bên B (Người thuê) để Bên B xem xét và ký tên điện tử.`;
 
   let selectedTemplate;
   if (template_id) {
@@ -1209,7 +1220,7 @@ async function updateDraftContract(req, res) {
     changes_summary:
       changes_summary ||
       (submit_immediately
-        ? `Cập nhật phiên bản v${nextVersion} và gửi Quản lý web duyệt lại`
+        ? `Cập nhật phiên bản v${nextVersion} và gửi trực tiếp cho Người thuê ký`
         : `Cập nhật phiên bản v${nextVersion}`),
     terms_content: terms_content.trim(),
   });
@@ -1323,7 +1334,7 @@ async function updateDraftContract(req, res) {
 }
 
 // UC_O14: Submit Rental Contract directly to Renter via Chat (bypassing Web Manager)
-async function submitRentalContractForApproval(req, res) {
+async function sendRentalContractToRenter(req, res) {
   const { id } = req.params;
   const { digital_signature } = req.body;
   const contract = await RentalContract.findOne({
@@ -1563,7 +1574,7 @@ async function createHandoverRecord(req, res) {
   if (!["signed", "active"].includes(contract.status)) {
     throw new AppError(
       400,
-      "Chỉ có thể bàn giao thiết bị sau khi hợp đồng đã được Quản lý web phê duyệt và Người thuê đã ký tên xác nhận!"
+      "Chỉ có thể bàn giao thiết bị sau khi Người thuê đã ký tên xác nhận hợp đồng."
     );
   }
 
@@ -2896,7 +2907,8 @@ module.exports = {
   getContractDetail,
   createRentalContract,
   updateDraftContract,
-  submitRentalContractForApproval,
+  sendRentalContractToRenter,
+  submitRentalContractForApproval: sendRentalContractToRenter,
   confirmEContract,
   getContractHandoverRecords,
   updateHandoverRecordAfterReview,

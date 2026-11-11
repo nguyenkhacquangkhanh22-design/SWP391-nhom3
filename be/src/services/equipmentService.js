@@ -22,8 +22,10 @@ class EquipmentService {
 
     const filter = {};
 
-    // Chỉ hiển thị thiết bị công khai (không bị ẩn hoặc nháp)
+    // Chỉ hiển thị thiết bị công khai (không bị ẩn hoặc nháp, gói cước còn hiệu lực)
     filter.visibility = { $nin: ["hidden", "draft"] };
+    filter.membership_hidden = { $ne: true };
+    filter.isActive = { $ne: false };
 
     // Không hiển thị thiết bị bị từ chối phê duyệt (cho phép cả approved, pending hoặc chưa phân loại)
     filter.approval_status = { $ne: "rejected" };

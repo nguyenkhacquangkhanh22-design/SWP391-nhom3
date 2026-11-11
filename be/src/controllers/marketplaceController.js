@@ -4,7 +4,6 @@ const RentalRequest = require("../models/RentalRequest");
 const RentalContract = require("../models/RentalContract");
 const Settlement = require("../models/Settlement");
 const HandoverRecord = require("../models/HandoverRecord");
-const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
 
@@ -21,6 +20,8 @@ async function browseEquipments(req, res) {
   const query = {
     visibility: { $in: ["published", "PUBLISHED", undefined] },
     approval_status: { $ne: "rejected" },
+    membership_hidden: { $ne: true },
+    isActive: { $ne: false },
   };
 
   if (status) {
@@ -71,6 +72,8 @@ async function getEquipmentPublicDetail(req, res) {
   const equipment = await Equipment.findOne({
     _id: id,
     visibility: { $in: ["published", "maintenance"] },
+    membership_hidden: { $ne: true },
+    isActive: { $ne: false },
   })
     .populate("owner_id", "name email trust_score createdAt")
     .lean();
@@ -82,7 +85,7 @@ async function getEquipmentPublicDetail(req, res) {
   res.json({ equipment });
 }
 
-// Step 1: Authenticated Renter creates a rental request -> Sent to Web Manager (Moderator / Admin) first
+// Step 1: Authenticated Renter sends a rental request directly to the equipment Owner
 async function requestRental(req, res) {
   const { id } = req.params;
   const renter = req.user;
@@ -93,8 +96,8 @@ async function requestRental(req, res) {
   }
 
   const equipment = await Equipment.findById(id);
-  if (!equipment || equipment.visibility !== "published") {
-    throw new AppError(404, "Thiết bị không khả dụng để thuê");
+  if (!equipment || equipment.visibility !== "published" || equipment.membership_hidden || equipment.isActive === false) {
+    throw new AppError(404, "Thiết bị không khả dụng để thuê (chủ sở hữu chưa gia hạn gói)");
   }
 
   if (String(equipment.owner_id) === String(renter._id)) {
@@ -138,7 +141,7 @@ async function requestRental(req, res) {
     deposit_amount: 0,
     total_estimated_amount: totalEstimatedAmount,
     renter_note: renter_note || "",
-    status: "pending", // Gửi trực tiếp tới Owner theo sơ đồ luồng
+    status: "pending",
   });
 
   // Đồng bộ tạo bản ghi Rental tương ứng để thống nhất 2 Model
@@ -191,8 +194,7 @@ async function requestRental(req, res) {
   }
 
   res.status(201).json({
-    message:
-      "Đã gửi yêu cầu thuê tới Quản lý web! Quản lý web sẽ kiểm tra và gửi yêu cầu cho Chủ thiết bị (Owner) duyệt.",
+    message: "Đã gửi yêu cầu thuê trực tiếp tới Chủ thiết bị (Owner).",
     request: rentalReq,
   });
 }
@@ -299,10 +301,17 @@ async function confirmReceipt(req, res) {
   });
 }
 
-// Step 5: Renter signs the contract after Web Manager approved & sent it to Renter
+// Renter signs the contract after the Owner sends it directly for signature
 async function signMyContract(req, res) {
   const { id } = req.params;
-  const { signature_note, signature_image, signature_data, payment_method } = req.body;
+  const { signature_note, terms_accepted } = req.body;
+
+  if (!terms_accepted) {
+    throw new AppError(400, "Vui lòng xác nhận đã đọc và đồng ý với các điều khoản hợp đồng.");
+  }
+  if (typeof signature_note !== "string" || !signature_note.trim()) {
+    throw new AppError(400, "Vui lòng nhập chữ ký điện tử hoặc họ tên để ký hợp đồng.");
+  }
 
   const contract = await RentalContract.findOne({
     _id: id,
@@ -313,10 +322,10 @@ async function signMyContract(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng thuê của bạn.");
   }
 
-  if (!["moderator_approved", "draft", "pending_approval", "owner_signed"].includes(contract.status)) {
+  if (!["pending_renter_signature", "moderator_approved"].includes(contract.status)) {
     throw new AppError(
       400,
-      "Hợp đồng này chưa ở trạng thái sẵn sàng để Người thuê ký tên."
+      "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
     );
   }
 
@@ -324,7 +333,7 @@ async function signMyContract(req, res) {
     throw new AppError(400, "Bạn đã ký tên vào hợp đồng này rồi.");
   }
 
-  const sigData = signature_image || signature_data || signature_note || `RENTER_HANDWRITTEN_SIG_${req.user._id}_${Date.now()}`;
+  const sigData = req.body.signature_image || req.body.signature_data || signature_note;
 
   contract.renter_signature = {
     signed: true,

@@ -4,6 +4,11 @@ const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
 const upload = require("../middleware/upload");
 const asyncHandler = require("../utils/asyncHandler");
+const ownerMembershipController = require("../controllers/ownerMembershipController");
+const {
+  requireActiveMembership,
+  requireMembershipToPublish,
+} = require("../middleware/requireOwnerMembership");
 
 const router = express.Router();
 
@@ -11,16 +16,21 @@ const router = express.Router();
 router.use(authenticate, authorize("owner", "systemadmin", "admin"));
 
 // 1. Dashboard Overview (UC_O01)
+router.get("/membership", asyncHandler(ownerMembershipController.getMembership));
+router.get("/membership/orders/:orderCode", asyncHandler(ownerMembershipController.getOrderStatus));
+router.post("/membership/orders/:orderCode/simulate-pay", asyncHandler(ownerMembershipController.simulatePayment));
+router.post("/membership/trial", asyncHandler(ownerMembershipController.startTrial));
+router.post("/membership/checkout", asyncHandler(ownerMembershipController.createCheckout));
 router.get("/overview", asyncHandler(ownerController.getOverview));
 
 // 2. Equipment Listings (UC_O03, UC_O04, UC_O05, UC_O06, UC_O16)
 router.post("/upload-photo", upload.single("file"), asyncHandler(ownerController.uploadEquipmentPhoto));
 router.post("/upload-photos", upload.array("files", 10), asyncHandler(ownerController.uploadEquipmentPhotos));
 router.get("/equipments", asyncHandler(ownerController.getOwnerEquipments));
-router.post("/equipments", asyncHandler(ownerController.createEquipmentListing));
+router.post("/equipments", requireActiveMembership, asyncHandler(ownerController.createEquipmentListing));
 router.get("/equipments/:id", asyncHandler(ownerController.getEquipmentDetail));
-router.put("/equipments/:id", asyncHandler(ownerController.updateEquipment));
-router.patch("/equipments/:id/visibility", asyncHandler(ownerController.toggleEquipmentVisibility));
+router.put("/equipments/:id", requireMembershipToPublish, asyncHandler(ownerController.updateEquipment));
+router.patch("/equipments/:id/visibility", requireMembershipToPublish, asyncHandler(ownerController.toggleEquipmentVisibility));
 router.post("/equipments/:id/schedule", asyncHandler(ownerController.scheduleEquipmentAvailability));
 router.post("/equipments/:id/status-request", asyncHandler(ownerController.submitEquipmentStatusUpdateRequest));
 
@@ -40,7 +50,9 @@ router.get("/contract-templates/published", asyncHandler(ownerController.getPubl
 router.get("/contracts/:id", asyncHandler(ownerController.getContractDetail));
 router.post("/contracts", asyncHandler(ownerController.createRentalContract));
 router.put("/contracts/:id", asyncHandler(ownerController.updateDraftContract));
-router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.submitRentalContractForApproval));
+router.post("/contracts/:id/send-to-renter", asyncHandler(ownerController.sendRentalContractToRenter));
+// Backward-compatible path; submitting now sends the contract directly to the renter.
+router.post("/contracts/:id/submit-approval", asyncHandler(ownerController.sendRentalContractToRenter));
 router.post("/contracts/:id/confirm-e-contract", asyncHandler(ownerController.confirmEContract));
 router.post("/contracts/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
 router.post("/contracts/:id/review-renter", asyncHandler(ownerController.reviewRenter));

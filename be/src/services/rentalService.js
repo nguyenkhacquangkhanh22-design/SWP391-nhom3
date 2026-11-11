@@ -220,7 +220,7 @@ class RentalService {
 
     await rental.save();
 
-    // Tạo song song RentalRequest để Chủ máy nhận được trong Owner Portal theo đúng quy trình
+    // Keep the Owner Portal request in sync before returning success to the renter.
     try {
       const RentalRequest = require("../models/RentalRequest");
       const User = require("../models/User");
@@ -249,8 +249,9 @@ class RentalService {
         renter_note: renterNote || notes || "",
         status: "pending", // Hiển thị ngay trong tab "Yêu cầu thuê" của Owner
       });
-    } catch (err) {
-      console.error("Error creating linked RentalRequest:", err);
+    } catch (rrErr) {
+      await Rental.deleteOne({ _id: rental._id });
+      throw rrErr;
     }
 
     // Gửi thông báo cho Chủ máy (Owner)
@@ -491,7 +492,7 @@ class RentalService {
       throw new AppError(400, `Hợp đồng không thể ký ở trạng thái hiện tại: ${rental.status}`);
     }
 
-    // Luồng trực tiếp: Không bắt buộc Quản lý web duyệt, Owner gửi trực tiếp cho Người thuê ký
+    // Contract records created by the Owner are authoritative; legacy moderator-reviewed records remain signable.
     const RentalContract = require("../models/RentalContract");
     const RentalRequest = require("../models/RentalRequest");
     const matchingReq = await RentalRequest.findOne({
@@ -507,20 +508,33 @@ class RentalService {
 
     const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
     if (matchingContract) {
+      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
+        throw new AppError(
+          400,
+          "Owner chưa gửi hợp đồng cho bạn ký tên."
+        );
+      }
       if (matchingContract.status === "moderator_rejected") {
         throw new AppError(
           400,
           "Hợp đồng đang được Chủ máy (Owner) điều chỉnh. Vui lòng chờ cập nhật trước khi ký tên."
         );
       }
-      matchingContract.status = "signed";
-      matchingContract.renter_signature = {
-        signed: true,
-        signed_at: new Date(),
-        signature_data: digitalSignature || renterSignature || renterUser.name,
-        signer_name: renterSignature || renterUser.name,
-      };
-      await matchingContract.save();
+      if (
+        !["pending_renter_signature", "moderator_approved", "signed"].includes(
+          matchingContract.status,
+        )
+      ) {
+        throw new AppError(
+          400,
+          "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
+        );
+      }
+    } else if (!rental.contract?.moderatorApproved) {
+      throw new AppError(
+        400,
+        "Hợp đồng thuê cần được Chủ thiết bị (Owner) lập và gửi cho bạn trước khi ký tên."
+      );
     }
 
     if (!rental.contract) {

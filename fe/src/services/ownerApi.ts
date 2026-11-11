@@ -12,6 +12,8 @@ import type {
   OwnerStats,
   OwnerContractTemplate,
   DigitalSignaturePayload,
+  OwnerMembershipOverview,
+  OwnerMembershipOrder,
 } from "../types/owner";
 
 async function request<T>(
@@ -52,6 +54,30 @@ async function request<T>(
 }
 
 export const ownerApi = {
+  getMembership: (token: string) =>
+    request<OwnerMembershipOverview>("/api/owner/membership", { method: "GET" }, token),
+
+  startMembershipTrial: (token: string) =>
+    request<{ message: string; membership: OwnerMembershipOrder }>(
+      "/api/owner/membership/trial",
+      { method: "POST", body: JSON.stringify({}) },
+      token,
+    ),
+
+  createMembershipCheckout: (token: string, plan: string) =>
+    request<{ message: string; orderCode: number; checkoutUrl: string; amount: number; plan: string }>(
+      "/api/owner/membership/checkout",
+      { method: "POST", body: JSON.stringify({ plan }) },
+      token,
+    ),
+
+  getMembershipOrder: (token: string, orderCode: string) =>
+    request<{ order: OwnerMembershipOrder }>(
+      `/api/owner/membership/orders/${encodeURIComponent(orderCode)}`,
+      { method: "GET" },
+      token,
+    ),
+
   // 1. Overview & Stats
   getOverview: (token: string) =>
     request<{ stats: OwnerStats; recentRequests: RentalRequest[] }>(
@@ -304,9 +330,9 @@ export const ownerApi = {
       token
     ),
 
-  submitContractApproval: (token: string, id: string, digital_signature?: DigitalSignaturePayload) =>
+  sendContractToRenter: (token: string, id: string, digital_signature?: DigitalSignaturePayload) =>
     request<{ message: string; contract: RentalContract }>(
-      `/api/owner/contracts/${id}/submit-approval`,
+      `/api/owner/contracts/${id}/send-to-renter`,
       { method: "POST", body: JSON.stringify({ digital_signature }) },
       token
     ),
@@ -473,12 +499,16 @@ export const ownerApi = {
   signMyContract: (
     token: string,
     contractId: string,
-    payload?: { signature_note?: string; signature_image?: string; payment_method?: string } | string
+    data: {
+      signature_note: string;
+      terms_accepted: boolean;
+      signature_image?: string;
+      payment_method?: string;
+    },
   ) => {
-    const body = typeof payload === "string" ? { signature_note: payload } : payload || {};
     return request<{ message: string; contract: RentalContract }>(
       `/api/equipments/my/contracts/${contractId}/sign`,
-      { method: "POST", body: JSON.stringify(body) },
+      { method: "POST", body: JSON.stringify(data) },
       token
     );
   },

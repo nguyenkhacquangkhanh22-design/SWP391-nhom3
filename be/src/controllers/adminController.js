@@ -425,6 +425,7 @@ async function reviewEquipmentApproval(req, res) {
   // If approved, ensure it's published unless owner set it to draft
   if (approval_status === "approved" && equipment.visibility !== "draft") {
     equipment.visibility = "published";
+    equipment.membership_hidden = false;
   }
 
   await equipment.save();
@@ -500,6 +501,7 @@ async function updateEquipmentVisibility(req, res) {
   }
 
   equipment.visibility = visibility;
+  equipment.membership_hidden = false;
   if (visibility === "hidden") {
     equipment.hidden_reason = (reason || "").trim();
   } else {

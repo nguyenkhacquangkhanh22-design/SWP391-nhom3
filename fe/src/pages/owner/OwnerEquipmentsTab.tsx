@@ -7,6 +7,8 @@ import { ownerApi } from "../../services/ownerApi";
 interface Props {
   equipments: Equipment[];
   token: string;
+  membershipActive: boolean;
+  onMembershipRequired: () => void;
   onRefresh: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
@@ -15,6 +17,8 @@ interface Props {
 export default function OwnerEquipmentsTab({
   equipments,
   token,
+  membershipActive,
+  onMembershipRequired,
   onRefresh,
   onError,
   onSuccess,
@@ -333,6 +337,11 @@ export default function OwnerEquipmentsTab({
       setShowKycModal(true);
       return;
     }
+    if (!editingEquipment && !membershipActive) {
+      onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+      onMembershipRequired();
+      return;
+    }
 
     try {
       if (editingEquipment) {
@@ -357,6 +366,11 @@ export default function OwnerEquipmentsTab({
 
   async function handleToggleVisibility(eq: Equipment) {
     const nextVisibility = eq.visibility === "published" ? "hidden" : "published";
+    if (nextVisibility === "published" && !membershipActive) {
+      onError("Bạn cần membership còn hạn để đưa bài đăng trở lại công khai.");
+      onMembershipRequired();
+      return;
+    }
     try {
       await ownerApi.toggleVisibility(token, eq._id, nextVisibility);
       onSuccess(`Đã đổi trạng thái bài đăng sang: ${nextVisibility === "published" ? "Hiện (Công khai)" : "Ẩn"}.`);
@@ -512,12 +526,17 @@ export default function OwnerEquipmentsTab({
         <button
           className="button button-primary"
           style={{
-            opacity: isKycVerified ? 1 : 0.85,
+            opacity: isKycVerified && membershipActive ? 1 : 0.85,
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
           }}
           onClick={() => {
+            if (!membershipActive) {
+              onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+              onMembershipRequired();
+              return;
+            }
             if (!isKycVerified) {
               onError(
                 isKycPending
@@ -531,13 +550,64 @@ export default function OwnerEquipmentsTab({
             setShowCreateModal(true);
           }}
         >
-          {isKycVerified ? (
-            "+ Tạo bài đăng thiết bị mới (UC_O03) 📷"
-          ) : (
-            "🔒 Cần xác nhận danh tính để đăng bài"
-          )}
+          {!membershipActive
+            ? "🔒 Đăng ký membership để đăng bài"
+            : isKycVerified
+              ? "+ Tạo bài đăng thiết bị mới (UC_O03) 📷"
+              : "🔒 Cần xác nhận danh tính để đăng bài"}
         </button>
       </div>
+
+      {/* Cảnh báo gói hội viên hết hạn & tự động tạm ẩn bài đăng */}
+      {!membershipActive && (
+        <div
+          style={{
+            marginBottom: "20px",
+            padding: "16px 20px",
+            background: "linear-gradient(135deg, rgba(220, 38, 38, 0.18), rgba(153, 27, 27, 0.28))",
+            border: "1px solid rgba(239, 68, 68, 0.45)",
+            borderRadius: "14px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            flexWrap: "wrap",
+            boxShadow: "0 4px 16px rgba(220, 38, 38, 0.2)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: "260px", flex: 1 }}>
+            <span style={{ fontSize: "1.8rem", flexShrink: 0 }}>⚠️</span>
+            <div>
+              <strong style={{ color: "#fca5a5", fontSize: "0.95rem", display: "block" }}>
+                Gói hội viên tháng của bạn đã hết hạn!
+              </strong>
+              <p style={{ margin: "3px 0 0", color: "#fecaca", fontSize: "0.82rem", lineHeight: "1.4" }}>
+                Tất cả bài đăng thiết bị của bạn đang được tạm ẩn khỏi trang chủ và tìm kiếm công khai.
+                Vui lòng gia hạn gói để hệ thống tự động kích hoạt và hiển thị lại toàn bộ bài đăng ngay lập tức.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onMembershipRequired}
+            className="button button-primary"
+            style={{
+              background: "linear-gradient(135deg, #f97316, #ea580c)",
+              fontWeight: 700,
+              fontSize: "0.85rem",
+              padding: "10px 18px",
+              borderRadius: "10px",
+              border: "none",
+              color: "#fff",
+              cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(234, 88, 12, 0.45)",
+              flexShrink: 0,
+            }}
+          >
+            ⚡ Gia hạn ngay
+          </button>
+        </div>
+      )}
 
       {equipments.length === 0 ? (
         <div className="owner-section-card owner-empty-state">
@@ -548,6 +618,11 @@ export default function OwnerEquipmentsTab({
             className="button button-primary"
             style={{ marginTop: "12px" }}
             onClick={() => {
+              if (!membershipActive) {
+                onError("Bạn cần đăng ký membership còn hạn để tạo bài đăng thiết bị.");
+                onMembershipRequired();
+                return;
+              }
               if (!isKycVerified) {
                 onError("Bạn cần được Quản lý web (Moderator) xác nhận danh tính trước khi đăng thiết bị cho thuê.");
                 setShowKycModal(true);
@@ -557,14 +632,54 @@ export default function OwnerEquipmentsTab({
               setShowCreateModal(true);
             }}
           >
-            {isKycVerified ? "Đăng thiết bị đầu tiên 🚀" : "🔒 Xác nhận danh tính để đăng thiết bị"}
+            {!membershipActive
+              ? "🔒 Đăng ký membership để đăng thiết bị"
+              : isKycVerified
+                ? "Đăng thiết bị đầu tiên 🚀"
+                : "🔒 Xác nhận danh tính để đăng thiết bị"}
           </button>
         </div>
       ) : (
         <div className="owner-equipment-grid">
-          {equipments.map((eq) => (
-            <div key={eq._id} className="owner-equipment-card">
+          {equipments.map((eq) => {
+            const isHiddenByMembership = Boolean(
+              (eq as any).membership_hidden ||
+              (eq as any).isActive === false ||
+              !membershipActive
+            );
+            return (
+            <div
+              key={eq._id}
+              className="owner-equipment-card"
+              style={{
+                opacity: isHiddenByMembership ? 0.78 : 1,
+                position: "relative",
+                borderColor: isHiddenByMembership ? "rgba(239, 68, 68, 0.45)" : undefined,
+                transition: "all 0.2s",
+              }}
+            >
               <div className="owner-card-img-wrap" style={{ position: "relative", overflow: "hidden" }}>
+                {isHiddenByMembership && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      background: "rgba(220, 38, 38, 0.92)",
+                      color: "#fff",
+                      padding: "4px 9px",
+                      borderRadius: "6px",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      backdropFilter: "blur(4px)",
+                      border: "1px solid rgba(255, 255, 255, 0.35)",
+                      zIndex: 5,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    }}
+                  >
+                    🔒 Tạm ẩn (Hết hạn gói)
+                  </span>
+                )}
                 {(() => {
                   const images =
                     eq.images && eq.images.length > 0
@@ -775,6 +890,24 @@ export default function OwnerEquipmentsTab({
 
                 {/* Actions */}
                 <div className="owner-card-actions">
+                  {isHiddenByMembership && (
+                    <button
+                      type="button"
+                      className="button button-primary action-btn"
+                      onClick={onMembershipRequired}
+                      style={{
+                        background: "linear-gradient(135deg, #f97316, #ea580c)",
+                        color: "#fff",
+                        fontWeight: 700,
+                        border: "none",
+                        gridColumn: "1 / -1",
+                        boxShadow: "0 2px 8px rgba(234, 88, 12, 0.4)",
+                      }}
+                      title="Gói hội viên đã hết hạn. Bấm để gia hạn gói và mở lại bài đăng"
+                    >
+                      ⚡ Gia hạn để mở lại bài
+                    </button>
+                  )}
                   <button
                     className="button button-secondary action-btn"
                     onClick={() => openEditModal(eq)}
@@ -806,7 +939,8 @@ export default function OwnerEquipmentsTab({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

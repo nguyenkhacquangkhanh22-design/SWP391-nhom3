@@ -14,6 +14,7 @@ import type {
   ModeratorPaymentRental,
   ModeratorEquipment,
   ModeratorHandoverRecord,
+  ModeratorComplaint,
   ModeratorRentalRequest,
   ModeratorStatusRequest,
 } from "../../services/moderatorApi";
@@ -28,6 +29,7 @@ type Tab =
   | "handover"
   | "status"
   | "templates"
+  | "complaints"
   | "support";
 
 function dateTime(value?: string) {
@@ -77,6 +79,9 @@ export default function ModeratorPortal() {
   const [records, setRecords] = useState<ModeratorHandoverRecord[]>([]);
   const [statusRequests, setStatusRequests] = useState<ModeratorStatusRequest[]>([]);
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
+  const [complaints, setComplaints] = useState<ModeratorComplaint[]>([]);
+  const [complaintReplies, setComplaintReplies] = useState<Record<string, string>>({});
+  const [complaintStatuses, setComplaintStatuses] = useState<Record<string, "in_progress" | "resolved">>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -125,7 +130,7 @@ export default function ModeratorPortal() {
     setLoading(true);
     setError("");
     try {
-const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData] =
+const [paymentData, reqData, contractData, equipmentData, recordData, statusData, templateData, kycData, payoutData, complaintData] =
         await Promise.all([
           moderatorApi.getPayments(token).catch(() => ({ payments: [] })),
           moderatorApi.getRentalRequests(token),
@@ -136,6 +141,7 @@ const [paymentData, reqData, contractData, equipmentData, recordData, statusData
           moderatorApi.getTemplates(token),
           moderatorApi.getKycSubmissions(token).catch(() => null),
           moderatorApi.getPayoutRequests(token).catch(() => ({ payouts: [] })),
+          moderatorApi.getComplaints(token),
         ]);
       setPayments(paymentData.payments || []);
       setRentalRequests(reqData.rentalRequests || []);
@@ -145,6 +151,7 @@ const [paymentData, reqData, contractData, equipmentData, recordData, statusData
       setRecords(recordData.records);
       setStatusRequests(statusData.requests);
       setTemplates(templateData.templates);
+      setComplaints(complaintData.complaints || []);
       if (kycData) {
         setKycSubmissions(kycData.submissions || []);
         setKycStats(kycData.stats || { pending: 0, verified: 0, rejected: 0, unverified: 0, total_active: 0 });
@@ -197,10 +204,33 @@ const [paymentData, reqData, contractData, equipmentData, recordData, statusData
           : "";
       setSuccess(notificationWarning ? `${message} ${notificationWarning}` : message);
       await loadData();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể hoàn tất thao tác.");
+      return false;
     } finally {
       setBusyId("");
+    }
+  }
+
+  async function handleReplyToComplaint(complaint: ModeratorComplaint) {
+    if (!token) return;
+    const message = complaintReplies[complaint._id]?.trim();
+    if (!message) {
+      setError("Vui lòng nhập nội dung phản hồi cho khách hàng.");
+      return;
+    }
+
+    const status = complaintStatuses[complaint._id] || "in_progress";
+    const succeeded = await performAction(
+      complaint._id,
+      () => moderatorApi.replyToComplaint(token, complaint._id, { message, status }),
+      status === "resolved"
+        ? "Đã phản hồi và đánh dấu khiếu nại đã giải quyết."
+        : "Đã gửi phản hồi cho khách hàng.",
+    );
+    if (succeeded) {
+      setComplaintReplies((current) => ({ ...current, [complaint._id]: "" }));
     }
   }
 
@@ -340,6 +370,11 @@ const [paymentData, reqData, contractData, equipmentData, recordData, statusData
     { id: "handover", label: "🤝 Bàn giao / hoàn trả" },
     { id: "status", label: "🔄 Yêu cầu trạng thái" },
     { id: "templates", label: "📄 Mẫu hợp đồng" },
+    {
+      id: "complaints",
+      label: "⚠️ Khiếu nại khách hàng",
+      badge: complaints.filter((complaint) => ["open", "in_progress"].includes(complaint.status)).length,
+    },
     { id: "support", label: "🛟 Gửi yêu cầu hỗ trợ" },
   ];
 
@@ -1372,6 +1407,68 @@ const [paymentData, reqData, contractData, equipmentData, recordData, statusData
                 </article>
               );
             })}
+          </section>
+        )}
+
+        {!loading && activeTab === "complaints" && (
+          <section className="moderator-list">
+            {complaints.map((complaint) => (
+              <article key={complaint._id} className="owner-section-card moderator-card">
+                <div className="moderator-card-heading">
+                  <div>
+                    <span className="contract-code-tag">#{complaint.ticket_code}</span>
+                    <h2>{complaint.subject}</h2>
+                    <p>{complaint.user_id?.name} ({complaint.user_id?.email}) · {dateTime(complaint.createdAt)}</p>
+                  </div>
+                  <span className={`status-badge status-${complaint.status}`}>{complaint.status}</span>
+                </div>
+                <p style={{ whiteSpace: "pre-wrap" }}>{complaint.message}</p>
+                {complaint.replies?.map((reply, index) => (
+                  <div key={`${complaint._id}-${index}`} className="moderator-warning">
+                    <strong>{reply.sender_name} · {dateTime(reply.created_at)}</strong>
+                    <p>{reply.message}</p>
+                  </div>
+                ))}
+                {complaint.status !== "resolved" && complaint.status !== "closed" && (
+                  <div className="moderator-form">
+                    <textarea
+                      className="input-field"
+                      rows={3}
+                      maxLength={5000}
+                      value={complaintReplies[complaint._id] || ""}
+                      onChange={(event) =>
+                        setComplaintReplies((current) => ({ ...current, [complaint._id]: event.target.value }))
+                      }
+                      placeholder="Nhập nội dung phản hồi..."
+                    />
+                    <div className="moderator-actions">
+                      <select
+                        className="input-field"
+                        value={complaintStatuses[complaint._id] || "in_progress"}
+                        onChange={(event) =>
+                          setComplaintStatuses((current) => ({
+                            ...current,
+                            [complaint._id]: event.target.value as "in_progress" | "resolved",
+                          }))
+                        }
+                      >
+                        <option value="in_progress">Đang xử lý</option>
+                        <option value="resolved">Đã giải quyết</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        disabled={busyId === complaint._id || !(complaintReplies[complaint._id] || "").trim()}
+                        onClick={() => void handleReplyToComplaint(complaint)}
+                      >
+                        {busyId === complaint._id ? "Đang gửi..." : "Gửi phản hồi"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+            {complaints.length === 0 && <div className="owner-section-card">Chưa có khiếu nại nào.</div>}
           </section>
         )}
 

@@ -1,8 +1,11 @@
 const express = require("express");
+const ownerMembershipController = require("../controllers/ownerMembershipController");
 const paymentController = require("../controllers/paymentController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = express.Router();
+
+router.post("/payos/webhook", asyncHandler(ownerMembershipController.handlePayOSWebhook));
 
 /**
  * API 1: POST /api/payments/create-payment-link
@@ -26,4 +29,3 @@ router.post("/webhook", asyncHandler(paymentController.webhook));
 router.get("/verify/:orderCode", asyncHandler(paymentController.verifyPayment));
 
 module.exports = router;
-

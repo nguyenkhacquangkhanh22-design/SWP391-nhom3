@@ -93,6 +93,16 @@ const equipmentSchema = new mongoose.Schema(
       default: "published",
       index: true,
     },
+    membership_hidden: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     images: {
       type: [String],
       default: [],

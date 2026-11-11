@@ -103,6 +103,7 @@ export interface RentalContract {
   version_history: ContractVersionHistory[];
   status:
     | "draft"
+    | "pending_renter_signature"
     | "pending_approval"
     | "moderator_rejected"
     | "moderator_approved"
@@ -258,6 +259,7 @@ export interface Dispute {
 }
 
 export interface SupportTicketReply {
+  sender_id?: string | { _id: string; name: string; role: string };
   sender_name: string;
   sender_role: string;
   message: string;
@@ -269,6 +271,14 @@ export interface SupportTicket {
   ticket_code: string;
   user_id: string;
   user_role: string;
+  rental?: string | { _id: string; rentalCode?: string; status?: string };
+  contract_id?: string | {
+    _id: string;
+    contract_code: string;
+    title?: string;
+    status?: string;
+    equipment_id?: { title: string };
+  };
   category: string;
   subject: string;
   message: string;
@@ -286,4 +296,29 @@ export interface OwnerStats {
   totalRevenue: number;
   pendingPayout: number;
   completedOrders: number;
+}
+
+export interface OwnerMembershipOrder {
+  _id: string;
+  plan: "trial_7d" | "month_1" | "month_2" | "month_3";
+  amount: number;
+  status: "pending_payment" | "active" | "extended" | "expired" | "failed";
+  order_code?: number;
+  started_at?: string;
+  expires_at?: string;
+  paid_at?: string;
+  createdAt: string;
+}
+
+export interface OwnerMembershipOverview {
+  plans: {
+    id: "trial_7d" | "month_1" | "month_2" | "month_3";
+    name: string;
+    durationDays?: number;
+    durationMonths?: number;
+    amount: number;
+  }[];
+  current: OwnerMembershipOrder | null;
+  hasUsedTrial: boolean;
+  orders: OwnerMembershipOrder[];
 }

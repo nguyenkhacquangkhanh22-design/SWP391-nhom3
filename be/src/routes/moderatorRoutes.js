@@ -3,6 +3,7 @@ const moderatorController = require("../controllers/moderatorController");
 const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
 const asyncHandler = require("../utils/asyncHandler");
+const complaintController = require("../controllers/complaintController");
 
 const router = express.Router();
 
@@ -45,5 +46,7 @@ router.patch("/payouts/:id/review", asyncHandler(moderatorController.reviewPayou
 
 router.get("/kyc-submissions", asyncHandler(moderatorController.listKycSubmissions));
 router.patch("/kyc-submissions/:userId/review", asyncHandler(moderatorController.reviewKycSubmission));
+router.get("/complaints", asyncHandler(complaintController.listComplaints));
+router.patch("/complaints/:id/reply", asyncHandler(complaintController.replyToComplaint));
 
 module.exports = router;

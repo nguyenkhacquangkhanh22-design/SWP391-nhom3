@@ -877,10 +877,9 @@ export default function EquipmentDetailPage() {
             <p style={{ color: "var(--muted)", fontSize: "0.86rem", marginTop: 0, lineHeight: 1.5 }}>
               Thiết bị: <strong style={{ color: "#fff" }}>{equipment.title}</strong>
               <br />
-              Quy trình: <strong style={{ color: "#fb923c" }}>1. Gửi YC cho Quản lý web</strong> ➔{" "}
-              <strong style={{ color: "#38bdf8" }}>2. Quản lý web gửi Owner duyệt</strong> ➔{" "}
-              <strong style={{ color: "#a78bfa" }}>3. Owner lập HĐ gửi Quản lý web duyệt</strong> ➔{" "}
-              <strong style={{ color: "#10b981" }}>4. Quản lý web gửi cho bạn ký tên</strong>.
+              Quy trình: <strong style={{ color: "#fb923c" }}>1. Gửi yêu cầu trực tiếp cho Owner</strong> ➔{" "}
+              <strong style={{ color: "#38bdf8" }}>2. Owner xem xét yêu cầu</strong> ➔{" "}
+              <strong style={{ color: "#10b981" }}>3. Owner gửi hợp đồng cho bạn ký tên</strong>.
             </p>
 
             <form onSubmit={handleSendRentalRequest}>
@@ -989,7 +988,7 @@ export default function EquipmentDetailPage() {
                   Hủy
                 </button>
                 <button type="submit" className="button button-primary" disabled={isSubmittingRent}>
-                  {isSubmittingRent ? "Đang gửi..." : "Gửi yêu cầu thuê cho Quản lý web"}
+                  {isSubmittingRent ? "Đang gửi..." : "Gửi yêu cầu thuê cho Owner"}
                 </button>
               </div>
             </form>

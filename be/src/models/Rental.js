@@ -168,6 +168,7 @@ const rentalSchema = new mongoose.Schema(
         enum: [
           "none",
           "draft",
+          "pending_renter_signature",
           "approved",
           "confirmed",
           "sent_to_renter",

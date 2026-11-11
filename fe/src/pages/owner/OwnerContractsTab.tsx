@@ -402,7 +402,7 @@ export default function OwnerContractsTab({
     onError("");
     onSuccess("");
     try {
-      await ownerApi.submitContractApproval(token, contract._id);
+      await ownerApi.sendContractToRenter(token, contract._id);
       onSuccess(
         `Đã gửi hợp đồng chuẩn "${contract.contract_code}" (v${contract.version}) trực tiếp tới Người thuê qua Chat để trao đổi & ký tên!`
       );
@@ -475,7 +475,7 @@ export default function OwnerContractsTab({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: "10px",
           marginTop: "14px",
           marginBottom: "14px",
@@ -563,7 +563,7 @@ export default function OwnerContractsTab({
               📝 Bản nháp ({contracts.filter((c) => c.status === "draft").length})
             </option>
             <option value="moderator_approved">
-              📨 Đã gửi Người thuê - Chờ ký ({contracts.filter((c) => c.status === "moderator_approved").length})
+              📨 Đã gửi Người thuê - Chờ ký (đơn cũ) ({contracts.filter((c) => c.status === "moderator_approved").length})
             </option>
             <option value="signed">
               ✍️ Người thuê đã ký tên ({contracts.filter((c) => c.status === "signed").length})

@@ -359,8 +359,8 @@ async function seedData() {
   });
   console.log("✓ Đã nạp đầy đủ thiết bị mẫu cho tất cả danh mục (UC_O03-UC_O06)");
 
-  // 5. Create Rental Requests demonstrating the 5-step flow:
-  // Request 0: Renter vừa bấm thuê -> Đang chờ Quản lý web gửi cho Owner (pending_moderator)
+  // 5. Create Rental Requests demonstrating the direct-to-Owner flow:
+  // Request 0: Renter vừa gửi yêu cầu -> Owner đang chờ xem xét (pending)
   await RentalRequest.create({
     request_code: "YC-2026-MOD01",
     equipment_id: eq1._id,
@@ -377,11 +377,11 @@ async function seedData() {
     rental_fee: 1100000,
     deposit_amount: 0,
     total_estimated_amount: 1100000,
-    renter_note: "Em cần thuê máy Sony A7 IV quay phóng sự 2 ngày cuối tuần. Nhờ Quản lý web chuyển cho Owner duyệt giúp em.",
-    status: "pending_moderator",
+    renter_note: "Em cần thuê máy Sony A7 IV quay phóng sự 2 ngày cuối tuần.",
+    status: "pending",
   });
 
-  // Request 1: Quản lý web đã chuyển tiếp cho Owner -> Chờ Owner duyệt (pending)
+  // Request 1: Renter's request is waiting for Owner review.
   await RentalRequest.create({
     request_code: "YC-2026-OWN01",
     equipment_id: eq1._id,
@@ -399,13 +399,10 @@ async function seedData() {
     deposit_amount: 0,
     total_estimated_amount: 1100000,
     renter_note: "Khách cần quay TVC quảng cáo tại Đà Lạt trong 2 ngày.",
-    moderator_id: moderator._id,
-    moderator_note: "Quản lý web đã xác minh thông tin người thuê, chuyển tiếp cho Owner duyệt.",
-    forwarded_to_owner_at: new Date(),
     status: "pending",
   });
 
-  // Request 2: Owner đã duyệt -> Sẵn sàng để Owner lập hợp đồng gửi Quản lý web duyệt (approved)
+  // Request 2: Owner accepted and can create a contract (approved)
   const req2 = await RentalRequest.create({
     request_code: "YC-2026-APP02",
     equipment_id: eq2._id,
@@ -423,13 +420,10 @@ async function seedData() {
     deposit_amount: 0,
     total_estimated_amount: 700000,
     renter_note: "Chụp album ngoại cảnh Vũng Tàu.",
-    moderator_id: moderator._id,
-    moderator_note: "Quản lý web đã chuyển cho Owner.",
-    forwarded_to_owner_at: new Date(Date.now() - 86400000),
     status: "approved",
     responded_at: new Date(),
   });
-  console.log("✓ Đã nạp yêu cầu thuê mẫu ở từng bước (Chờ Quản lý web -> Chờ Owner duyệt -> Chờ Owner lập HĐ)");
+  console.log("✓ Đã nạp yêu cầu thuê mẫu đang chờ Owner và Owner đã chấp thuận");
 
   // 6. Create Contracts & Return Inspection (UC_O09)
   const contract1 = await RentalContract.create({

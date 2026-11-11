@@ -10,6 +10,13 @@ credentials, and the frontend URL used for password reset links. Never commit
 Google sign-in expects an ID token from a client configured with
 `GOOGLE_CLIENT_ID`; a Google API key is not used to authenticate users.
 
+Owner membership payments use the official PayOS Node SDK. Configure
+`PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, and `PAYOS_CHECKSUM_KEY` in the backend's
+local `.env`, and set the PayOS webhook in the merchant dashboard to
+`https://<backend-domain>/api/payments/payos/webhook`. Keep PayOS credentials
+server-side; payment activation is based on the verified webhook, not the
+browser return URL.
+
 ## Endpoints
 
 All routes use the `/api/auth` prefix. Protected routes require
@@ -61,6 +68,22 @@ Protected with role `owner` or `systemadmin`:
 | POST | `/support-tickets` | UC_O18 | Gửi yêu cầu hỗ trợ |
 | GET | `/support-tickets` | UC_O18 | Theo dõi tiến độ xử lý ticket hỗ trợ |
 
+### Owner Membership
+
+Only approved Owner accounts can use these routes. The free 7-day trial can be
+activated once per Owner. Paid plans are 20,000 VND / 1 month, 35,000 VND /
+2 months, and 50,000 VND / 3 months. Renewals extend from the current expiry.
+Expired membership hides the Owner's published listings; renewing restores
+listings hidden by membership expiry.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/owner/membership` | Read current membership, available plans, and recent orders |
+| POST | `/api/owner/membership/trial` | Activate the one-time 7-day free trial |
+| POST | `/api/owner/membership/checkout` | Create a PayOS checkout link (`plan`: `month_1`, `month_2`, or `month_3`) |
+| GET | `/api/owner/membership/orders/:orderCode` | Read the authenticated Owner's payment order status |
+| POST | `/api/payments/payos/webhook` | Receive and verify PayOS payment notifications |
+
 Người thuê xác nhận đã nhận thiết bị tại `POST /api/equipments/my/contracts/:id/confirm-receipt`.
 Sau xác nhận, settlement được ghi nhận giải ngân; Owner nhận thông báo khi có biên bản
 bàn giao hoặc nghiệm thu trả. Hệ thống gửi thông báo nhắc trả trước một ngày cho các
@@ -93,6 +116,20 @@ Passwords must contain at least 8 characters. Password reset links expire after
 15 minutes and are single-use. The forgot-password endpoint returns the same
 response whether or not the account exists. Logout revokes all sessions for the
 account because the current JWT strategy tracks a per-user token version.
+
+### Rental Complaints
+
+Protected complaint routes require a signed-in renter. A complaint can only be
+created for a rental or rental contract that belongs to the renter and has been
+completed. Each completed rental can have one complaint thread; moderators'
+replies and the resolution status are visible in the renter's rental history.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/support/complaints` | Create a complaint (`rentalId` or `contractId`, `subject`, `message`) |
+| GET | `/api/support/complaints` | List the signed-in renter's complaint threads and replies |
+| GET | `/api/moderator/complaints` | List customer rental complaints (Rental Moderator / System Admin) |
+| PATCH | `/api/moderator/complaints/:id/reply` | Reply to a complaint and set `in_progress` or `resolved` |
 
 Registration requires sending an OTP, verifying the 6-digit code, then creating
 the account with the returned one-time verification token. OTP codes expire
