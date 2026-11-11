@@ -55,6 +55,7 @@ export const smartEquipApi = {
   getEquipments: (params: {
     keyword?: string;
     category?: string;
+    city?: string;
     minPrice?: number | string;
     maxPrice?: number | string;
     status?: string;
@@ -64,6 +65,7 @@ export const smartEquipApi = {
     const searchParams = new URLSearchParams();
     if (params.keyword) searchParams.set("keyword", params.keyword);
     if (params.category && params.category !== "all") searchParams.set("category", params.category);
+    if (params.city && params.city !== "all") searchParams.set("city", params.city);
     if (params.minPrice) searchParams.set("minPrice", String(params.minPrice));
     if (params.maxPrice) searchParams.set("maxPrice", String(params.maxPrice));
     if (params.status && params.status !== "all") searchParams.set("status", params.status);
@@ -128,6 +130,7 @@ export const smartEquipApi = {
       deliveryMethod?: string;
       returnMethod?: string;
       deliveryAddress?: string;
+      hasInsurance?: boolean;
       renterNote?: string;
       notes?: string;
     },
@@ -215,11 +218,23 @@ export const smartEquipApi = {
       token,
     ),
 
+  // UC_R10_CHECKIN: Lưu ảnh ngoại quan ban đầu khi nhận máy
+  submitHandoverCheckin: (
+    token: string,
+    rentalId: string,
+    data: { images: string[]; note?: string },
+  ) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/handover-checkin`,
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
   // UC_R11: Đánh giá thiết bị & chủ sở hữu
   reviewRental: (
     token: string,
     rentalId: string,
-    data: { rating: number; comment?: string },
+    data: { rating: number; comment?: string; reviewImages?: string[] },
   ) =>
     request<{ success: boolean; message: string; data: Rental }>(
       `/api/rentals/${rentalId}/review`,
