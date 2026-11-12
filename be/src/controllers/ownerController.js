@@ -231,8 +231,8 @@ async function createEquipmentListing(req, res) {
     throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
   }
 
-  if (pDay <= 2000) {
-    throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ");
+  if (pDay < 2000) {
+    throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 VNĐ trở lên");
   }
 
   const equipment = await Equipment.create({
@@ -331,8 +331,8 @@ async function updateEquipment(req, res) {
     }
     if (pricing.price_per_day !== undefined) {
       const pDay = Number(pricing.price_per_day);
-      if (isNaN(pDay) || pDay <= 2000) {
-        throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ");
+      if (isNaN(pDay) || pDay < 2000) {
+        throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 VNĐ trở lên");
       }
       equipment.pricing.price_per_day = pDay;
       equipment.dailyRate = pDay;
@@ -2849,8 +2849,8 @@ async function updateOwnerRentalContractTerms(req, res) {
   }
   if (dailyRate !== undefined) {
     const rateNum = Number(dailyRate);
-    if (isNaN(rateNum) || rateNum <= 2000) {
-      throw new AppError(400, "Thiết lập đơn giá cho thuê theo ngày phải trên 2.000 VNĐ");
+    if (isNaN(rateNum) || rateNum < 2000) {
+      throw new AppError(400, "Thiết lập đơn giá cho thuê theo ngày phải từ 2.000 VNĐ trở lên");
     }
     rental.dailyRate = rateNum;
   }

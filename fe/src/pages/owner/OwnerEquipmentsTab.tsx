@@ -312,8 +312,8 @@ export default function OwnerEquipmentsTab({
       return;
     }
 
-    if (finalPricePerDay <= 2000) {
-      onError("Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ.");
+    if (finalPricePerDay < 2000) {
+      onError("Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 VNĐ trở lên.");
       setIsSubmitting(false);
       return;
     }
@@ -1477,18 +1477,18 @@ export default function OwnerEquipmentsTab({
                       <span
                         style={{
                           fontSize: "0.75rem",
-                          color: pricePerDay !== "" && Number(pricePerDay) <= 2000 ? "#f87171" : "#10b981",
+                          color: pricePerDay !== "" && Number(pricePerDay) < 2000 ? "#f87171" : "#10b981",
                           fontWeight: 600,
                         }}
                       >
-                        (Phải trên 2.000 đ)
+                        (Tối thiểu từ 2.000 đ)
                       </span>
                     </label>
                     <input
                       className="input-field"
                       type="number"
-                      min={2001}
-                      step={1000}
+                      min={2000}
+                      step="any"
                       placeholder="Ví dụ: 50000"
                       value={pricePerDay}
                       onChange={(e) => {
@@ -1505,9 +1505,9 @@ export default function OwnerEquipmentsTab({
                       }}
                       required
                     />
-                    {pricePerDay !== "" && Number(pricePerDay) <= 2000 && (
+                    {pricePerDay !== "" && Number(pricePerDay) < 2000 && (
                       <span style={{ color: "#f87171", fontSize: "0.75rem", marginTop: "4px", display: "block" }}>
-                        ⚠️ Thiết lập giá cho thuê phải trên 2.000 VNĐ
+                        ⚠️ Thiết lập giá cho thuê phải từ 2.000 VNĐ trở lên
                       </span>
                     )}
                   </div>
