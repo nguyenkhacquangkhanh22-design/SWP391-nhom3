@@ -97,7 +97,12 @@ export default function RentalChatModal({
 
   const isApproved =
     String(currentRental.status).toUpperCase() === "APPROVED" ||
-    String(currentRental.status).toLowerCase() === "approved";
+    String(currentRental.status).toLowerCase() === "approved" ||
+    String(currentRental.status).toUpperCase() === "CONTRACT_PENDING" ||
+    String(currentRental.status).toUpperCase() === "CONTRACT_SIGNED" ||
+    Boolean(currentRental.contract?.contractNumber) ||
+    Boolean(currentRental.contract?.ownerSigned) ||
+    messages.some((m) => m.message_type === "contract");
 
   // Lắng nghe realtime qua Socket.IO: tin nhắn mới và trạng thái thỏa thuận
   useEffect(() => {
@@ -552,8 +557,21 @@ export default function RentalChatModal({
                         <button
                           type="button"
                           onClick={() => {
+                            let rentalToView = { ...currentRental };
+                            if (msg.contract_data) {
+                              rentalToView = {
+                                ...rentalToView,
+                                totalAmount: msg.contract_data.total_amount || rentalToView.totalAmount,
+                                contract: {
+                                  ...rentalToView.contract,
+                                  contractNumber: msg.contract_data.contract_number || rentalToView.contract?.contractNumber,
+                                  ownerSigned: true,
+                                },
+                              };
+                              setCurrentRental(rentalToView);
+                            }
                             if (onViewContract) {
-                              onViewContract(currentRental);
+                              onViewContract(rentalToView);
                             }
                             setShowPdfModal(true);
                           }}
@@ -564,10 +582,21 @@ export default function RentalChatModal({
                         </button>
 
                         {/* Nút Đồng ý ký hợp đồng cho Renter ngay trên thẻ HĐ */}
-                        {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
+                        {!isOwnerCurrent && !currentRental.contract?.termsAccepted && (
                           <button
                             type="button"
                             onClick={() => {
+                              if (msg.contract_data && !currentRental.contract?.contractNumber) {
+                                setCurrentRental((prev) => ({
+                                  ...prev,
+                                  totalAmount: msg.contract_data?.total_amount || prev.totalAmount,
+                                  contract: {
+                                    ...prev.contract,
+                                    contractNumber: msg.contract_data?.contract_number || prev.contract?.contractNumber,
+                                    ownerSigned: true,
+                                  },
+                                }));
+                              }
                               if (currentRental.contract?.agreedToSign) {
                                 if (onAgreeToSign) {
                                   onAgreeToSign(currentRental);

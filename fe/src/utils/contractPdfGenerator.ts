@@ -148,11 +148,50 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
   const deliveryOpt = getDeliveryOption(rental.deliveryMethod || "motorcycle");
   const returnOpt = getReturnOption(rental.returnMethod || "motorcycle");
 
-  const shippingFee = rental.shippingFee !== undefined ? rental.shippingFee : deliveryOpt.fee + returnOpt.fee;
-  const totalAmountToPay = rental.totalAmount || rental.rentalFee + shippingFee;
+  const dailyRateVal = Number(
+    rental.dailyRate ??
+    (rental as any).daily_rate ??
+    rental.equipment?.dailyRate ??
+    (rental.equipment as any)?.daily_rate ??
+    0
+  );
 
-  const startDateFormatted = new Date(rental.startDate).toLocaleDateString("vi-VN");
-  const endDateFormatted = new Date(rental.endDate).toLocaleDateString("vi-VN");
+  const totalDaysVal = Number(
+    rental.totalDays ??
+    (rental as any).total_days ??
+    (rental.startDate && rental.endDate
+      ? Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1)
+  );
+
+  const rentalFeeVal = Number(
+    rental.rentalFee ??
+    (rental as any).rental_fee ??
+    (dailyRateVal * totalDaysVal)
+  );
+
+  const shippingFeeVal = Number(
+    rental.shippingFee !== undefined
+      ? rental.shippingFee
+      : ((rental as any).shipping_fee !== undefined
+        ? (rental as any).shipping_fee
+        : (deliveryOpt.fee + returnOpt.fee))
+  );
+
+  const totalAmountToPayVal = Number(
+    rental.totalAmount ??
+    (rental as any).total_amount ??
+    (rentalFeeVal + shippingFeeVal)
+  );
+
+  const parseSafeDate = (d?: string | Date) => {
+    if (!d) return "Chưa xác định";
+    const dateObj = new Date(d);
+    return isNaN(dateObj.getTime()) ? "Chưa xác định" : dateObj.toLocaleDateString("vi-VN");
+  };
+
+  const startDateFormatted = parseSafeDate(rental.startDate || (rental as any).start_date);
+  const endDateFormatted = parseSafeDate(rental.endDate || (rental as any).end_date);
 
   const isSigned = Boolean(hasSignature || isConfirmedPaid);
 
@@ -458,15 +497,15 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
           </td>
           <td style="text-align:center;">
             ${startDateFormatted} - ${endDateFormatted}<br>
-            <strong>(${rental.totalDays} ngày)</strong>
+            <strong>(${totalDaysVal} ngày)</strong>
           </td>
-          <td class="num">${rental.dailyRate.toLocaleString("vi-VN")} đ</td>
-          <td class="num"><strong>${rental.rentalFee.toLocaleString("vi-VN")} đ</strong></td>
+          <td class="num">${dailyRateVal.toLocaleString("vi-VN")} đ</td>
+          <td class="num"><strong>${rentalFeeVal.toLocaleString("vi-VN")} đ</strong></td>
           <td style="text-align:center;">
             <span class="highlight-badge">0 đ (Miễn cọc)</span>
           </td>
           <td class="num" style="color:#ea580c; font-weight:bold;">
-            ${rental.rentalFee.toLocaleString("vi-VN")} đ
+            ${rentalFeeVal.toLocaleString("vi-VN")} đ
           </td>
         </tr>
       </tbody>
@@ -499,11 +538,11 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         </tr>
         <tr style="background:#f8fafc; font-weight:bold;">
           <td colspan="3" style="text-align:right;">Tổng phí giao nhận 2 chiều:</td>
-          <td class="num" style="color:#0284c7;">${shippingFee.toLocaleString("vi-VN")} đ</td>
+          <td class="num" style="color:#0284c7;">${shippingFeeVal.toLocaleString("vi-VN")} đ</td>
         </tr>
         <tr style="background:#fff7ed; font-weight:bold; font-size:12pt;">
           <td colspan="3" style="text-align:right; color:#c2410c;">TỔNG GIÁ TRỊ THANH TOÁN (Tiền thuê + Phí giao nhận):</td>
-          <td class="num" style="color:#ea580c; font-size:13pt;">${totalAmountToPay.toLocaleString("vi-VN")} đ</td>
+          <td class="num" style="color:#ea580c; font-size:13pt;">${totalAmountToPayVal.toLocaleString("vi-VN")} đ</td>
         </tr>
       </tbody>
     </table>

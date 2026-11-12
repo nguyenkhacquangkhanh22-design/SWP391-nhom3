@@ -372,6 +372,9 @@ class RentalService {
     rental.contract = rental.contract || {};
     rental.contract.agreedToSign = true;
     rental.contract.agreedAt = new Date();
+    if (rental.status === "PENDING" || rental.status === "pending") {
+      rental.status = "APPROVED";
+    }
     if (rental.contract.moderatorStatus === "approved") {
       rental.contract.moderatorStatus = "moderator_approved";
     }
@@ -457,11 +460,13 @@ class RentalService {
     const userIdStr = renterUser._id ? renterUser._id.toString() : String(renterUser.User_Id || renterUser.id || "");
     const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString() || String(rental.renter?.User_Id || "");
 
-    if (
-      userIdStr !== renterIdStr &&
-      String(renterUser.User_Id || "") !== String(rental.renter?.User_Id || "") &&
-      renterUser.role !== "admin"
-    ) {
+    const isRenterMatching =
+      userIdStr === renterIdStr ||
+      (renterUser.User_Id && String(renterUser.User_Id) === String(rental.renter?.User_Id)) ||
+      (renterUser.email && rental.renter?.email && String(renterUser.email).toLowerCase() === String(rental.renter.email).toLowerCase()) ||
+      ["admin", "rentalmoderator"].includes(String(renterUser.role).toLowerCase());
+
+    if (!isRenterMatching) {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
@@ -473,8 +478,18 @@ class RentalService {
     }
 
     const normStatus = String(rental.status).toUpperCase();
+    const isOwnerDraftedOrSigned = Boolean(
+      rental.contract?.ownerSigned ||
+      rental.contract?.contractNumber ||
+      rental.contract?.agreedToSign
+    );
+
     if (normStatus === "PENDING") {
-      throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng.");
+      if (isOwnerDraftedOrSigned) {
+        rental.status = "APPROVED";
+      } else {
+        throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng.");
+      }
     }
 
     const signableStatuses = [
@@ -508,29 +523,34 @@ class RentalService {
 
     const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
     if (matchingContract) {
-      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
-        throw new AppError(
-          400,
-          "Owner chưa gửi hợp đồng cho bạn ký tên."
-        );
-      }
       if (matchingContract.status === "moderator_rejected") {
         throw new AppError(
           400,
           "Hợp đồng đang được Chủ máy (Owner) điều chỉnh. Vui lòng chờ cập nhật trước khi ký tên."
         );
       }
-      if (
-        !["pending_renter_signature", "moderator_approved", "signed"].includes(
-          matchingContract.status,
-        )
-      ) {
+      const allowedContractStatuses = [
+        "pending_renter_signature",
+        "moderator_approved",
+        "signed",
+        "active",
+        "approved",
+        "contract_created",
+        "draft",
+        "pending_approval",
+      ];
+      const ownerHasSignedOrSent = Boolean(
+        matchingContract.owner_signature?.signed ||
+        rental.contract?.ownerSigned ||
+        rental.contract?.contractNumber
+      );
+      if (!allowedContractStatuses.includes(matchingContract.status) && !ownerHasSignedOrSent) {
         throw new AppError(
           400,
           "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
         );
       }
-    } else if (!rental.contract?.moderatorApproved) {
+    } else if (!rental.contract?.moderatorApproved && !rental.contract?.contractNumber && !rental.contract?.ownerSigned) {
       throw new AppError(
         400,
         "Hợp đồng thuê cần được Chủ thiết bị (Owner) lập và gửi cho bạn trước khi ký tên."
@@ -540,6 +560,7 @@ class RentalService {
     if (!rental.contract) {
       rental.contract = {};
     }
+    const signature = renterSignature || digitalSignature || renterUser.name || "Khách thuê";
     rental.contract.termsAccepted = true;
 
     // Lưu riêng họ tên người ký (renterSignature) và ảnh chữ ký tay base64 (digitalSignature)

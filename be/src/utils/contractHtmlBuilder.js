@@ -113,11 +113,50 @@ function buildContractHtmlServer(rental) {
   const dOpt = DELIVERY_NAME_MAP[rental.deliveryMethod] || DELIVERY_NAME_MAP.motorcycle;
   const rOpt = RETURN_NAME_MAP[rental.returnMethod] || RETURN_NAME_MAP.motorcycle;
 
-  const shippingFee = rental.shippingFee !== undefined ? rental.shippingFee : dOpt.fee + rOpt.fee;
-  const totalAmountToPay = rental.totalAmount || rental.rentalFee + shippingFee;
+  const dailyRateVal = Number(
+    rental.dailyRate ??
+    rental.daily_rate ??
+    rental.equipment?.dailyRate ??
+    rental.equipment?.daily_rate ??
+    0
+  );
 
-  const startDateFormatted = new Date(rental.startDate).toLocaleDateString("vi-VN");
-  const endDateFormatted = new Date(rental.endDate).toLocaleDateString("vi-VN");
+  const totalDaysVal = Number(
+    rental.totalDays ??
+    rental.total_days ??
+    (rental.startDate && rental.endDate
+      ? Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1)
+  );
+
+  const rentalFeeVal = Number(
+    rental.rentalFee ??
+    rental.rental_fee ??
+    (dailyRateVal * totalDaysVal)
+  );
+
+  const shippingFee = Number(
+    rental.shippingFee !== undefined
+      ? rental.shippingFee
+      : (rental.shipping_fee !== undefined
+        ? rental.shipping_fee
+        : (dOpt.fee + rOpt.fee))
+  );
+
+  const totalAmountToPay = Number(
+    rental.totalAmount ??
+    rental.total_amount ??
+    (rentalFeeVal + shippingFee)
+  );
+
+  const parseSafeDate = (d) => {
+    if (!d) return "Chưa xác định";
+    const dateObj = new Date(d);
+    return isNaN(dateObj.getTime()) ? "Chưa xác định" : dateObj.toLocaleDateString("vi-VN");
+  };
+
+  const startDateFormatted = parseSafeDate(rental.startDate || rental.start_date);
+  const endDateFormatted = parseSafeDate(rental.endDate || rental.end_date);
 
   const effectiveSignature = rental.contract?.digitalSignature || rental.contract?.renterSignature || null;
   const isSigned = Boolean(rental.contract?.termsAccepted || effectiveSignature);
@@ -340,11 +379,11 @@ function buildContractHtmlServer(rental) {
       <tbody>
         <tr>
           <td><strong>${rental.equipment?.title || "Thiết bị điện tử"}</strong></td>
-          <td style="text-align:center;">${startDateFormatted} - ${endDateFormatted}<br><strong>(${rental.totalDays} ngày)</strong></td>
-          <td class="num">${rental.dailyRate.toLocaleString("vi-VN")} đ</td>
-          <td class="num"><strong>${rental.rentalFee.toLocaleString("vi-VN")} đ</strong></td>
+          <td style="text-align:center;">${startDateFormatted} - ${endDateFormatted}<br><strong>(${totalDaysVal} ngày)</strong></td>
+          <td class="num">${dailyRateVal.toLocaleString("vi-VN")} đ</td>
+          <td class="num"><strong>${rentalFeeVal.toLocaleString("vi-VN")} đ</strong></td>
           <td style="text-align:center;"><span class="highlight-badge">0 đ (Miễn cọc)</span></td>
-          <td class="num" style="color:#ea580c; font-weight:bold;">${rental.rentalFee.toLocaleString("vi-VN")} đ</td>
+          <td class="num" style="color:#ea580c; font-weight:bold;">${rentalFeeVal.toLocaleString("vi-VN")} đ</td>
         </tr>
       </tbody>
     </table>
