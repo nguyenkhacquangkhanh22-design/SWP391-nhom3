@@ -17,6 +17,7 @@ interface Props {
   onSuccess: (msg: string) => void;
   selectedContract?: RentalContract | null;
   onRefreshContracts: () => void;
+  requests?: any[];
 }
 
 export default function OwnerHandoverTab({
@@ -26,6 +27,7 @@ export default function OwnerHandoverTab({
   onSuccess,
   selectedContract,
   onRefreshContracts,
+  requests = [],
 }: Props) {
   const eligibleContracts = contracts.filter((c) => {
     const s = String(c.status || "").toLowerCase();
@@ -163,7 +165,10 @@ export default function OwnerHandoverTab({
     }
   }
 
-  const currentContract = contracts.find((c) => c._id === activeContractId);
+  const currentContract =
+    contracts.find((c) => c._id === activeContractId) ||
+    eligibleContracts[0] ||
+    contracts[0];
   const isContractPaid =
     currentContract?.payment_status === "paid" ||
     (currentContract as any)?.payment_status === "PAID";
@@ -358,9 +363,33 @@ export default function OwnerHandoverTab({
   }
 
   // Danh sách các đơn thuê khách đang gửi yêu cầu Hoàn trả máy (UC_O09)
-  const returningRentals = directRentals.filter((r: any) =>
+  const returningRentalsFromDirect = directRentals.filter((r: any) =>
     ["RETURNED", "RETURN_REQUESTED"].includes(String(r.status || "").toUpperCase())
   );
+
+  const fallbackReturning = (requests || [])
+    .filter((req: any) =>
+      ["RETURNED", "RETURN_REQUESTED"].includes(String(req.status || "").toUpperCase())
+    )
+    .map((req: any) => ({
+      _id: req._id,
+      rentalCode: req.request_code || req.rentalCode || `REQ-${String(req._id).slice(-6).toUpperCase()}`,
+      equipment: req.equipment_id || req.equipment,
+      renter: req.renter_id || req.renter,
+      totalAmount: req.estimated_total || req.totalAmount || 0,
+      status: "RETURNED",
+      returnInfo: req.returnInfo || {
+        returnTime: req.updatedAt || new Date(),
+        returnLocation: req.delivery_address || "Địa chỉ theo hợp đồng",
+        returnCondition: "Thiết bị nguyên vẹn",
+      },
+      returnRequest: req.returnRequest,
+      startDate: req.start_date || req.startDate,
+      endDate: req.end_date || req.endDate,
+    }));
+
+  const returningRentals =
+    returningRentalsFromDirect.length > 0 ? returningRentalsFromDirect : fallbackReturning;
 
   // Thao tác nghiệm thu hoàn trả & nhận lại máy trực tiếp
   async function handleConfirmDirectReturn(rental: Rental) {
@@ -396,7 +425,7 @@ export default function OwnerHandoverTab({
         </div>
 
         {/* Contract Selector */}
-        {eligibleContracts.length > 0 && (
+        {(eligibleContracts.length > 0 ? eligibleContracts : contracts).length > 0 && (
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Hợp đồng:</span>
             <select
@@ -405,7 +434,7 @@ export default function OwnerHandoverTab({
               onChange={(e) => setActiveContractId(e.target.value)}
               style={{ width: "auto" }}
             >
-              {eligibleContracts.map((c) => {
+              {(eligibleContracts.length > 0 ? eligibleContracts : contracts).map((c) => {
                 const cPaid =
                   c.payment_status === "paid" || (c as any).payment_status === "PAID";
                 return (

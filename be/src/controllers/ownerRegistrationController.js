@@ -52,6 +52,18 @@ async function submitOwnerApplication(req, res) {
     );
   }
 
+  // Validate phone number: tối đa 10 số, đúng định dạng số điện thoại VN (bắt đầu bằng số 0)
+  const cleanPhone = String(phone || "").trim().replace(/\D/g, "");
+  if (cleanPhone.length > 10) {
+    throw new AppError(400, "Số điện thoại chỉ được tối đa 10 chữ số");
+  }
+  if (cleanPhone.length < 10 || !/^0\d{9}$/.test(cleanPhone)) {
+    throw new AppError(
+      400,
+      "Số điện thoại không hợp lệ (phải gồm đúng 10 chữ số và bắt đầu bằng số 0)"
+    );
+  }
+
   // Check if user already has an active pending or approved application
   const existingApp = await OwnerApplication.findOne({ user_id: userId });
   if (existingApp) {
@@ -65,7 +77,7 @@ async function submitOwnerApplication(req, res) {
       );
     }
     // If previously rejected, allow re-submitting with updated info
-    existingApp.phone = phone.trim();
+    existingApp.phone = cleanPhone;
     existingApp.identity_card = identity_card.trim();
     existingApp.address = address.trim();
     existingApp.shop_name = (shop_name || "").trim();
@@ -93,7 +105,7 @@ async function submitOwnerApplication(req, res) {
     user_id: userId,
     applicant_name: req.user.name,
     applicant_email: req.user.email,
-    phone: phone.trim(),
+    phone: cleanPhone,
     identity_card: identity_card.trim(),
     address: address.trim(),
     shop_name: (shop_name || "").trim(),

@@ -42,6 +42,7 @@ export default function RegisterOwnerPage() {
 
   // Form states
   const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [identityCard, setIdentityCard] = useState("");
   const [address, setAddress] = useState("");
   const [shopName, setShopName] = useState("");
@@ -127,6 +128,16 @@ export default function RegisterOwnerPage() {
     }
   }
 
+  function handlePhoneChange(val: string) {
+    const rawDigits = val.replace(/\D/g, "");
+    if (val.replace(/\D/g, "").length > 10) {
+      setPhoneError("Số điện thoại chỉ được tối đa 10 chữ số.");
+    } else {
+      setPhoneError("");
+    }
+    setPhone(rawDigits.slice(0, 10));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token) {
@@ -137,8 +148,21 @@ export default function RegisterOwnerPage() {
     setError("");
     setSuccess("");
 
-    if (!phone.trim() || !identityCard.trim() || !address.trim()) {
+    const cleanPhone = phone.trim().replace(/\D/g, "");
+    if (!cleanPhone || !identityCard.trim() || !address.trim()) {
       setError("Vui lòng điền đầy đủ Số điện thoại, Số CCCD và Địa chỉ giao dịch.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (cleanPhone.length > 10) {
+      setError("Số điện thoại chỉ được tối đa 10 chữ số.");
+      setPhoneError("Số điện thoại chỉ được tối đa 10 chữ số.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (cleanPhone.length < 10 || !/^0\d{9}$/.test(cleanPhone)) {
+      setError("Số điện thoại không hợp lệ. Vui lòng nhập đúng 10 chữ số (bắt đầu bằng số 0).");
+      setPhoneError("Số điện thoại phải có đúng 10 chữ số và bắt đầu bằng số 0.");
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -156,7 +180,7 @@ export default function RegisterOwnerPage() {
     setIsSubmitting(true);
     try {
       const res = await ownerApi.submitOwnerRegistration(token, {
-        phone: phone.trim(),
+        phone: cleanPhone,
         identity_card: identityCard.trim(),
         address: address.trim(),
         shop_name: shopName.trim(),
@@ -367,18 +391,45 @@ export default function RegisterOwnerPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
-                    <label className="block font-semibold text-slate-300 mb-1.5">
-                      Số điện thoại liên hệ <span className="text-rose-400">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-semibold text-slate-300">
+                        Số điện thoại liên hệ <span className="text-rose-400">*</span>
+                      </label>
+                      <span
+                        className={`text-[11px] font-mono ${
+                          phone.length === 10
+                            ? "text-emerald-400 font-semibold"
+                            : phone.length > 10
+                            ? "text-rose-400 font-bold"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        {phone.length}/10 số
+                      </span>
+                    </div>
                     <input
                       type="tel"
                       placeholder="Ví dụ: 0912345678"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      maxLength={10}
                       disabled={isReadOnly}
                       required
-                      className="w-full bg-[#0f1623] border border-[#2a3852] rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 disabled:opacity-60 text-sm transition-colors"
+                      className={`w-full bg-[#0f1623] border ${
+                        phoneError
+                          ? "border-rose-500 focus:border-rose-500"
+                          : "border-[#2a3852] focus:border-orange-500"
+                      } rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none disabled:opacity-60 text-sm font-mono transition-colors`}
                     />
+                    {phoneError ? (
+                      <span className="text-rose-400 text-[11px] mt-1.5 block font-medium animate-fadeIn">
+                        ⚠️ {phoneError}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 text-[11px] mt-1 block">
+                        Nhập tối đa 10 chữ số (Ví dụ: 0912345678)
+                      </span>
+                    )}
                   </div>
 
                   <div>

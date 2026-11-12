@@ -541,15 +541,6 @@ export default function OwnerPortal() {
             {stats && stats.pendingRequests > 0 && (
               <span className="badge-count">{stats.pendingRequests}</span>
             )}
-            {requests.filter((r) => String(r.status).toLowerCase() === "returned").length > 0 && (
-              <span
-                className="badge-count"
-                style={{ background: "#9333ea", marginLeft: stats && stats.pendingRequests > 0 ? "4px" : "8px" }}
-                title="Có đơn khách báo trả đồ cần nghiệm thu"
-              >
-                {requests.filter((r) => String(r.status).toLowerCase() === "returned").length} trả
-              </span>
-            )}
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "contracts" ? "active" : ""}`}
@@ -562,13 +553,13 @@ export default function OwnerPortal() {
             onClick={() => handleTabChange("handover")}
           >
             🤝 Bàn giao & Kiểm tra
-            {requests.filter((r) => String(r.status).toLowerCase() === "returned").length > 0 && (
+            {requests.filter((r) => ["returned", "return_requested"].includes(String(r.status || "").toLowerCase())).length > 0 && (
               <span
                 className="badge-count"
                 style={{ background: "#9333ea", marginLeft: "6px" }}
-                title="Có đơn hoàn trả cần nghiệm thu"
+                title="Có đơn hoàn trả thiết bị cần đối chiếu & nghiệm thu"
               >
-                {requests.filter((r) => String(r.status).toLowerCase() === "returned").length} trả
+                {requests.filter((r) => ["returned", "return_requested"].includes(String(r.status || "").toLowerCase())).length} trả
               </span>
             )}
           </button>
@@ -733,6 +724,7 @@ export default function OwnerPortal() {
                   setRequestForContract(req);
                   setActiveTab("contracts");
                 }}
+                onSwitchToHandoverTab={() => handleTabChange("handover")}
               />
             )}
 
@@ -757,6 +749,7 @@ export default function OwnerPortal() {
                 onSuccess={setSuccess}
                 selectedContract={contractForHandover}
                 onRefreshContracts={() => void loadAllData(false)}
+                requests={requests}
               />
             )}
 

@@ -17,6 +17,7 @@ interface Props {
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
   onCreateContract?: (req: RentalRequest) => void;
+  onSwitchToHandoverTab?: () => void;
 }
 
 export default function OwnerRequestsTab({
@@ -26,6 +27,7 @@ export default function OwnerRequestsTab({
   onError,
   onSuccess,
   onCreateContract,
+  onSwitchToHandoverTab,
 }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -295,7 +297,13 @@ export default function OwnerRequestsTab({
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter("returned")}
+            onClick={() => {
+              if (onSwitchToHandoverTab) {
+                onSwitchToHandoverTab();
+              } else {
+                setStatusFilter("returned");
+              }
+            }}
             className="button"
             style={{
               background: "linear-gradient(135deg, #9333ea, #7c3aed)",
@@ -309,7 +317,7 @@ export default function OwnerRequestsTab({
               boxShadow: "0 2px 10px rgba(147, 51, 234, 0.4)",
             }}
           >
-            Xem ngay {returnedRentals.length} đơn báo trả ➔
+            Chuyển sang tab Bàn giao & Kiểm tra ({returnedRentals.length} đơn) ➔
           </button>
         </div>
       )}
