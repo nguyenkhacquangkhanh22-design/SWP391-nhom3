@@ -643,7 +643,7 @@ export default function RentalChatModal({
                                     ? (populatedContract?.renterSignature || rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"))
                                     : undefined,
                                   digitalSignature: isRenterSigned
-                                    ? (populatedContract?.digitalSignature || rentalToView.contract?.digitalSignature || undefined)
+                                    ? (populatedContract?.digitalSignature || (populatedContract as any)?.renter_signature?.signature_image || rentalToView.contract?.digitalSignature || (rentalToView as any).renter_signature?.signature_image || undefined)
                                     : undefined,
                                   signedAt: isRenterSigned
                                     ? (populatedContract?.signedAt || rentalToView.contract?.signedAt || new Date().toISOString())

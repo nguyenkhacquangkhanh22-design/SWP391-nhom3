@@ -650,11 +650,11 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
           <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
-        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc chữ ký điện tử xác nhận của Người thuê -->
+        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc chữ ký điện tử xác nhận của Người thuê kèm con dấu chứng thực điện tử -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</div>
           <div class="note">(${isSigned ? "Chữ ký điện tử của Bên Thuê" : "Chờ Người thuê ký số"})</div>
-          <div class="sign-area" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:80px;">
+          <div class="sign-area" style="position:relative;">
             ${
               effectiveSignature && effectiveSignature.startsWith("data:image")
                 ? `<div style="text-align:center;">
@@ -666,7 +666,12 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
                      <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#1d4ed8; line-height:1.2;">${renterName}</div>
                      <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
                    </div>`
-                : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt; padding:16px 0;">(Chưa ký tên)</div>`
+                : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
+            }
+            ${
+              (isSigned || isConfirmedPaid)
+                ? `<div style="position:absolute; right:5px; top:-10px; opacity:0.85; pointer-events:none; transform:scale(0.85);">${getOfficialSealSvg()}</div>`
+                : ""
             }
           </div>
           <div class="sign-name">${renterName}</div>

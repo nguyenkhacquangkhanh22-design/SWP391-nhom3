@@ -334,20 +334,50 @@ async function signMyContract(req, res) {
   }
 
   const sigData = req.body.signature_image || req.body.signature_data || signature_note;
+  const sigImage =
+    req.body.signature_image ||
+    (typeof sigData === "string" && sigData.startsWith("data:image") ? sigData : "");
 
   contract.renter_signature = {
     signed: true,
     signed_at: new Date(),
     signature_data: sigData,
-    signer_name: req.user.name,
+    signature_image: sigImage,
+    signature_type: sigImage ? "drawn" : "typed",
+    signer_name: req.body.signer_name || signature_note || req.user.name,
   };
 
   contract.status = "signed";
-  contract.payment_method = payment_method || "vietqr";
+  contract.payment_method = req.body.payment_method || "vietqr";
   contract.payment_status = "paid";
   contract.payment_amount = contract.rental_price;
   contract.paid_at = new Date();
   await contract.save();
+
+  // Đồng bộ sang đơn Rental tương ứng
+  try {
+    const Rental = require("../models/Rental");
+    await Rental.updateMany(
+      {
+        $or: [
+          { "contract.contractNumber": contract.contract_code },
+          { rentalCode: contract.contract_code.replace(/^HD-/, "") },
+          { _id: contract.request_id },
+        ],
+      },
+      {
+        $set: {
+          status: "CONTRACT_SIGNED",
+          "contract.termsAccepted": true,
+          "contract.signedAt": contract.renter_signature.signed_at,
+          "contract.renterSignature": contract.renter_signature.signer_name,
+          "contract.digitalSignature": sigImage || contract.renter_signature.signer_name,
+        },
+      }
+    );
+  } catch (rentalSyncErr) {
+    console.warn("Lỗi sync sang Rental:", rentalSyncErr.message);
+  }
 
   // Also update related RentalRequest status if needed
   if (contract.request_id) {

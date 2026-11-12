@@ -4,6 +4,7 @@ import axios from "axios";
 import { useAuth } from "../app/AuthProvider";
 import { getSocket } from "../services/socket";
 import Navbar from "../components/Navbar";
+import SignaturePad from "../components/SignaturePad";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
 import ContractPdfModal from "../components/ContractPdfModal";
 import RentalChatModal from "../components/RentalChatModal";
@@ -44,6 +45,7 @@ export default function RentalHistoryPage() {
   const [complaints, setComplaints] = useState<SupportTicket[]>([]);
   const [signingMarketplaceContract, setSigningMarketplaceContract] = useState<RentalContract | null>(null);
   const [marketplaceSignature, setMarketplaceSignature] = useState("");
+  const [marketplaceSignaturePad, setMarketplaceSignaturePad] = useState<string | null>(null);
   const [marketplaceTermsAccepted, setMarketplaceTermsAccepted] = useState(false);
   const [isSigningMarketplaceContract, setIsSigningMarketplaceContract] = useState(false);
   const [confirmingReceiptContract, setConfirmingReceiptContract] = useState<RentalContract | null>(null);
@@ -271,12 +273,16 @@ export default function RentalHistoryPage() {
         signingMarketplaceContract._id,
         {
           signature_note: marketplaceSignature.trim(),
+          signature_image: marketplaceSignaturePad || undefined,
+          signature_data: marketplaceSignaturePad || marketplaceSignature.trim(),
+          signer_name: marketplaceSignature.trim(),
           terms_accepted: marketplaceTermsAccepted,
-        },
+        } as any,
       );
       setNotice(result.message);
       setSigningMarketplaceContract(null);
       setMarketplaceSignature("");
+      setMarketplaceSignaturePad(null);
       setMarketplaceTermsAccepted(false);
       fetchHistory();
     } catch (err) {
@@ -676,6 +682,17 @@ export default function RentalHistoryPage() {
               <div className="mb-4 flex-1 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#263550] bg-[#0f1624] p-4 text-sm text-slate-300">
                 {signingMarketplaceContract.terms_content}
               </div>
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-bold text-slate-200">
+                  ✍️ Vẽ chữ ký điện tử của Bạn (Vẽ bằng chuột hoặc chạm tay):
+                </label>
+                <SignaturePad
+                  width={560}
+                  height={130}
+                  onChange={(dataUrl) => setMarketplaceSignaturePad(dataUrl)}
+                />
+              </div>
+
               <label className="mb-3 flex items-start gap-2 text-sm text-slate-300">
                 <input
                   type="checkbox"
@@ -685,13 +702,14 @@ export default function RentalHistoryPage() {
                 />
                 Tôi đã đọc và đồng ý với toàn bộ điều khoản của hợp đồng.
               </label>
-              <label className="mb-4 grid gap-2 text-sm text-slate-300">
-                Chữ ký điện tử / Họ và tên
+              <label className="mb-4 grid gap-1.5 text-xs text-slate-300">
+                Họ và tên người ký xác nhận:
                 <input
-                  className="input-field"
+                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500 font-semibold"
                   value={marketplaceSignature}
                   onChange={(event) => setMarketplaceSignature(event.target.value)}
                   required
+                  placeholder={user?.name || "Họ và tên"}
                   autoComplete="name"
                 />
               </label>
