@@ -475,6 +475,29 @@ const paymentController = {
         }
       }
 
+      // Tự động gửi tin nhắn Chat kèm bản Hợp đồng đã ký & thanh toán cho Owner & Renter cùng nắm
+      try {
+        const ChatMessage = require("../models/ChatMessage");
+        const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await ChatMessage.create({
+          rental_id: rental._id,
+          sender: renterId,
+          receiver: ownerId,
+          message: `🎉 Hợp đồng #${contractNumber} đã được KÝ TÊN & THANH TOÁN THÀNH CÔNG (${paidAmount.toLocaleString("vi-VN")} đ)! Hợp đồng chính thức có hiệu lực pháp lý. Cả hai bên đều có thể xem hoặc tải file PDF hợp đồng bất kỳ lúc nào.`,
+          message_type: "contract",
+          contract_data: {
+            contract_number: contractNumber,
+            equipment_title: equipmentTitle,
+            rental_id: rental._id,
+            total_amount: paidAmount,
+            status: "PAID",
+            is_signed: true,
+          },
+        });
+      } catch (chatErr) {
+        console.warn("Lỗi gửi tin nhắn hợp đồng đã thanh toán (webhook):", chatErr.message);
+      }
+
       // Bắn Socket.IO realtime để client Renter & Owner nhận thông báo tức thì
       try {
         const { getIO } = require("../config/socket");
@@ -496,6 +519,12 @@ const paymentController = {
         };
         io.emit("payment:approved", toastData);
         io.emit("payment:success_owner", toastData);
+        io.emit("chat:message", {
+          rental_id: String(rental._id),
+          sender: String(renterId),
+          receiver: String(ownerId),
+          message_type: "contract",
+        });
       } catch (socketErr) {
         console.warn("Socket emit error on webhook:", socketErr?.message);
       }
@@ -796,6 +825,29 @@ const paymentController = {
         }
       }
 
+      // Tự động gửi tin nhắn Chat kèm bản Hợp đồng đã ký & thanh toán cho Owner & Renter cùng nắm
+      try {
+        const ChatMessage = require("../models/ChatMessage");
+        const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await ChatMessage.create({
+          rental_id: rental._id,
+          sender: renterId,
+          receiver: ownerId,
+          message: `🎉 Hợp đồng #${contractNumber} đã được KÝ TÊN & THANH TOÁN THÀNH CÔNG (${paidAmount.toLocaleString("vi-VN")} đ)! Hợp đồng chính thức có hiệu lực pháp lý. Cả hai bên đều có thể xem hoặc tải file PDF hợp đồng bất kỳ lúc nào.`,
+          message_type: "contract",
+          contract_data: {
+            contract_number: contractNumber,
+            equipment_title: equipmentTitle,
+            rental_id: rental._id,
+            total_amount: paidAmount,
+            status: "PAID",
+            is_signed: true,
+          },
+        });
+      } catch (chatErr) {
+        console.warn("Lỗi gửi tin nhắn hợp đồng đã thanh toán (verifyPayment):", chatErr.message);
+      }
+
       try {
         const { getIO } = require("../config/socket");
         const io = getIO();
@@ -816,6 +868,12 @@ const paymentController = {
         };
         io.emit("payment:approved", toastData);
         io.emit("payment:success_owner", toastData);
+        io.emit("chat:message", {
+          rental_id: String(rental._id),
+          sender: String(renterId),
+          receiver: String(ownerId),
+          message_type: "contract",
+        });
       } catch (socketErr) {
         console.warn("Socket emit error on verifyPayment:", socketErr?.message);
       }

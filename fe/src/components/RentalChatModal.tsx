@@ -559,13 +559,25 @@ export default function RentalChatModal({
                           onClick={() => {
                             let rentalToView = { ...currentRental };
                             if (msg.contract_data) {
+                              const isSigned = msg.contract_data.is_signed || msg.contract_data.status === "CONTRACT_SIGNED" || msg.contract_data.status === "PAID";
+                              const isPaid = msg.contract_data.status === "PAID" || rentalToView.payment?.isPaid;
                               rentalToView = {
                                 ...rentalToView,
                                 totalAmount: msg.contract_data.total_amount || rentalToView.totalAmount,
+                                status: isPaid ? "PAID" : isSigned ? "CONTRACT_SIGNED" : rentalToView.status,
+                                payment: {
+                                  ...rentalToView.payment,
+                                  isPaid: Boolean(isPaid),
+                                  paymentStatus: isPaid ? "paid" : (rentalToView.payment?.paymentStatus || "unpaid"),
+                                },
                                 contract: {
                                   ...rentalToView.contract,
                                   contractNumber: msg.contract_data.contract_number || rentalToView.contract?.contractNumber,
                                   ownerSigned: true,
+                                  termsAccepted: isSigned || rentalToView.contract?.termsAccepted,
+                                  renterSignature: rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
+                                  digitalSignature: rentalToView.contract?.digitalSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
+                                  signedAt: rentalToView.contract?.signedAt || (isSigned ? new Date().toISOString() : undefined),
                                 },
                               };
                               setCurrentRental(rentalToView);
@@ -578,7 +590,7 @@ export default function RentalChatModal({
                           className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
                         >
                           <span>📄</span>
-                          <span>Xem hợp đồng</span>
+                          <span>Xem file PDF hợp đồng</span>
                         </button>
 
                         {/* Nút Đồng ý ký hợp đồng cho Renter ngay trên thẻ HĐ */}

@@ -792,19 +792,23 @@ export default function OwnerRequestsTab({
                           <button
                             type="button"
                             onClick={() => setViewingContractRental(r)}
-                            className="button button-quiet"
+                            className="button"
                             style={{
-                              padding: "6px 10px",
+                              padding: "6px 12px",
                               fontSize: "0.8rem",
                               borderRadius: "10px",
                               width: "auto",
-                              background: "rgba(255, 255, 255, 0.05)",
-                              borderColor: "rgba(255, 255, 255, 0.12)",
-                              color: "#cbd5e1",
+                              background: "rgba(249, 115, 22, 0.15)",
+                              border: "1px solid rgba(249, 115, 22, 0.45)",
+                              color: "#fb923c",
+                              fontWeight: 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
-                            title="Mở bản hợp đồng PDF"
+                            title="Mở file hợp đồng PDF đầy đủ chữ ký 2 bên và tải về máy"
                           >
-                            📄 HĐ PDF
+                            <span>📄</span> Xem file PDF
                           </button>
 
                           {/* NÚT SỬA HỢP ĐỒNG TRỰC TIẾP DÀNH CHO OWNER */}

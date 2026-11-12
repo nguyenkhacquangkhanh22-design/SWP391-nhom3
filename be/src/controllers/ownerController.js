@@ -2595,6 +2595,29 @@ async function confirmOwnerRentalPayment(req, res) {
       });
     }
 
+    // Tự động gửi tin nhắn Chat kèm bản Hợp đồng đã ký & thanh toán
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+      await ChatMessage.create({
+        rental_id: rental._id,
+        sender: ownerId,
+        receiver: rental.renter?._id || rental.renter,
+        message: `🎉 Hợp đồng #${contractNumber} đã được XÁC NHẬN THANH TOÁN THÀNH CÔNG! Hợp đồng chính thức có hiệu lực pháp lý. Cả hai bên đều có thể mở và tải bản PDF hợp đồng bất kỳ lúc nào.`,
+        message_type: "contract",
+        contract_data: {
+          contract_number: contractNumber,
+          equipment_title: rental.equipment?.title || "Thiết bị",
+          rental_id: rental._id,
+          total_amount: rental.totalAmount || rental.rentalFee || 0,
+          status: "PAID",
+          is_signed: true,
+        },
+      });
+    } catch (chatErr) {
+      console.warn("Lỗi gửi tin nhắn hợp đồng khi confirmOwnerRentalPayment:", chatErr.message);
+    }
+
     try {
       const io = getIO();
       const renterMongoId = String(rental.renter?._id || rental.renter || "");
@@ -2613,6 +2636,12 @@ async function confirmOwnerRentalPayment(req, res) {
         createdAt: new Date(),
       };
       io.emit("payment:approved", toastData);
+      io.emit("chat:message", {
+        rental_id: String(rental._id),
+        sender: String(ownerId),
+        receiver: renterMongoId,
+        message_type: "contract",
+      });
     } catch (socketErr) {
       console.warn("Socket emit error on confirmOwnerRentalPayment approve:", socketErr?.message);
     }

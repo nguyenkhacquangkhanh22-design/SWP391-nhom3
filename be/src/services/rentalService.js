@@ -616,10 +616,78 @@ class RentalService {
       console.warn("Đồng bộ chữ ký sang RentalContract:", syncErr.message);
     }
 
-    return await Rental.findById(rental._id)
+    const populatedRental = await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category")
       .populate("owner", "name email phone trust_score bankInfo")
       .populate("renter", "name email phone");
+
+    // 1. Tự động gửi tin nhắn Chat kèm Hợp đồng đã ký sang cho Owner để 2 bên đều có bản HĐ
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+      await ChatMessage.create({
+        rental_id: rental._id,
+        sender: renterUser._id,
+        receiver: rental.owner,
+        message: `✍️ Khách thuê (${renterUser.name}) đã ký tên vào Hợp đồng #${contractNumber}. Hợp đồng đã có đầy đủ chữ ký điện tử của hai bên. Bạn có thể mở bản PDF để xem và lưu lại bất kỳ lúc nào!`,
+        message_type: "contract",
+        contract_data: {
+          contract_number: contractNumber,
+          equipment_title: populatedRental?.equipment?.title || "Thiết bị thuê",
+          rental_id: rental._id,
+          total_amount: rental.totalAmount || rental.rentalFee || 0,
+          status: "CONTRACT_SIGNED",
+          is_signed: true,
+        },
+      });
+    } catch (chatErr) {
+      console.warn("Lỗi gửi tin nhắn hợp đồng đã ký sang Owner:", chatErr.message);
+    }
+
+    // 2. Gửi thông báo cho Chủ máy (Owner)
+    if (UserNotification && rental.owner) {
+      try {
+        const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await UserNotification.create({
+          user_id: rental.owner,
+          title: `✍️ Khách thuê đã ký Hợp đồng #${contractNumber}!`,
+          message: `Khách hàng ${renterUser.name} đã ký tên điện tử vào Hợp đồng #${contractNumber}. Hợp đồng đã được cập nhật bản PDF vào khung chat để hai bên cùng lưu giữ!`,
+          related_record_id: rental._id,
+        });
+      } catch (notifErr) {
+        console.warn("Lỗi tạo thông báo ký HĐ cho Owner:", notifErr?.message);
+      }
+    }
+
+    // 3. Bắn Socket.IO realtime
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      if (io) {
+        const ownerIdStr = String(rental.owner?._id || rental.owner || "");
+        io.emit("contract:signed", {
+          rentalId: rental._id.toString(),
+          rentalCode: rental.rentalCode,
+          contractNumber: rental.contract?.contractNumber || `HD-${rental.rentalCode}`,
+          ownerId: ownerIdStr,
+          renterId: String(renterUser._id),
+          renterName: renterUser.name,
+          title: "✍️ Khách thuê đã ký hợp đồng!",
+          message: `Khách ${renterUser.name} đã ký Hợp đồng #${rental.contract?.contractNumber || rental.rentalCode}.`,
+          link: "/owner",
+        });
+        io.emit("chat:message", {
+          rental_id: rental._id.toString(),
+          sender: String(renterUser._id),
+          receiver: ownerIdStr,
+          message_type: "contract",
+        });
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on confirmContract:", socketErr?.message);
+    }
+
+    return populatedRental;
   }
 
   /**

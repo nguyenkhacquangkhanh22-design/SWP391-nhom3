@@ -83,7 +83,7 @@ export default function OwnerPortal() {
       if (res && Array.isArray(res.notifications)) {
         setNotifications(res.notifications);
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function OwnerPortal() {
       if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
       if (ctx.state === "suspended") {
-        ctx.resume().catch(() => {});
+        ctx.resume().catch(() => { });
       }
 
       const now = ctx.currentTime;
@@ -195,7 +195,7 @@ export default function OwnerPortal() {
       setNotifications((prev) =>
         prev.map((n) => (n._id === id ? { ...n, read_at: new Date().toISOString() } : n))
       );
-    } catch {}
+    } catch { }
   };
 
   const handleMarkAllRead = async () => {
@@ -204,7 +204,7 @@ export default function OwnerPortal() {
     for (const n of unread) {
       try {
         await authApi.markNotificationRead(token, n._id);
-      } catch {}
+      } catch { }
     }
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))

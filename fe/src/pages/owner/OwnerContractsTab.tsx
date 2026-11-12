@@ -4,6 +4,7 @@ import type { OwnerContractTemplate, RentalContract, RentalRequest, DigitalSigna
 import type { Rental } from "../../types/smartequip";
 import DigitalSignaturePad from "../../components/DigitalSignaturePad";
 import RentalChatModal from "../../components/RentalChatModal";
+import ContractPdfModal from "../../components/ContractPdfModal";
 import { ownerApi } from "../../services/ownerApi";
 
 interface Props {
@@ -141,6 +142,75 @@ export default function OwnerContractsTab({
   // Chat Modal & direct rentals
   const [chatRental, setChatRental] = useState<Rental | null>(null);
   const [directRentals, setDirectRentals] = useState<Rental[]>([]);
+  const [viewingPdfRental, setViewingPdfRental] = useState<Rental | null>(null);
+
+  const convertContractToRental = (c: RentalContract): Rental => {
+    const matchedRental = directRentals.find(
+      (r) =>
+        r.contract?.contractNumber === c.contract_code ||
+        r.rentalCode === c.contract_code.replace(/^HD-/, "") ||
+        String(r._id) === String(c.request_id)
+    );
+    if (matchedRental) {
+      return {
+        ...matchedRental,
+        contract: {
+          ...matchedRental.contract,
+          contractNumber: c.contract_code,
+          ownerSigned: Boolean(c.owner_signature?.signed || matchedRental.contract?.ownerSigned),
+          renterSignature: c.renter_signature?.signer_name || matchedRental.contract?.renterSignature,
+          digitalSignature: c.renter_signature?.signature_data || matchedRental.contract?.digitalSignature,
+          signedAt: c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (matchedRental.contract?.signedAt ? new Date(matchedRental.contract.signedAt).toISOString() : undefined),
+          contractTerms: c.terms_content || matchedRental.contract?.contractTerms,
+          termsAccepted: Boolean(c.renter_signature?.signed || matchedRental.contract?.termsAccepted),
+        },
+      };
+    }
+
+    const equipObj = typeof c.equipment_id === "object" ? c.equipment_id : ({ _id: c.equipment_id, title: c.title } as any);
+    const renterObj = typeof c.renter_id === "object" ? c.renter_id : ({ _id: c.renter_id, name: "Khách thuê" } as any);
+    const isPaid = c.payment_status === "paid" || (c as any).payment_status === "PAID";
+    const isRenterSigned = Boolean(c.renter_signature?.signed || ["signed", "contract_signed", "active", "completed"].includes(c.status));
+    const calculatedDays = c.start_date && c.end_date
+      ? Math.max(1, Math.ceil((new Date(c.end_date).getTime() - new Date(c.start_date).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1;
+
+    return {
+      _id: c._id,
+      rentalCode: c.contract_code.replace(/^HD-/, ""),
+      status: isPaid ? "PAID" : isRenterSigned ? "CONTRACT_SIGNED" : "APPROVED",
+      equipment: equipObj,
+      renter: renterObj,
+      owner: {
+        _id: typeof c.owner_id === "object" ? (c.owner_id as any)?._id : c.owner_id,
+        name: c.owner_signature?.signer_name || (c.owner_id as any)?.name || user?.name || "Chủ máy",
+        email: (c.owner_id as any)?.email || user?.email || "",
+        phone: (c.owner_id as any)?.phone || user?.phone || "",
+      } as any,
+      startDate: c.start_date,
+      endDate: c.end_date,
+      totalDays: (c as any).duration_days || calculatedDays,
+      dailyRate: Math.round((c.rental_price || 0) / ((c as any).duration_days || calculatedDays)),
+      rentalFee: c.rental_price || 0,
+      totalAmount: c.rental_price || 0,
+      depositAmount: c.deposit_amount || 0,
+      deliveryAddress: (c as any).delivery_address || "",
+      payment: {
+        isPaid,
+        paymentStatus: isPaid ? "paid" : "unpaid",
+        paidAt: isPaid ? new Date().toISOString() : undefined,
+      },
+      contract: {
+        contractNumber: c.contract_code,
+        ownerSigned: Boolean(c.owner_signature?.signed),
+        renterSignature: c.renter_signature?.signer_name || (isRenterSigned ? renterObj?.name : undefined),
+        digitalSignature: c.renter_signature?.signature_data || (isRenterSigned ? renterObj?.name : undefined),
+        signedAt: c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (isRenterSigned ? new Date().toISOString() : undefined),
+        contractTerms: c.terms_content,
+        termsAccepted: isRenterSigned,
+      },
+    } as any;
+  };
 
   const fetchDirectRentals = async () => {
     if (!token) return;
@@ -822,12 +892,36 @@ export default function OwnerContractsTab({
 
               {/* Action Buttons */}
               <div className="contract-actions-bar">
+                {/* Nút Xem file PDF giống bên người thuê */}
+                <button
+                  type="button"
+                  className="button"
+                  style={{
+                    width: "auto",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "linear-gradient(135deg, #ea580c, #f97316)",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    border: "none",
+                    boxShadow: "0 2px 8px rgba(249, 115, 22, 0.35)",
+                    padding: "7px 14px",
+                    borderRadius: "8px",
+                    fontSize: "0.82rem",
+                  }}
+                  onClick={() => setViewingPdfRental(convertContractToRental(c))}
+                  title="Mở bản hợp đồng chuẩn PDF hiển thị đầy đủ chữ ký 2 bên và tải về máy"
+                >
+                  <span>📄</span> Xem file PDF HĐ
+                </button>
+
                 <button
                   className="button button-secondary"
                   style={{ width: "auto" }}
                   onClick={() => setViewingContract(c)}
                 >
-                  👁️ Xem toàn văn Hợp đồng
+                  👁️ Xem điều khoản
                 </button>
 
                 {/* Nút Chat trao đổi trực tiếp với Renter */}
@@ -1330,9 +1424,32 @@ export default function OwnerContractsTab({
               <h3>
                 📄 Hợp đồng {viewingContract.contract_code} (Phiên bản v{viewingContract.version})
               </h3>
-              <button className="close-modal-btn" onClick={() => setViewingContract(null)}>
-                ✕
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="button"
+                  style={{
+                    background: "linear-gradient(135deg, #ea580c, #f97316)",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    border: "none",
+                    fontSize: "0.82rem",
+                    padding: "5px 12px",
+                    borderRadius: "8px",
+                  }}
+                  onClick={() => {
+                    const r = convertContractToRental(viewingContract);
+                    setViewingContract(null);
+                    setViewingPdfRental(r);
+                  }}
+                  title="Mở hợp đồng dưới định dạng PDF chuẩn"
+                >
+                  📄 Mở bản PDF hoàn chỉnh
+                </button>
+                <button className="close-modal-btn" onClick={() => setViewingContract(null)}>
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Workflow Stepper inside modal */}
@@ -1600,6 +1717,15 @@ export default function OwnerContractsTab({
               setViewingContract(match);
             }
           }}
+        />
+      )}
+      {/* MODAL XEM HỢP ĐỒNG PDF CHUẨN DÀNH CHO OWNER (GIỐNG BÊN NGƯỜI THUÊ) */}
+      {viewingPdfRental && (
+        <ContractPdfModal
+          rental={viewingPdfRental}
+          isOpen={Boolean(viewingPdfRental)}
+          isOwner={true}
+          onClose={() => setViewingPdfRental(null)}
         />
       )}
     </div>
