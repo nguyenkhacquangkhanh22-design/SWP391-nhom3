@@ -1516,6 +1516,13 @@ class RentalService {
       );
     }
 
+    if (rental.extensionRequest?.status === "PENDING_OWNER") {
+      throw new AppError(400, "Đang có yêu cầu gia hạn chờ Chủ máy phê duyệt. Vui lòng đợi phản hồi từ Chủ máy.");
+    }
+    if (rental.extensionRequest?.status === "APPROVED") {
+      throw new AppError(400, "Chủ máy đã chấp thuận yêu cầu gia hạn trước đó. Vui lòng chuyển khoản thanh toán phụ phí để hoàn tất.");
+    }
+
     // Tính ngày kết thúc mới
     const currentEndDate = new Date(rental.endDate);
     const newEndDate = new Date(currentEndDate);
@@ -1541,42 +1548,35 @@ class RentalService {
     const dailyRate = rental.dailyRate || rental.equipment?.dailyRate || 0;
     const extraFee = dailyRate * extraDays;
 
-    rental.endDate = newEndDate;
-    rental.totalDays = (rental.totalDays || 0) + extraDays;
-    rental.rentalFee = (rental.rentalFee || 0) + extraFee;
-    rental.totalAmount = (rental.totalAmount || 0) + extraFee;
-
-    if (!Array.isArray(rental.extensions)) {
-      rental.extensions = [];
-    }
-
-    rental.extensions.push({
-      extendedAt: new Date(),
+    // Lưu thông tin yêu cầu gia hạn chờ Owner phê duyệt
+    rental.extensionRequest = {
+      status: "PENDING_OWNER",
       extraDays,
       extraFee,
-      previousEndDate: currentEndDate,
-      newEndDate: newEndDate,
+      currentEndDate,
+      newEndDate,
       note,
-    });
+      requestedAt: new Date(),
+    };
 
     await rental.save();
 
-    // Thông báo cho Renter & Owner
+    // Thông báo cho Owner & Renter
     const ownerId = rental.owner?._id || rental.owner;
     try {
       const UserNotification = require("../models/UserNotification");
       if (UserNotification) {
         await UserNotification.create({
           user_id: ownerId,
-          title: `⏳ Khách đã gia hạn đơn thuê #${rental.rentalCode}`,
-          message: `Khách thuê (${renterUser.name}) đã gia hạn thuê thiết bị "${rental.equipment?.title || "thiết bị"}" thêm ${extraDays} ngày (đến ngày ${newEndDate.toLocaleDateString("vi-VN")}). Phụ phí: ${extraFee.toLocaleString("vi-VN")} đ.`,
+          title: `⏳ Yêu cầu gia hạn đơn thuê #${rental.rentalCode}`,
+          message: `Khách thuê (${renterUser.name}) gửi yêu cầu gia hạn thuê thiết bị "${rental.equipment?.title || "thiết bị"}" thêm ${extraDays} ngày (đến ngày ${newEndDate.toLocaleDateString("vi-VN")}). Phụ phí: ${extraFee.toLocaleString("vi-VN")} đ. Vui lòng xem xét phê duyệt.`,
           related_record_id: rental._id,
         });
 
         await UserNotification.create({
           user_id: renterUser._id,
-          title: `✅ Gia hạn thuê thành công #${rental.rentalCode}`,
-          message: `Bạn đã gia hạn đơn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới là: ${rental.returnTime || "17:00"} ngày ${newEndDate.toLocaleDateString("vi-VN")}.`,
+          title: `⏳ Đã gửi yêu cầu gia hạn #${rental.rentalCode}`,
+          message: `Yêu cầu gia hạn thêm ${extraDays} ngày đã được gửi tới Chủ máy. Vui lòng chờ Chủ máy phê duyệt trước khi chuyển khoản thanh toán phụ phí.`,
           related_record_id: rental._id,
         });
       }
@@ -1585,9 +1585,11 @@ class RentalService {
     try {
       const { getIO } = require("../config/socket");
       const io = getIO();
-      io.emit("rental:extended", {
+      io.emit("rental:extension_requested", {
         rentalId: rental._id,
         rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
         extraDays,
         extraFee,
         newEndDate,
@@ -1596,7 +1598,134 @@ class RentalService {
 
     return {
       success: true,
-      message: `Gia hạn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới: ${newEndDate.toLocaleDateString("vi-VN")}.`,
+      message: `Đã gửi yêu cầu gia hạn thêm ${extraDays} ngày tới Chủ máy! Vui lòng chờ Chủ máy phê duyệt để tiến hành thanh toán phụ phí.`,
+      rental,
+    };
+  }
+
+  /**
+   * Owner phê duyệt yêu cầu gia hạn thuê
+   */
+  async approveExtension(rentalId, ownerUser) {
+    const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const ownerId = rental.owner?._id ? String(rental.owner._id) : String(rental.owner);
+    const currentUserId = String(ownerUser._id || ownerUser.id);
+    if (ownerId !== currentUserId && ownerUser.role !== "admin") {
+      throw new AppError(403, "Bạn không có quyền phê duyệt gia hạn cho đơn thuê này");
+    }
+
+    if (rental.extensionRequest?.status !== "PENDING_OWNER") {
+      throw new AppError(400, "Đơn thuê không có yêu cầu gia hạn nào đang chờ duyệt");
+    }
+
+    // Kiểm tra lại tính khả dụng
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const availCheck = await this.checkAvailability(
+      equipmentId,
+      new Date(rental.extensionRequest.currentEndDate || rental.endDate),
+      new Date(rental.extensionRequest.newEndDate),
+      rental._id
+    );
+    if (!availCheck.available) {
+      throw new AppError(400, "Thiết bị đã bị trùng lịch với khách khác, không thể duyệt gia hạn.");
+    }
+
+    rental.extensionRequest.status = "APPROVED";
+    rental.extensionRequest.approvedAt = new Date();
+    await rental.save();
+
+    const renterId = rental.renter?._id || rental.renter;
+    const extraFee = rental.extensionRequest.extraFee;
+    const extraDays = rental.extensionRequest.extraDays;
+
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: renterId,
+          title: `✅ Chủ máy đã đồng ý gia hạn #${rental.rentalCode}`,
+          message: `Chủ máy đã chấp thuận gia hạn thêm ${extraDays} ngày. Vui lòng quét mã VietQR PayOS chuyển khoản phụ phí ${extraFee.toLocaleString("vi-VN")} đ để hoàn tất gia hạn đơn thuê.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (nErr) {}
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      io.emit("rental:extension_approved", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
+        extraDays,
+        extraFee,
+      });
+    } catch (sErr) {}
+
+    return {
+      success: true,
+      message: `Đã phê duyệt gia hạn thêm ${extraDays} ngày! Người thuê sẽ thanh toán phụ phí để hoàn tất.`,
+      rental,
+    };
+  }
+
+  /**
+   * Owner từ chối yêu cầu gia hạn thuê
+   */
+  async rejectExtension(rentalId, ownerUser, reason = "") {
+    const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const ownerId = rental.owner?._id ? String(rental.owner._id) : String(rental.owner);
+    const currentUserId = String(ownerUser._id || ownerUser.id);
+    if (ownerId !== currentUserId && ownerUser.role !== "admin") {
+      throw new AppError(403, "Bạn không có quyền từ chối gia hạn cho đơn thuê này");
+    }
+
+    if (rental.extensionRequest?.status !== "PENDING_OWNER") {
+      throw new AppError(400, "Đơn thuê không có yêu cầu gia hạn nào đang chờ duyệt");
+    }
+
+    rental.extensionRequest.status = "REJECTED";
+    rental.extensionRequest.rejectedAt = new Date();
+    rental.extensionRequest.rejectionReason = (reason || "Chủ máy không thể gia hạn vào thời gian này.").trim();
+    await rental.save();
+
+    const renterId = rental.renter?._id || rental.renter;
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: renterId,
+          title: `✕ Yêu cầu gia hạn bị từ chối #${rental.rentalCode}`,
+          message: `Chủ máy đã từ chối yêu cầu gia hạn: "${rental.extensionRequest.rejectionReason}". Vui lòng hoàn trả thiết bị đúng hạn ban đầu.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (nErr) {}
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      io.emit("rental:extension_rejected", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
+        reason: rental.extensionRequest.rejectionReason,
+      });
+    } catch (sErr) {}
+
+    return {
+      success: true,
+      message: "Đã từ chối yêu cầu gia hạn đơn thuê.",
       rental,
     };
   }

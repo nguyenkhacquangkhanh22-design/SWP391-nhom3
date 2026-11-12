@@ -73,9 +73,15 @@ const paymentController = {
       throw new AppError(404, "Không tìm thấy thông tin đơn thuê");
     }
 
-    const payAmount = Math.round(
-      Number(amount) || rental.totalAmount || rental.rentalFee || 0
-    );
+    const isExtension = Boolean(req.body.isExtension || req.body.type === "extension");
+    let payAmount;
+    if (isExtension && rental.extensionRequest?.status === "APPROVED") {
+      payAmount = Math.round(Number(rental.extensionRequest.extraFee) || Number(amount) || 0);
+    } else {
+      payAmount = Math.round(
+        Number(amount) || rental.totalAmount || rental.rentalFee || 0
+      );
+    }
     if (payAmount <= 0) {
       throw new AppError(400, "Số tiền thanh toán phải lớn hơn 0");
     }
@@ -87,7 +93,7 @@ const paymentController = {
     );
 
     // PayOS yêu cầu description tối đa 25 ký tự, không dấu, không ký tự đặc biệt
-    const rawDesc = description || `TT ${rental.rentalCode || "SMARTEQUIP"}`;
+    const rawDesc = description || (isExtension ? `GH ${rental.rentalCode || "DON"}` : `TT ${rental.rentalCode || "SMARTEQUIP"}`);
     const cleanDescription = rawDesc
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -109,7 +115,7 @@ const paymentController = {
       cancelUrl,
       items: [
         {
-          name: (rental.equipment?.title || "Thue thiet bi SmartEquip").slice(
+          name: (isExtension ? `Gia han ${rental.equipment?.title || "thiet bi"}` : (rental.equipment?.title || "Thue thiet bi SmartEquip")).slice(
             0,
             50
           ),
@@ -135,14 +141,18 @@ const paymentController = {
     }
 
     // Lưu orderCode và checkoutUrl vào model Rental để đối soát khi Webhook gọi về
-    rental.payment = rental.payment || {};
-    rental.payment.orderCode = orderCode;
-    rental.payment.paymentLinkId =
-      paymentLinkRes.paymentLinkId || paymentLinkRes.id;
-    rental.payment.checkoutUrl = paymentLinkRes.checkoutUrl;
-    rental.payment.paymentMethod = "payos_vietqr";
-    if (rental.contract?.moderatorStatus === "approved") {
-      rental.contract.moderatorStatus = "moderator_approved";
+    if (isExtension && rental.extensionRequest?.status === "APPROVED") {
+      rental.extensionRequest.payosOrderCode = orderCode;
+    } else {
+      rental.payment = rental.payment || {};
+      rental.payment.orderCode = orderCode;
+      rental.payment.paymentLinkId =
+        paymentLinkRes.paymentLinkId || paymentLinkRes.id;
+      rental.payment.checkoutUrl = paymentLinkRes.checkoutUrl;
+      rental.payment.paymentMethod = "payos_vietqr";
+      if (rental.contract?.moderatorStatus === "approved") {
+        rental.contract.moderatorStatus = "moderator_approved";
+      }
     }
     await rental.save();
 
@@ -203,7 +213,12 @@ const paymentController = {
     // Tìm đơn thuê tương ứng
     let rental = null;
     if (orderCode) {
-      rental = await Rental.findOne({ "payment.orderCode": orderCode });
+      rental = await Rental.findOne({
+        $or: [
+          { "payment.orderCode": orderCode },
+          { "extensionRequest.payosOrderCode": orderCode },
+        ],
+      });
     }
 
     if (!rental && description) {
@@ -225,6 +240,98 @@ const paymentController = {
     }
 
     if (rental) {
+      // Trường hợp: Thanh toán phụ phí gia hạn đơn thuê đã được Owner duyệt
+      if (
+        rental.extensionRequest &&
+        rental.extensionRequest.payosOrderCode === Number(orderCode) &&
+        rental.extensionRequest.status === "APPROVED"
+      ) {
+        rental.extensionRequest.status = "PAID";
+        rental.extensionRequest.paidAt = new Date();
+
+        const extraDays = rental.extensionRequest.extraDays;
+        const extraFee = rental.extensionRequest.extraFee;
+        const previousEndDate = rental.extensionRequest.currentEndDate || rental.endDate;
+        const newEndDate = rental.extensionRequest.newEndDate;
+
+        rental.endDate = newEndDate;
+        rental.totalDays = (rental.totalDays || 0) + extraDays;
+        rental.rentalFee = (rental.rentalFee || 0) + extraFee;
+        rental.totalAmount = (rental.totalAmount || 0) + extraFee;
+
+        if (!Array.isArray(rental.extensions)) {
+          rental.extensions = [];
+        }
+        rental.extensions.push({
+          extendedAt: new Date(),
+          extraDays,
+          extraFee,
+          previousEndDate,
+          newEndDate,
+          note: rental.extensionRequest.note,
+        });
+
+        await rental.save();
+        await rental.populate("equipment owner renter");
+
+        const ownerId = rental.owner?._id || rental.owner;
+        const renterId = rental.renter?._id || rental.renter;
+        const renterName = rental.renter?.name || "Khách thuê";
+        const equipmentTitle = rental.equipment?.title || "Thiết bị";
+
+        try {
+          const User = require("../models/User");
+          const ownerUser = await User.findById(ownerId);
+          if (ownerUser) {
+            ownerUser.walletBalance = (ownerUser.walletBalance || 0) + extraFee;
+            if (!Array.isArray(ownerUser.walletTransactions)) {
+              ownerUser.walletTransactions = [];
+            }
+            ownerUser.walletTransactions.push({
+              type: "rental_income",
+              amount: extraFee,
+              rentalId: rental._id,
+              description: `Thu nhập gia hạn (${extraDays} ngày) đơn thuê #${rental.rentalCode}`,
+              createdAt: new Date(),
+            });
+            await ownerUser.save();
+          }
+        } catch (wErr) {
+          console.warn("Cộng ví owner gia hạn lỗi:", wErr?.message);
+        }
+
+        try {
+          const UserNotification = require("../models/UserNotification");
+          await UserNotification.create({
+            user_id: ownerId,
+            title: `💰 Khách đã thanh toán gia hạn #${rental.rentalCode}`,
+            message: `Khách thuê ${renterName} đã quét mã VietQR PayOS chuyển thành công ${extraFee.toLocaleString("vi-VN")} đ phí gia hạn thêm ${extraDays} ngày cho thiết bị "${equipmentTitle}". Số dư ví của bạn đã được cộng tự động!`,
+            related_record_id: rental._id,
+          });
+          await UserNotification.create({
+            user_id: renterId,
+            title: `🎉 Gia hạn đơn thuê thành công #${rental.rentalCode}`,
+            message: `Thanh toán gia hạn thành công! Hạn trả máy mới của bạn là: ${rental.returnTime || "17:00"} ngày ${new Date(newEndDate).toLocaleDateString("vi-VN")}.`,
+            related_record_id: rental._id,
+          });
+        } catch (nErr) {}
+
+        try {
+          const { getIO } = require("../config/socket");
+          const io = getIO();
+          io.emit("rental:extended", {
+            rentalId: rental._id,
+            rentalCode: rental.rentalCode,
+            status: rental.status,
+            newEndDate,
+            extraDays,
+            extraFee,
+          });
+        } catch (sErr) {}
+
+        return res.status(200).json({ success: true, message: "Extension payment processed successfully" });
+      }
+
       const isCancelled = String(rental.status).toUpperCase() === "CANCELLED";
       if (isCancelled) {
         // Đơn đã hủy mà khách vẫn chuyển tiền -> Chuyển sang chế độ hoàn tiền refund_pending
@@ -470,7 +577,10 @@ const paymentController = {
     }
 
     let rental = await Rental.findOne({
-      "payment.orderCode": Number(orderCode),
+      $or: [
+        { "payment.orderCode": Number(orderCode) },
+        { "extensionRequest.payosOrderCode": Number(orderCode) },
+      ],
     });
 
     if (!rental && paymentInfo.id) {
@@ -480,6 +590,82 @@ const paymentController = {
     }
 
     if (rental && paymentInfo.status === "PAID") {
+      // Trường hợp: Thanh toán phụ phí gia hạn
+      if (
+        rental.extensionRequest &&
+        rental.extensionRequest.payosOrderCode === Number(orderCode) &&
+        rental.extensionRequest.status !== "PAID"
+      ) {
+        rental.extensionRequest.status = "PAID";
+        rental.extensionRequest.paidAt = new Date();
+
+        const extraDays = rental.extensionRequest.extraDays;
+        const extraFee = rental.extensionRequest.extraFee;
+        const previousEndDate = rental.extensionRequest.currentEndDate || rental.endDate;
+        const newEndDate = rental.extensionRequest.newEndDate;
+
+        rental.endDate = newEndDate;
+        rental.totalDays = (rental.totalDays || 0) + extraDays;
+        rental.rentalFee = (rental.rentalFee || 0) + extraFee;
+        rental.totalAmount = (rental.totalAmount || 0) + extraFee;
+
+        if (!Array.isArray(rental.extensions)) {
+          rental.extensions = [];
+        }
+        rental.extensions.push({
+          extendedAt: new Date(),
+          extraDays,
+          extraFee,
+          previousEndDate,
+          newEndDate,
+          note: rental.extensionRequest.note,
+        });
+
+        await rental.save();
+        await rental.populate("equipment owner renter");
+
+        const ownerId = rental.owner?._id || rental.owner;
+        const renterId = rental.renter?._id || rental.renter;
+
+        try {
+          const User = require("../models/User");
+          const ownerUser = await User.findById(ownerId);
+          if (ownerUser) {
+            ownerUser.walletBalance = (ownerUser.walletBalance || 0) + extraFee;
+            if (!Array.isArray(ownerUser.walletTransactions)) {
+              ownerUser.walletTransactions = [];
+            }
+            ownerUser.walletTransactions.push({
+              type: "rental_income",
+              amount: extraFee,
+              rentalId: rental._id,
+              description: `Thu nhập gia hạn (${extraDays} ngày) đơn thuê #${rental.rentalCode}`,
+              createdAt: new Date(),
+            });
+            await ownerUser.save();
+          }
+        } catch (wErr) {}
+
+        try {
+          const { getIO } = require("../config/socket");
+          const io = getIO();
+          io.emit("rental:extended", {
+            rentalId: rental._id,
+            rentalCode: rental.rentalCode,
+            status: rental.status,
+            newEndDate,
+            extraDays,
+            extraFee,
+          });
+        } catch (sErr) {}
+
+        return res.status(200).json({
+          success: true,
+          data: paymentInfo,
+          rentalStatus: rental.status,
+          message: `Thanh toán gia hạn thành công! Hạn trả máy mới: ${rental.returnTime || "17:00"} ngày ${new Date(newEndDate).toLocaleDateString("vi-VN")}.`,
+        });
+      }
       const isCancelled = String(rental.status).toUpperCase() === "CANCELLED";
       if (isCancelled) {
         rental.payment = rental.payment || {};

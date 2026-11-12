@@ -135,6 +135,30 @@ class RentalController {
   }
 
   /**
+   * Owner phê duyệt yêu cầu gia hạn
+   */
+  async approveExtension(req, res) {
+    const result = await rentalService.approveExtension(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.rental,
+    });
+  }
+
+  /**
+   * Owner từ chối yêu cầu gia hạn
+   */
+  async rejectExtension(req, res) {
+    const result = await rentalService.rejectExtension(req.params.id, req.user, req.body?.reason);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.rental,
+    });
+  }
+
+  /**
    * UC_R14: POST /api/rentals/:id/dispute (Gửi khiếu nại đơn thuê)
    */
   async submitDispute(req, res) {

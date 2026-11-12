@@ -247,6 +247,20 @@ export interface Rental {
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   extensions?: RentalExtension[];
+  extensionRequest?: {
+    status: "NONE" | "PENDING_OWNER" | "APPROVED" | "REJECTED" | "PAID";
+    extraDays: number;
+    extraFee: number;
+    currentEndDate?: string;
+    newEndDate: string;
+    note?: string;
+    requestedAt?: string;
+    approvedAt?: string;
+    rejectedAt?: string;
+    rejectionReason?: string;
+    payosOrderCode?: number;
+    paidAt?: string;
+  };
   hasInsurance?: boolean;
   insuranceFee?: number;
   handoverCheckin?: {

@@ -456,7 +456,7 @@ export default function RentalHistoryPage() {
         extraDays,
         note: extensionNote.trim(),
       });
-      setNotice(res.message || `Gia hạn thuê thành công thêm ${extraDays} ngày!`);
+      setNotice(res.message || `Đã gửi yêu cầu gia hạn thêm ${extraDays} ngày tới Chủ máy! Vui lòng chờ Chủ máy duyệt để thanh toán phụ phí.`);
       setExtendingRental(null);
       setExtraDays(1);
       setExtensionNote("");
@@ -909,13 +909,18 @@ export default function RentalHistoryPage() {
                 !isReturned &&
                 !isCompleted;
 
+              const hasPendingExtension = r.extensionRequest?.status === "PENDING_OWNER";
+              const hasApprovedExtension = r.extensionRequest?.status === "APPROVED";
+
               const canExtend =
                 (upperStatus === "PAID" ||
                   upperStatus === "ACTIVE" ||
                   upperStatus === "CONFIRMED" ||
                   upperStatus === "IN_PROGRESS") &&
                 !isReturned &&
-                !isCompleted;
+                !isCompleted &&
+                !hasPendingExtension &&
+                !hasApprovedExtension;
 
               return (
                 <div
@@ -1566,6 +1571,55 @@ export default function RentalHistoryPage() {
                       <span>💬</span>
                       <span>Nhắn tin với Chủ máy</span>
                     </button>
+
+                    {/* Trạng thái gia hạn thuê */}
+                    {r.extensionRequest?.status === "PENDING_OWNER" && (
+                      <div className="p-3 bg-purple-950/40 border border-purple-500/40 rounded-xl text-xs space-y-1">
+                        <div className="font-bold text-purple-300 flex items-center gap-1.5">
+                          <span className="animate-spin text-sm">⏳</span>
+                          <span>Đang chờ Chủ máy duyệt gia hạn (+{r.extensionRequest.extraDays} ngày)</span>
+                        </div>
+                        <div className="text-[11px] text-purple-200/80">
+                          Hạn trả mới: <strong className="text-white">{new Date(r.extensionRequest.newEndDate).toLocaleDateString("vi-VN")}</strong> • Phụ phí: <strong className="text-orange-400">{(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {r.extensionRequest?.status === "APPROVED" && (
+                      <div className="p-3.5 bg-gradient-to-r from-emerald-950/70 to-purple-950/70 border border-emerald-500/50 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-emerald-300 flex items-center gap-1.5">
+                            <span>✅</span> Chủ máy đã duyệt gia hạn (+{r.extensionRequest.extraDays} ngày)
+                          </span>
+                          <span className="text-xs font-black text-orange-400">
+                            {(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Hạn trả mới: <strong className="text-emerald-400">{new Date(r.extensionRequest.newEndDate).toLocaleDateString("vi-VN")}</strong>. Vui lòng quét mã VietQR PayOS để thanh toán phụ phí gia hạn.
+                        </p>
+                        <PaymentButton
+                          rentalId={r._id}
+                          amount={r.extensionRequest.extraFee}
+                          description={`GH don ${r.rentalCode}`}
+                          isExtension={true}
+                          label={`Thanh toán phụ phí gia hạn (${(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ)`}
+                          className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                        />
+                      </div>
+                    )}
+
+                    {r.extensionRequest?.status === "REJECTED" && (
+                      <div className="p-3 bg-rose-950/40 border border-rose-500/40 rounded-xl text-xs space-y-1">
+                        <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                          <span>✕</span>
+                          <span>Chủ máy đã từ chối yêu cầu gia hạn (+{r.extensionRequest.extraDays} ngày)</span>
+                        </div>
+                        <div className="text-[11px] text-rose-200/80">
+                          Lý do: {r.extensionRequest.rejectionReason || "Chủ máy không thể gia hạn vào thời gian này"}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Nút gia hạn thuê (UC_R10_EXT) */}
                     {canExtend && (
@@ -2604,6 +2658,9 @@ export default function RentalHistoryPage() {
                         +{extraFee.toLocaleString("vi-VN")} đ
                       </strong>
                     </div>
+                    <div className="p-3 bg-blue-950/50 border border-blue-500/40 rounded-xl text-[11px] text-blue-200 leading-relaxed">
+                      ℹ️ <strong>Quy trình gia hạn 2 bước:</strong> Yêu cầu gia hạn sẽ được gửi đến Chủ máy. Sau khi Chủ máy phê duyệt đồng ý, bạn sẽ chuyển khoản thanh toán phụ phí gia hạn qua mã <strong>VietQR PayOS</strong> để hoàn tất.
+                    </div>
                   </div>
                 );
               })()}
@@ -2639,10 +2696,10 @@ export default function RentalHistoryPage() {
                   {isExtending ? (
                     <>
                       <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      <span>Đang gia hạn...</span>
+                      <span>Đang gửi yêu cầu...</span>
                     </>
                   ) : (
-                    <span>Xác nhận gia hạn (+{extraDays} ngày)</span>
+                    <span>Gửi yêu cầu gia hạn tới Chủ máy (+{extraDays} ngày)</span>
                   )}
                 </button>
               </div>

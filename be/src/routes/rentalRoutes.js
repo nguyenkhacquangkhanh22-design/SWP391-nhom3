@@ -45,6 +45,8 @@ router.post("/:id/return", requireObjectBody, asyncHandler(rentalController.requ
 
 // UC_R10_EXT: POST /api/rentals/:id/extend (Gia hạn thời gian thuê)
 router.post("/:id/extend", requireObjectBody, asyncHandler(rentalController.extendRental));
+router.post("/:id/extension/approve", asyncHandler(rentalController.approveExtension));
+router.post("/:id/extension/reject", asyncHandler(rentalController.rejectExtension));
 
 // UC_R11: POST /api/rentals/:id/review (Đánh giá thiết bị & chủ sở hữu)
 router.post("/:id/review", requireObjectBody, asyncHandler(rentalController.reviewRental));

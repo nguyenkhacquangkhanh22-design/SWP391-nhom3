@@ -280,6 +280,20 @@ export const smartEquipApi = {
       token,
     ),
 
+  approveRentalExtension: (token: string, rentalId: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/extension/approve`,
+      { method: "POST" },
+      token,
+    ),
+
+  rejectRentalExtension: (token: string, rentalId: string, reason?: string) =>
+    request<{ success: boolean; message: string; data: Rental }>(
+      `/api/rentals/${rentalId}/extension/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token,
+    ),
+
   // UC_R13: Hủy yêu cầu thuê
   cancelRental: (
     token: string,

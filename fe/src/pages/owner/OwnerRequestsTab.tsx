@@ -94,6 +94,42 @@ export default function OwnerRequestsTab({
     }
   }
 
+  // Thao tác phê duyệt gia hạn đơn thuê từ Khách
+  async function handleApproveExtension(rentalId: string) {
+    setIsProcessing(true);
+    onError("");
+    onSuccess("");
+    try {
+      const res = await ownerApi.approveRentalExtension(token, rentalId);
+      onSuccess(res.message || "Đã phê duyệt yêu cầu gia hạn! Khách thuê sẽ chuyển khoản phụ phí để hoàn tất.");
+      await fetchDirectRentals();
+      onRefresh();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Phê duyệt gia hạn thất bại.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  // Thao tác từ chối gia hạn đơn thuê từ Khách
+  async function handleRejectExtension(rentalId: string) {
+    const reason = window.prompt("Nhập lý do từ chối gia hạn:", "Chủ máy không thể gia hạn vào thời gian này.");
+    if (reason === null) return;
+    setIsProcessing(true);
+    onError("");
+    onSuccess("");
+    try {
+      const res = await ownerApi.rejectRentalExtension(token, rentalId, reason);
+      onSuccess(res.message || "Đã từ chối yêu cầu gia hạn.");
+      await fetchDirectRentals();
+      onRefresh();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Từ chối gia hạn thất bại.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   const filteredDirectRentals = directRentals.filter((r: any) => {
     if (statusFilter === "all") return true;
     const upperStatus = String(r.status || "").toUpperCase();
@@ -383,6 +419,20 @@ export default function OwnerRequestsTab({
                             📦 Đã báo trả máy
                           </span>
                         )}
+                        {r.extensionRequest?.status === "PENDING_OWNER" && (
+                          <div style={{ marginTop: "5px" }}>
+                            <span style={{ padding: "3px 9px", background: "rgba(168, 85, 247, 0.25)", border: "1px solid #c084fc", color: "#f3e8ff", borderRadius: "999px", fontSize: "0.72rem", fontWeight: "bold", display: "inline-block" }}>
+                              ⏳ Khách xin gia hạn (+{r.extensionRequest.extraDays} ngày)
+                            </span>
+                          </div>
+                        )}
+                        {r.extensionRequest?.status === "APPROVED" && (
+                          <div style={{ marginTop: "5px" }}>
+                            <span style={{ padding: "3px 9px", background: "rgba(56, 189, 248, 0.2)", border: "1px solid #38bdf8", color: "#38bdf8", borderRadius: "999px", fontSize: "0.72rem", fontWeight: "bold", display: "inline-block" }}>
+                              ✓ Đã duyệt gia hạn • Chờ khách CK
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
@@ -462,6 +512,48 @@ export default function OwnerRequestsTab({
                             >
                               Sang tab HĐ ➔
                             </button>
+                          )}
+
+                          {/* NÚT DUYỆT GIA HẠN THUÊ KHI KHÁCH YÊU CẦU */}
+                          {r.extensionRequest?.status === "PENDING_OWNER" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveExtension(r._id)}
+                                disabled={isProcessing}
+                                className="button"
+                                style={{
+                                  background: "linear-gradient(135deg, #7c3aed, #9333ea)",
+                                  color: "#fff",
+                                  padding: "6px 12px",
+                                  fontSize: "0.8rem",
+                                  borderRadius: "10px",
+                                  fontWeight: "bold",
+                                  border: "none",
+                                  boxShadow: "0 2px 8px rgba(147, 51, 234, 0.35)",
+                                }}
+                                title={`Duyệt gia hạn thêm ${r.extensionRequest.extraDays} ngày (+${(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ)`}
+                              >
+                                ✅ Duyệt gia hạn (+{r.extensionRequest.extraDays}d)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectExtension(r._id)}
+                                disabled={isProcessing}
+                                className="button button-secondary"
+                                style={{
+                                  padding: "6px 10px",
+                                  fontSize: "0.8rem",
+                                  borderRadius: "10px",
+                                  color: "#f87171",
+                                  borderColor: "rgba(239, 68, 68, 0.4)",
+                                  background: "rgba(239, 68, 68, 0.1)",
+                                }}
+                                title="Từ chối yêu cầu gia hạn"
+                              >
+                                ✕ Từ chối gia hạn
+                              </button>
+                            </>
                           )}
 
                           {/* NÚT CHECK TIỀN & XÁC NHẬN KHI PAYMENT_PENDING */}
