@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
 import type { RentalContract, HandoverRecord, Settlement } from "../../types/owner";
+import type { Rental } from "../../types/smartequip";
 import { VIETNAM_BANKS, generateVietQrUrl } from "../../constants/vietnamBanks";
 import { ownerApi } from "../../services/ownerApi";
+import { getSocket } from "../../services/socket";
 import OwnerCancelRentalModal from "../../components/OwnerCancelRentalModal";
 import OwnerReviewRenterModal from "../../components/OwnerReviewRenterModal";
+import OwnerDamageReportModal from "../../components/owner/OwnerDamageReportModal";
+import RentalChatModal from "../../components/RentalChatModal";
+import ContractPdfModal from "../../components/ContractPdfModal";
 
 interface Props {
   contracts: RentalContract[];
@@ -22,13 +27,70 @@ export default function OwnerHandoverTab({
   selectedContract,
   onRefreshContracts,
 }: Props) {
-  const eligibleContracts = contracts.filter((c) =>
-    ["signed", "active", "completed"].includes(c.status)
-  );
+  const eligibleContracts = contracts.filter((c) => {
+    const s = String(c.status || "").toLowerCase();
+    const p = String(c.payment_status || "").toLowerCase();
+    return (
+      [
+        "signed",
+        "contract_signed",
+        "paid",
+        "active",
+        "returned",
+        "completed",
+        "pending_renter_signature",
+      ].includes(s) ||
+      p === "paid" ||
+      Boolean(c.owner_signature?.signed && c.renter_signature?.signed)
+    );
+  });
 
   const [activeContractId, setActiveContractId] = useState<string>(
-    selectedContract?._id || eligibleContracts[0]?._id || ""
+    selectedContract?._id || eligibleContracts[0]?._id || contracts[0]?._id || ""
   );
+
+  // Direct Rentals State (Nghiệm thu hoàn trả trực tiếp từ Khách thuê)
+  const [directRentals, setDirectRentals] = useState<Rental[]>([]);
+  const [inspectingRental, setInspectingRental] = useState<Rental | null>(null);
+  const [inspectionCondition, setInspectionCondition] = useState(
+    "Thiết bị nguyên vẹn, hoạt động bình thường, đầy đủ phụ kiện."
+  );
+  const [inspectionNotesText, setInspectionNotesText] = useState("");
+  const [damageReportRental, setDamageReportRental] = useState<Rental | null>(null);
+  const [chatRental, setChatRental] = useState<Rental | null>(null);
+  const [viewingPdfRental, setViewingPdfRental] = useState<Rental | null>(null);
+
+  const fetchDirectRentals = async () => {
+    if (!token) return;
+    try {
+      const res = await ownerApi.getOwnerRentals(token);
+      if (res && Array.isArray(res.data)) {
+        setDirectRentals(res.data);
+      }
+    } catch (e: any) {
+      console.warn("Lỗi tải directRentals trong OwnerHandoverTab:", e?.message);
+    }
+  };
+
+  useEffect(() => {
+    void fetchDirectRentals();
+
+    const socket = getSocket();
+    const handleRefresh = () => {
+      void fetchDirectRentals();
+      onRefreshContracts();
+    };
+
+    socket.on("rental:returned", handleRefresh);
+    socket.on("payment:approved", handleRefresh);
+    socket.on("rental:completed", handleRefresh);
+
+    return () => {
+      socket.off("rental:returned", handleRefresh);
+      socket.off("payment:approved", handleRefresh);
+      socket.off("rental:completed", handleRefresh);
+    };
+  }, [token]);
 
   const [records, setRecords] = useState<HandoverRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
@@ -295,6 +357,32 @@ export default function OwnerHandoverTab({
     }
   }
 
+  // Danh sách các đơn thuê khách đang gửi yêu cầu Hoàn trả máy (UC_O09)
+  const returningRentals = directRentals.filter((r: any) =>
+    ["RETURNED", "RETURN_REQUESTED"].includes(String(r.status || "").toUpperCase())
+  );
+
+  // Thao tác nghiệm thu hoàn trả & nhận lại máy trực tiếp
+  async function handleConfirmDirectReturn(rental: Rental) {
+    setIsSubmitting(true);
+    onError("");
+    onSuccess("");
+    try {
+      const res = await ownerApi.confirmOwnerRentalReturn(token, rental._id, {
+        condition_note: inspectionCondition,
+        notes: inspectionNotesText,
+      });
+      onSuccess(res.message || `Đã nghiệm thu và nhận lại thiết bị cho đơn #${rental.rentalCode} thành công! Thiết bị đã sẵn sàng cho thuê lại.`);
+      setInspectingRental(null);
+      await fetchDirectRentals();
+      onRefreshContracts();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Xác nhận nhận lại thiết bị thất bại.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div className="owner-tab-content">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -330,6 +418,262 @@ export default function OwnerHandoverTab({
             </select>
           </div>
         )}
+      </div>
+
+      {/* KHỐI 1: YÊU CẦU HOÀN TRẢ THIẾT BỊ TỪ KHÁCH THUÊ (UC_O09) */}
+      <div style={{ marginBottom: "28px" }}>
+        <div
+          style={{
+            background: "linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(79, 70, 229, 0.15))",
+            border: "1px solid rgba(168, 85, 247, 0.5)",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            marginBottom: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.2rem", color: "#f3e8ff", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>📦</span> Yêu cầu Hoàn trả & Nghiệm thu Thiết bị (UC_O09)
+              <span
+                style={{
+                  fontSize: "0.78rem",
+                  background: returningRentals.length > 0 ? "#9333ea" : "rgba(255, 255, 255, 0.1)",
+                  color: "#fff",
+                  padding: "2px 10px",
+                  borderRadius: "999px",
+                  fontWeight: "bold",
+                }}
+              >
+                {returningRentals.length} đơn cần nghiệm thu
+              </span>
+            </h3>
+            <p style={{ margin: "4px 0 0", color: "#d8b4fe", fontSize: "0.85rem" }}>
+              Khách thuê đã gửi thông tin hẹn giờ, địa điểm thu hồi và ảnh kiểm tra ngoại quan. Vui lòng đối chiếu và xác nhận nhận lại máy.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchDirectRentals()}
+            className="button button-secondary"
+            style={{ fontSize: "0.82rem", padding: "6px 14px", borderRadius: "8px", borderColor: "#a855f7", color: "#d8b4fe" }}
+          >
+            🔄 Làm mới
+          </button>
+        </div>
+
+        {returningRentals.length === 0 ? (
+          <div
+            style={{
+              background: "rgba(255, 255, 255, 0.02)",
+              border: "1px dashed rgba(255, 255, 255, 0.12)",
+              borderRadius: "10px",
+              padding: "18px 20px",
+              textAlign: "center",
+              color: "var(--muted)",
+              fontSize: "0.85rem",
+            }}
+          >
+            Hiện chưa có đơn thuê nào đang yêu cầu hoàn trả. Khi khách thuê bấm <strong>"Báo trả đồ"</strong> trên trang Đơn thuê, yêu cầu sẽ tự động hiển thị tại đây để bạn đối chiếu phụ kiện & nghiệm thu nhận máy.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "16px" }}>
+            {returningRentals.map((r: any) => {
+              const equipTitle = typeof r.equipment === "object" ? r.equipment?.title : "Thiết bị thuê";
+              const equipImg =
+                typeof r.equipment === "object" && r.equipment?.images?.[0]
+                  ? r.equipment.images[0]
+                  : "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80";
+              const renterName = typeof r.renter === "object" ? r.renter?.name : "Khách thuê";
+              const renterPhone = typeof r.renter === "object" ? r.renter?.phone : "0909xxxxxx";
+
+              return (
+                <div
+                  key={r._id}
+                  style={{
+                    background: "#111827",
+                    border: "1px solid rgba(168, 85, 247, 0.4)",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    boxShadow: "0 4px 14px rgba(147, 51, 234, 0.12)",
+                  }}
+                >
+                  {/* Header thẻ */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <img
+                        src={equipImg}
+                        alt=""
+                        style={{ width: "48px", height: "48px", borderRadius: "8px", objectFit: "cover" }}
+                      />
+                      <div>
+                        <strong style={{ color: "#fff", fontSize: "0.92rem", display: "block" }}>{equipTitle}</strong>
+                        <span style={{ color: "#38bdf8", fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 700 }}>
+                          #{r.rentalCode}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        background: "rgba(147, 51, 234, 0.25)",
+                        border: "1px solid #9333ea",
+                        color: "#d8b4fe",
+                        fontSize: "0.72rem",
+                        padding: "3px 8px",
+                        borderRadius: "999px",
+                        fontWeight: "bold",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      📦 ĐÃ BÁO TRẢ
+                    </span>
+                  </div>
+
+                  {/* Thông tin Renter & Lịch trình */}
+                  <div
+                    style={{
+                      background: "rgba(255, 255, 255, 0.03)",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      fontSize: "0.82rem",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    <div>
+                      👤 <strong>Khách thuê:</strong> <span style={{ color: "#38bdf8" }}>{renterName}</span> (📞 {renterPhone})
+                    </div>
+                    <div>
+                      💰 <strong>Tiền thuê:</strong>{" "}
+                      <span style={{ color: "#10b981", fontWeight: "bold" }}>
+                        {(r.totalAmount || r.rentalFee || 0).toLocaleString("vi-VN")} đ
+                      </span>
+                    </div>
+                    <div>
+                      🕒 <strong>Thời gian thuê:</strong> {new Date(r.startDate).toLocaleDateString("vi-VN")} ➔{" "}
+                      {new Date(r.endDate).toLocaleDateString("vi-VN")} ({r.totalDays || 1} ngày)
+                    </div>
+                  </div>
+
+                  {/* Thông tin hoàn trả khách gửi */}
+                  <div
+                    style={{
+                      background: "rgba(147, 51, 234, 0.1)",
+                      border: "1px dashed rgba(168, 85, 247, 0.45)",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      fontSize: "0.82rem",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    <div>
+                      🕒 <strong style={{ color: "#c084fc" }}>Hẹn trả máy:</strong>{" "}
+                      {r.returnInfo?.returnTime
+                        ? new Date(r.returnInfo.returnTime).toLocaleString("vi-VN")
+                        : "Sớm nhất"}
+                    </div>
+                    <div>
+                      📍 <strong style={{ color: "#38bdf8" }}>Địa điểm nhận:</strong>{" "}
+                      {r.returnInfo?.returnLocation || r.deliveryAddress || "Địa chỉ mặc định theo hợp đồng"}
+                    </div>
+                    <div>
+                      🔍 <strong style={{ color: "#34d399" }}>Tình trạng khách báo:</strong>{" "}
+                      {r.returnInfo?.returnCondition ||
+                        r.returnRequest?.deviceConditionNote ||
+                        "Thiết bị nguyên vẹn, hoạt động bình thường"}
+                    </div>
+                    {r.returnInfo?.returnNote && (
+                      <div style={{ fontStyle: "italic", color: "var(--muted)" }}>
+                        📝 "{r.returnInfo.returnNote}"
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nút thao tác */}
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "auto", paddingTop: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInspectingRental(r);
+                        setInspectionCondition(
+                          r.returnInfo?.returnCondition ||
+                            r.returnRequest?.deviceConditionNote ||
+                            "Thiết bị nguyên vẹn, hoạt động bình thường, đầy đủ phụ kiện."
+                        );
+                        setInspectionNotesText("");
+                      }}
+                      className="button"
+                      style={{
+                        flex: 1,
+                        background: "linear-gradient(135deg, #059669, #10b981)",
+                        color: "#fff",
+                        fontWeight: "bold",
+                        border: "none",
+                        padding: "7px 12px",
+                        borderRadius: "8px",
+                        fontSize: "0.82rem",
+                        boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✅ Nghiệm thu & Nhận máy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDamageReportRental(r)}
+                      className="button button-quiet"
+                      style={{
+                        padding: "7px 10px",
+                        fontSize: "0.82rem",
+                        borderRadius: "8px",
+                        color: "#f87171",
+                        borderColor: "rgba(239, 68, 68, 0.4)",
+                        background: "rgba(239, 68, 68, 0.12)",
+                      }}
+                      title="Báo hư hỏng hoặc thiếu phụ kiện"
+                    >
+                      ⚠️ Báo hỏng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewingPdfRental(r)}
+                      className="button button-secondary"
+                      style={{ padding: "7px 10px", fontSize: "0.82rem", borderRadius: "8px", borderColor: "#f97316", color: "#fb923c" }}
+                      title="Xem file PDF hợp đồng"
+                    >
+                      📄 HĐ PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChatRental(r)}
+                      className="button button-secondary"
+                      style={{ padding: "7px 10px", fontSize: "0.82rem", borderRadius: "8px", borderColor: "#38bdf8", color: "#38bdf8" }}
+                      title="Nhắn tin với khách thuê"
+                    >
+                      💬 Chat
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ borderTop: "1px solid #1e293b", margin: "24px 0", paddingTop: "20px" }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: "1.15rem", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>📋</span> Biên bản Bàn giao & Nghiệm thu theo Hợp đồng
+        </h3>
       </div>
 
       {/* Contract Quick Status Card */}
@@ -1170,6 +1514,244 @@ export default function OwnerHandoverTab({
             onRefreshContracts();
           }}
           onError={onError}
+        />
+      )}
+      {/* MODAL NGHIỆM THU & XÁC NHẬN NHẬN LẠI MÁY (UC_O09) */}
+      {inspectingRental && (
+        <div className="modal-backdrop" onClick={() => setInspectingRental(null)}>
+          <div
+            className="modal-card"
+            style={{ maxWidth: "620px", width: "95%", maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.2rem", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>📦</span> Nghiệm Thu & Xác Nhận Nhận Lại Thiết Bị
+                </h3>
+                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.85rem" }}>
+                  Đơn thuê: <strong style={{ color: "#38bdf8" }}>#{inspectingRental.rentalCode}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectingRental(null)}
+                style={{ background: "transparent", border: "none", color: "#94a3b8", fontSize: "1.3rem", cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Thông tin thiết bị & khách thuê */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: "10px",
+                padding: "12px 16px",
+                marginBottom: "16px",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                fontSize: "0.85rem",
+              }}
+            >
+              <div>
+                <span style={{ color: "var(--muted)", display: "block" }}>Thiết bị:</span>
+                <strong style={{ color: "#fff" }}>
+                  {typeof inspectingRental.equipment === "object"
+                    ? inspectingRental.equipment?.title
+                    : "Thiết bị thuê"}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--muted)", display: "block" }}>Người thuê:</span>
+                <strong style={{ color: "#38bdf8" }}>
+                  {typeof inspectingRental.renter === "object" ? inspectingRental.renter?.name : "Khách thuê"}
+                </strong>
+                {typeof inspectingRental.renter === "object" && inspectingRental.renter?.phone && (
+                  <span style={{ color: "var(--muted)", display: "block", fontSize: "0.78rem" }}>
+                    📞 {inspectingRental.renter.phone}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Khối thông tin khách khai báo khi trả đồ */}
+            <div
+              style={{
+                background: "rgba(147, 51, 234, 0.08)",
+                border: "1px solid rgba(147, 51, 234, 0.35)",
+                borderRadius: "10px",
+                padding: "14px 16px",
+                marginBottom: "18px",
+              }}
+            >
+              <h4 style={{ margin: "0 0 10px", color: "#d8b4fe", fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>📋</span> Thông tin Người thuê khai báo lúc trả đồ:
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.84rem" }}>
+                <div>
+                  🕒 <strong style={{ color: "#c084fc" }}>Thời gian hẹn trả:</strong>{" "}
+                  {inspectingRental.returnInfo?.returnTime
+                    ? new Date(inspectingRental.returnInfo.returnTime).toLocaleString("vi-VN")
+                    : "Sớm nhất"}
+                </div>
+                <div>
+                  📍 <strong style={{ color: "#38bdf8" }}>Địa điểm nhận lại:</strong>{" "}
+                  {inspectingRental.returnInfo?.returnLocation || inspectingRental.deliveryAddress || "Địa chỉ mặc định theo hợp đồng"}
+                </div>
+                <div>
+                  🔍 <strong style={{ color: "#34d399" }}>Tình trạng máy khách báo:</strong>{" "}
+                  {inspectingRental.returnInfo?.returnCondition ||
+                    inspectingRental.returnRequest?.deviceConditionNote ||
+                    "Thiết bị nguyên vẹn, hoạt động bình thường"}
+                </div>
+                {inspectingRental.returnInfo?.returnNote && (
+                  <div>
+                    📝 <strong style={{ color: "#fbbf24" }}>Ghi chú của khách:</strong>{" "}
+                    <em>"{inspectingRental.returnInfo.returnNote}"</em>
+                  </div>
+                )}
+                {/* Ảnh chụp thực tế của khách nếu có */}
+                {Array.isArray(inspectingRental.returnRequest?.returnImages) && inspectingRental.returnRequest.returnImages.length > 0 && (
+                  <div style={{ marginTop: "6px" }}>
+                    <span style={{ color: "var(--muted)", display: "block", marginBottom: "6px" }}>
+                      📸 Ảnh minh chứng do khách chụp:
+                    </span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {inspectingRental.returnRequest.returnImages.map((img: string, idx: number) => (
+                        <a key={idx} href={img} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={img}
+                            alt=""
+                            style={{ width: "64px", height: "64px", objectFit: "cover", borderRadius: "8px", border: "1px solid #334155" }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Form nghiệm thu của Chủ máy */}
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 600, color: "#fff" }}>
+                Tình trạng thiết bị khi bạn nhận lại:
+              </label>
+              <input
+                type="text"
+                className="input-field"
+                value={inspectionCondition}
+                onChange={(e) => setInspectionCondition(e.target.value)}
+                placeholder="Ví dụ: Thiết bị nguyên vẹn, sensor sạch, đầy đủ pin sạc và thẻ nhớ."
+                style={{ width: "100%", marginBottom: "12px", fontSize: "0.85rem" }}
+              />
+
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 600, color: "#fff" }}>
+                Ghi chú nghiệm thu của Chủ máy (tùy chọn):
+              </label>
+              <textarea
+                className="input-field"
+                rows={2}
+                value={inspectionNotesText}
+                onChange={(e) => setInspectionNotesText(e.target.value)}
+                placeholder="Ghi chú thêm về phụ kiện, số serial, hoặc hướng dẫn tiếp theo..."
+                style={{ width: "100%", fontSize: "0.85rem" }}
+              />
+            </div>
+
+            {/* Nút hành động */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = inspectingRental;
+                  setInspectingRental(null);
+                  setDamageReportRental(target);
+                }}
+                className="button button-quiet"
+                style={{
+                  color: "#f87171",
+                  borderColor: "rgba(239, 68, 68, 0.4)",
+                  background: "rgba(239, 68, 68, 0.12)",
+                  fontSize: "0.82rem",
+                  padding: "8px 14px",
+                  borderRadius: "10px",
+                }}
+              >
+                ⚠️ Báo hư hỏng / Khiếu nại
+              </button>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setInspectingRental(null)}
+                  className="button button-secondary"
+                  style={{ fontSize: "0.82rem", padding: "8px 14px", borderRadius: "10px" }}
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleConfirmDirectReturn(inspectingRental)}
+                  className="button"
+                  style={{
+                    background: "linear-gradient(135deg, #059669, #10b981)",
+                    color: "#fff",
+                    fontSize: "0.85rem",
+                    padding: "8px 18px",
+                    borderRadius: "10px",
+                    fontWeight: "bold",
+                    border: "none",
+                    boxShadow: "0 2px 10px rgba(16, 185, 129, 0.35)",
+                  }}
+                >
+                  {isSubmitting ? "Đang xử lý..." : "✅ Xác nhận nhận máy & Hoàn tất"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KHIẾU NẠI HƯ HỎNG THIẾT BỊ (REPORT DAMAGE) */}
+      {damageReportRental && (
+        <OwnerDamageReportModal
+          isOpen={Boolean(damageReportRental)}
+          rental={damageReportRental as any}
+          token={token}
+          onClose={() => setDamageReportRental(null)}
+          onSuccess={() => {
+            onSuccess("Đã gửi hồ sơ khiếu nại hư hỏng lên Admin thành công. Đơn hàng chuyển sang trạng thái Đang tranh chấp.");
+            void fetchDirectRentals();
+            onRefreshContracts();
+          }}
+        />
+      )}
+
+      {/* MODAL CHAT VỚI KHÁCH THUÊ */}
+      {chatRental && (
+        <RentalChatModal
+          rental={chatRental}
+          isOpen={Boolean(chatRental)}
+          token={token}
+          onClose={() => setChatRental(null)}
+          onViewContract={(r) => {
+            setViewingPdfRental(r);
+          }}
+        />
+      )}
+
+      {/* MODAL XEM HỢP ĐỒNG PDF */}
+      {viewingPdfRental && (
+        <ContractPdfModal
+          rental={viewingPdfRental}
+          isOpen={Boolean(viewingPdfRental)}
+          isOwner={true}
+          onClose={() => setViewingPdfRental(null)}
         />
       )}
     </div>

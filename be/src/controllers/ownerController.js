@@ -1741,7 +1741,7 @@ async function createReturnInspectionRecord(req, res) {
     throw new AppError(404, "Không tìm thấy hợp đồng");
   }
 
-  const [handoverRecord, existingReturnRecord] = await Promise.all([
+  let [handoverRecord, existingReturnRecord] = await Promise.all([
     HandoverRecord.findOne({
       contract_id: contract._id,
       record_type: "handover",
@@ -1751,8 +1751,23 @@ async function createReturnInspectionRecord(req, res) {
       record_type: "return",
     }),
   ]);
+
   if (!handoverRecord) {
-    throw new AppError(400, "Cần có biên bản bàn giao trước khi nghiệm thu thiết bị hoàn trả.");
+    // Tự động tạo bản ghi bàn giao ban đầu nếu chưa lập trước đó để đối chiếu
+    handoverRecord = await HandoverRecord.create({
+      contract_id: contract._id,
+      equipment_id: contract.equipment_id,
+      owner_id: req.user._id,
+      renter_id: contract.renter_id,
+      record_type: "handover",
+      record_date: contract.start_date || new Date(),
+      accessories_checklist: Array.isArray(accessories_checklist) ? accessories_checklist : [],
+      physical_condition: "Thiết bị nguyên vẹn lúc bàn giao ban đầu",
+      working_status: "Hoạt động bình thường",
+      owner_confirmed: true,
+      renter_confirmed: true,
+      notes: "Biên bản bàn giao thiết bị được tạo tự động dựa trên hợp đồng giao kết.",
+    });
   }
   if (existingReturnRecord) {
     throw new AppError(409, "Thiết bị đã được nghiệm thu hoàn trả cho hợp đồng này.");

@@ -562,6 +562,15 @@ export default function OwnerPortal() {
             onClick={() => handleTabChange("handover")}
           >
             🤝 Bàn giao & Kiểm tra
+            {requests.filter((r) => String(r.status).toLowerCase() === "returned").length > 0 && (
+              <span
+                className="badge-count"
+                style={{ background: "#9333ea", marginLeft: "6px" }}
+                title="Có đơn hoàn trả cần nghiệm thu"
+              >
+                {requests.filter((r) => String(r.status).toLowerCase() === "returned").length} trả
+              </span>
+            )}
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "settlement" ? "active" : ""}`}
