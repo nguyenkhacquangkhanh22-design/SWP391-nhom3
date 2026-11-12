@@ -41,13 +41,11 @@ const TABS: TabItem[] = [
 export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
   const [rentals, setRentals] = useState<Rental[]>([]);
-  const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
   const [complaints, setComplaints] = useState<SupportTicket[]>([]);
   const [signingMarketplaceContract, setSigningMarketplaceContract] = useState<RentalContract | null>(null);
   const [marketplaceSignature, setMarketplaceSignature] = useState("");
   const [marketplaceTermsAccepted, setMarketplaceTermsAccepted] = useState(false);
   const [isSigningMarketplaceContract, setIsSigningMarketplaceContract] = useState(false);
-  const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
   const [confirmingReceiptContract, setConfirmingReceiptContract] = useState<RentalContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -147,15 +145,11 @@ export default function RentalHistoryPage() {
 
     Promise.all([
       smartEquipApi.getRentalHistory(token),
-      ownerApi.getMyRentals(token).catch(() => ({ contracts: [] as RentalContract[] })),
       smartEquipApi.getMyComplaints(token).catch(() => ({ complaints: [] as SupportTicket[] })),
     ])
-      .then(([historyRes, marketplaceRes, complaintData]) => {
+      .then(([historyRes, complaintData]) => {
         const list = historyRes.data || [];
         setRentals(list);
-        if (marketplaceRes?.contracts) {
-          setMarketplaceContracts(marketplaceRes.contracts);
-        }
         setComplaints(complaintData.complaints || []);
 
         // Tự động đối soát và đồng bộ đơn hàng với cổng PayOS nếu có đơn đang ở trạng thái đã ký
@@ -253,7 +247,6 @@ export default function RentalHistoryPage() {
   // Confirm receipt before the owner can request the moderator to release payment.
   const executeConfirmReceipt = async (contract: RentalContract) => {
     setConfirmingReceiptContract(null);
-    setConfirmingReceiptId(contract._id);
     setError("");
     setNotice("");
     try {
@@ -262,8 +255,6 @@ export default function RentalHistoryPage() {
       fetchHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể xác nhận đã nhận thiết bị");
-    } finally {
-      setConfirmingReceiptId(null);
     }
   };
 
@@ -620,78 +611,7 @@ export default function RentalHistoryPage() {
           </div>
         )}
 
-        {marketplaceContracts.length > 0 && (
-          <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
-            <h2 className="mb-4 text-lg font-bold text-white">Đơn thuê marketplace & xác nhận nhận hàng</h2>
-            <div className="space-y-3">
-              {marketplaceContracts.map((contract) => {
-                const handover = contract.handover_records?.find((record) => record.record_type === "handover");
-                const isReceived = Boolean(handover?.renter_confirmed);
-                const hasComplaint = complaints.some((complaint) =>
-                  typeof complaint.contract_id === "object"
-                    ? complaint.contract_id?._id === contract._id
-                    : complaint.contract_id === contract._id,
-                );
-                return (
-                  <div key={contract._id} className="flex flex-col gap-3 rounded-xl border border-[#273650] bg-[#0f1624] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-semibold text-white">{contract.equipment_id?.title || contract.title}</p>
-                      <p className="text-xs text-slate-400">
-                        Hợp đồng {contract.contract_code} · Owner {typeof contract.owner_id === "object" ? contract.owner_id?.name : "—"} · {
-                          contract.status === "pending_renter_signature" || contract.status === "moderator_approved"
-                            ? "Chờ bạn ký"
-                            : contract.status === "signed"
-                            ? "Đã ký"
-                            : contract.status
-                        }
-                      </p>
-                    </div>
-                    {contract.status === "completed" ? (
-                      hasComplaint ? (
-                        <span className="text-xs text-amber-300">Đã gửi khiếu nại</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setComplaintTarget({ type: "contract", id: contract._id })}
-                          className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"
-                        >
-                          Gửi khiếu nại
-                        </button>
-                      )
-                    ) : isReceived ? (
-                      <span className="text-sm font-semibold text-emerald-400">✓ Đã xác nhận nhận hàng</span>
-                    ) : contract.status === "active" && handover ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingReceiptContract(contract)}
-                        disabled={confirmingReceiptId === contract._id}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-60"
-                      >
-                        {confirmingReceiptId === contract._id ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
-                      </button>
-                    ) : contract.status === "pending_approval" ? (
-                      <span className="text-xs text-sky-400">Quản lý web đang kiểm tra HĐ</span>
-                    ) : ["pending_renter_signature", "moderator_approved"].includes(contract.status) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSigningMarketplaceContract(contract);
-                          setMarketplaceTermsAccepted(false);
-                          setMarketplaceSignature("");
-                        }}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500"
-                      >
-                        Ký hợp đồng
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500">Chờ Owner bàn giao thiết bị</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+
 
         {complaints.length > 0 && (
           <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
