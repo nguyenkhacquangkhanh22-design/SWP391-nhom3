@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { smartEquipApi } from "../services/smartEquipApi";
 import type { Rental } from "../types/smartequip";
+import SignaturePad from "./SignaturePad";
 import ContractPdfModal from "./ContractPdfModal";
 
 interface Props {
@@ -25,6 +26,7 @@ export default function ContractConfirmationModal({
       : rental.contract?.renterSignature || "Người thuê SmartEquip";
 
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [handwrittenSignature, setHandwrittenSignature] = useState<string | null>(null);
   const [signerName, setSignerName] = useState(() => renterName !== "Người thuê SmartEquip" ? renterName : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,15 +46,18 @@ export default function ContractConfirmationModal({
       setError("Vui lòng tích chọn đồng ý với các điều khoản của hợp đồng thuê.");
       return;
     }
+    if (!handwrittenSignature) {
+      setError("Vui lòng vẽ chữ ký điện tử của bạn vào khung ký tên.");
+      return;
+    }
     setError("");
     setLoading(true);
     const confirmedSigner = signerName.trim() || renterName;
-    const digitalSignatureCode = `E_SIGNED_RENTER_${Date.now()}`;
     try {
       const res = await smartEquipApi.confirmContract(token, rental._id, {
         termsAccepted: true,
         renterSignature: confirmedSigner,
-        digitalSignature: digitalSignatureCode,
+        digitalSignature: handwrittenSignature,
       });
       const updated = res.data || {
         ...currentRentalState,
@@ -61,13 +66,13 @@ export default function ContractConfirmationModal({
           ...currentRentalState.contract,
           termsAccepted: true,
           renterSignature: confirmedSigner,
-          digitalSignature: digitalSignatureCode,
+          digitalSignature: handwrittenSignature,
           signedAt: new Date().toISOString(),
         },
       };
       setCurrentRentalState(updated);
     } catch (signErr: any) {
-      console.warn("Lưu xác nhận ký điện tử:", signErr?.message);
+      console.warn("Lưu chữ ký điện tử:", signErr?.message);
     } finally {
       setLoading(false);
     }
@@ -79,13 +84,13 @@ export default function ContractConfirmationModal({
     setLoading(true);
     setError("");
     try {
-      // 1. Luôn cập nhật và xác nhận ký điện tử vào hợp đồng
+      // 1. Luôn cập nhật và xác nhận chữ ký điện tử vào hợp đồng
       const confirmedSigner = signerName.trim() || renterName;
       try {
         await smartEquipApi.confirmContract(token, rental._id, {
           termsAccepted: true,
           renterSignature: confirmedSigner,
-          digitalSignature: `E_SIGNED_RENTER_${Date.now()}`,
+          digitalSignature: handwrittenSignature || rental.contract?.digitalSignature || "",
         });
       } catch (signErr: any) {
         console.warn("Lưu xác nhận ký hợp đồng notice:", signErr?.message);
@@ -290,17 +295,19 @@ export default function ContractConfirmationModal({
               </div>
             </div>
 
-            {/* Khung xác nhận ký điện tử Bên B (Không hiện chữ ký tay) */}
-            <div className="bg-[#101726] p-4 rounded-xl border border-[#212d42] space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🛡️</span>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Xác nhận ký số điện tử (Bên Thuê)</h4>
-                  <p className="text-[11px] text-slate-400">Hợp đồng điện tử được xác thực qua tài khoản SmartEquip</p>
-                </div>
-              </div>
+            {/* Khung ký chữ ký điện tử của Người thuê */}
+            <div className="bg-[#101726] p-4 rounded-xl border border-[#212d42] space-y-2.5">
+              <label className="block text-xs font-bold text-slate-200">
+                ✍️ Chữ ký điện tử của Người thuê (Vẽ trực tiếp bằng tay hoặc chuột) *
+              </label>
 
-              <div>
+              <SignaturePad
+                width={560}
+                height={160}
+                onChange={(dataUrl) => setHandwrittenSignature(dataUrl)}
+              />
+
+              <div className="pt-2">
                 <label className="block text-[11px] text-slate-400 mb-1">
                   Họ và tên người ký xác nhận:
                 </label>
@@ -309,13 +316,8 @@ export default function ContractConfirmationModal({
                   placeholder={renterName}
                   value={signerName}
                   onChange={(e) => setSignerName(e.target.value)}
-                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 font-semibold"
+                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500 font-semibold"
                 />
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/30 text-emerald-300 text-xs flex items-center gap-2">
-                <span>✓</span>
-                <span>Chữ ký số điện tử sẽ được hệ thống SmartEquip tự động đóng dấu xác thực vào Hợp đồng.</span>
               </div>
             </div>
 
@@ -328,7 +330,7 @@ export default function ContractConfirmationModal({
                 className="rounded accent-orange-500 w-4 h-4 mt-0.5 cursor-pointer"
               />
               <span>
-                Tôi đã đọc kỹ toàn bộ điều khoản hợp đồng thuê trên và xác nhận đồng ý ký kết hợp đồng điện tử này.
+                Tôi đã đọc kỹ toàn bộ điều khoản hợp đồng thuê trên và cam kết chữ ký điện tử do chính tôi thực hiện.
               </span>
             </label>
 
@@ -354,7 +356,7 @@ export default function ContractConfirmationModal({
               <button
                 type="button"
                 onClick={handleGoToPayment}
-                disabled={!termsAccepted}
+                disabled={!termsAccepted || !handwrittenSignature}
                 className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Xác nhận ký & Sang thanh toán VietQR</span>
@@ -431,13 +433,19 @@ export default function ContractConfirmationModal({
               <span>➔</span>
             </button>
 
-            {/* Thông tin xác nhận ký số */}
-            <div className="p-2.5 rounded-xl bg-[#0c1322] border border-[#1e2a40] flex items-center justify-between text-xs">
-              <span className="text-slate-400">Xác thực ký số điện tử:</span>
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                ✓ Đã xác thực ({signerName.trim() || renterName})
-              </span>
-            </div>
+            {/* Xem trước chữ ký điện tử đã vẽ */}
+            {handwrittenSignature && (
+              <div className="p-2.5 rounded-xl bg-[#0c1322] border border-[#1e2a40] flex items-center justify-between text-xs">
+                <span className="text-slate-400">Chữ ký điện tử của bạn:</span>
+                <div className="bg-white p-1 rounded-lg border border-slate-300 shadow-sm flex items-center justify-center">
+                  <img
+                    src={handwrittenSignature}
+                    alt="Chữ ký điện tử đã vẽ"
+                    className="h-8 max-w-[150px] object-contain block"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-between text-xs pt-2 border-t border-[#212c42]">
               <button
@@ -461,6 +469,7 @@ export default function ContractConfirmationModal({
           rental={currentRentalState}
           isOpen={showPdfModal}
           onClose={() => setShowPdfModal(false)}
+          signatureUrl={handwrittenSignature}
           signerName={signerName}
         />
       )}

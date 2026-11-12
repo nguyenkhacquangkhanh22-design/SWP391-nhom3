@@ -524,13 +524,18 @@ function buildContractHtmlServer(rental, options = {}) {
           <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
-        <!-- Bên B: Không hiện chữ ký tay, chỉ xác nhận ký số điện tử -->
+        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc huy hiệu ký số điện tử, không hiển thị phông chữ viết tay giả -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</div>
           <div class="note">(${isSigned ? "Chữ ký điện tử của Bên Thuê" : "Chờ Người thuê ký số"})</div>
-          <div class="sign-area" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:80px;">
+          <div class="sign-area" style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:80px;">
             ${
-              isSigned
+              effectiveSignature && effectiveSignature.startsWith("data:image")
+                ? `<div style="text-align:center;">
+                     <img src="${effectiveSignature}" alt="Chữ ký điện tử của Người thuê" class="signature-img" />
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
+                   </div>`
+                : isSigned
                 ? `<div style="text-align:center; padding:12px 0;">
                      <div style="font-size:10pt; color:#059669; font-weight:bold; margin-bottom:4px; display:inline-flex; align-items:center; gap:5px; background:#ecfdf5; border:1px solid #a7f3d0; padding:4px 14px; border-radius:6px;">
                        ✓ Đã ký số điện tử (Bên B)
