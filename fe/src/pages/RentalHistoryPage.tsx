@@ -868,8 +868,8 @@ export default function RentalHistoryPage() {
                 r.contract?.signedAt ||
                 upperStatus === "CONTRACT_SIGNED"
               );
-              // Chỉ hiển thị Ký hợp đồng & Thanh toán khi đã được duyệt VÀ người thuê đã đồng ý ký HĐ trong chat!
-              const canSign = isApproved && hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted;
+              // Hiển thị Ký hợp đồng & Thanh toán khi đơn đã được duyệt/đã có HĐ và chưa ký/chưa thanh toán
+              const canSign = isApproved && !isPaidConfirmed && !r.contract?.termsAccepted;
               const canPay = (upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_REJECTED") && !isWaitingPaymentApproval && !isPaymentVerifying;
               const canReturn =
                 upperStatus === "PAID" ||
@@ -1398,8 +1398,8 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng khi đã được duyệt VÀ đã đồng ý trong chat */}
-                    {canSign ? (
+                    {/* Nút ký hợp đồng khi đã được duyệt */}
+                    {canSign && (
                       <button
                         onClick={() => setSigningRental(r)}
                         className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
@@ -1407,16 +1407,7 @@ export default function RentalHistoryPage() {
                         <span>✍️</span>
                         <span>Ký hợp đồng & Thanh toán</span>
                       </button>
-                    ) : isApproved && !hasAgreedToSign ? (
-                      <button
-                        onClick={() => setChatRental(r)}
-                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-blue-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
-                        title="Vào đoạn chat để trao đổi điều khoản và bấm Đồng ý ký hợp đồng"
-                      >
-                        <span>💬</span>
-                        <span>Vào chat Đồng ý ký HĐ</span>
-                      </button>
-                    ) : null}
+                    )}
 
                     {/* Nút thanh toán tự động qua cổng PayOS VietQR */}
                     {canPay && (
