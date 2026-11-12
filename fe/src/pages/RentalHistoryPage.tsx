@@ -2,12 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../app/AuthProvider";
-import { useToast } from "../context/ToastContext";
 import { getSocket } from "../services/socket";
 import Navbar from "../components/Navbar";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
-import VietQRPaymentModal from "../components/VietQRPaymentModal";
-import PaymentQRModal from "../components/PaymentQRModal";
 import ContractPdfModal from "../components/ContractPdfModal";
 import RentalChatModal from "../components/RentalChatModal";
 import PaymentButton from "../components/PaymentButton";
@@ -43,7 +40,6 @@ const TABS: TabItem[] = [
 
 export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
-  const { showToast } = useToast();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
   const [complaints, setComplaints] = useState<SupportTicket[]>([]);
@@ -83,9 +79,6 @@ export default function RentalHistoryPage() {
   const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
   const [chatRental, setChatRental] = useState<Rental | null>(null);
 
-  // Modal thanh toán QR (UC_R09)
-  const [payingRental, setPayingRental] = useState<Rental | null>(null);
-
   // Modal trả thiết bị (UC_R10: hẹn giờ, địa điểm, tình trạng)
   const [returningRentalId, setReturningRentalId] = useState<string | null>(null);
   const [returnCondition, setReturnCondition] = useState(
@@ -121,9 +114,6 @@ export default function RentalHistoryPage() {
   const [extraDays, setExtraDays] = useState(1);
   const [extensionNote, setExtensionNote] = useState("");
   const [isExtending, setIsExtending] = useState(false);
-
-  // State thanh toán (UC_R09)
-  const [payingRentalId, setPayingRentalId] = useState<string | null>(null);
 
   // Modal Handover Check-in (Lưu ảnh ngoại quan ban đầu khi nhận máy)
   const [checkinRental, setCheckinRental] = useState<Rental | null>(null);
@@ -259,34 +249,6 @@ export default function RentalHistoryPage() {
     }
     return true;
   });
-
-  // Xử lý Thanh toán VietQR MB Bank (UC_R09 - Không cần tiền cọc)
-  const handlePayConfirm = async (receiptImage?: string) => {
-    if (!payingRental) return;
-    setPayingRentalId(payingRental._id);
-    setError("");
-    setNotice("");
-    try {
-      const res = await smartEquipApi.payRental(token, payingRental._id, {
-        paymentMethod: "bank_transfer",
-        receiptImage,
-      });
-      setNotice(res.message || "Thanh toán chuyển khoản VietQR MB Bank thành công! Đơn thuê đã sẵn sàng bàn giao.");
-      showToast({
-        type: "payment_submitted",
-        title: "💳 ĐÃ GỬI BIÊN LAI CHUYỂN KHOẢN!",
-        message: `Đã gửi biên lai chuyển khoản đơn #${payingRental.rentalCode}. Đang chờ Chủ máy kiểm tra và xác nhận thanh toán.`,
-        link: "/rentals/history",
-        rentalCode: payingRental.rentalCode,
-      });
-      setPayingRental(null);
-      fetchHistory();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể xác nhận thanh toán");
-    } finally {
-      setPayingRentalId(null);
-    }
-  };
 
   // Confirm receipt before the owner can request the moderator to release payment.
   const executeConfirmReceipt = async (contract: RentalContract) => {
@@ -1451,26 +1413,14 @@ export default function RentalHistoryPage() {
                       </button>
                     ) : null}
 
-{/* Nút thanh toán (UC_R09) - PayOS VietQR tự động & Quét QR thủ công */}
+                    {/* Nút thanh toán tự động qua cổng PayOS VietQR */}
                     {canPay && (
-                      <div className="space-y-1.5">
-                        <PaymentButton
-                          rentalId={r._id}
-                          amount={r.totalAmount || r.rentalFee}
-                          description={`TT don ${r.rentalCode}`}
-                        />
-                        <button
-                          onClick={() => setPayingRental(r)}
-                          className="w-full px-3 py-2 bg-[#172236] hover:bg-[#202f48] border border-[#27364f] text-slate-300 font-medium rounded-xl text-xs transition-all flex items-center justify-center gap-1"
-                        >
-                          <span>💳</span>
-                          <span>
-                            {upperStatus === "PAYMENT_REJECTED"
-                              ? "Quét QR và Gửi lại bill"
-                              : "Quét QR chuyển khoản"}
-                          </span>
-                        </button>
-                      </div>
+                      <PaymentButton
+                        rentalId={r._id}
+                        amount={r.totalAmount || r.rentalFee}
+                        description={`TT don ${r.rentalCode}`}
+                        className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      />
                     )}
 
                     {/* Trạng thái chờ Owner duyệt chuyển khoản */}
@@ -1658,22 +1608,6 @@ export default function RentalHistoryPage() {
         )}
       </main>
 
-      {/* Modal Thanh toán VietQR MB Bank */}
-      {payingRental && (
-        <VietQRPaymentModal
-          isOpen={!!payingRental}
-          rentalId={payingRental._id}
-          onClose={() => setPayingRental(null)}
-          onConfirmPayment={(receiptImg) => handlePayConfirm(receiptImg)}
-          amount={payingRental.totalAmount || payingRental.rentalFee}
-          rentalCode={payingRental.rentalCode}
-          contractCode={payingRental.contract?.contractNumber}
-          equipmentTitle={payingRental.equipment?.title}
-          loading={payingRentalId === payingRental._id}
-          owner={payingRental.owner}
-        />
-      )}
-
       {/* Modal Ký hợp đồng điện tử (UC_R08) */}
       {signingRental && (
         <ContractConfirmationModal
@@ -1681,30 +1615,11 @@ export default function RentalHistoryPage() {
           token={token}
           isOpen={Boolean(signingRental)}
           onClose={() => setSigningRental(null)}
-          onSuccess={(updatedRental) => {
+          onSuccess={() => {
             setSigningRental(null);
-setNotice(
+            setNotice(
               "Đã ký hợp đồng điện tử thành công! Vui lòng hoàn tất thanh toán phí thuê thiết bị."
             );
-            fetchHistory();
-            if (updatedRental) {
-              setPayingRental(updatedRental);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Quét QR Thanh toán (UC_R09) */}
-      {payingRental && (
-        <PaymentQRModal
-          rental={payingRental}
-          token={token}
-          isOpen={Boolean(payingRental)}
-          defaultSenderName={user?.name || ""}
-          onClose={() => setPayingRental(null)}
-          onSuccess={(message) => {
-            setPayingRental(null);
-            setNotice(message);
             fetchHistory();
           }}
         />
