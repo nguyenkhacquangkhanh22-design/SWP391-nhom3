@@ -82,8 +82,23 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const rentalCode = rental.rentalCode;
 
+  // Lấy chữ ký đã lưu trong localStorage nếu có (giúp chữ ký vẽ tay bảo toàn tuyệt đối sau khi PayOS chuyển hướng)
+  let cachedSig: string | null = null;
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      cachedSig =
+        window.localStorage.getItem(`smartequip_sig_${contractCode}`) ||
+        window.localStorage.getItem(`smartequip_sig_${rentalCode}`) ||
+        (rental._id ? window.localStorage.getItem(`smartequip_sig_${rental._id}`) : null) ||
+        null;
+    } catch (storageErr) {
+      console.warn("Lỗi đọc cache chữ ký:", storageErr);
+    }
+  }
+
   const effectiveSignature =
     options.signatureUrl ||
+    (cachedSig && cachedSig.startsWith("data:image") ? cachedSig : null) ||
     (rental as any).renter_signature?.signature_image ||
     (rental.contract as any)?.renter_signature?.signature_image ||
     (rental.contract?.digitalSignature && rental.contract.digitalSignature.startsWith("data:image")

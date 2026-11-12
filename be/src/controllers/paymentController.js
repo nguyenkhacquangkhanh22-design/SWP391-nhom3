@@ -163,6 +163,40 @@ const paymentController = {
       if (rental.contract?.moderatorStatus === "approved") {
         rental.contract.moderatorStatus = "moderator_approved";
       }
+
+      // Lưu giữ chữ ký điện tử vẽ tay nếu gửi kèm khi tạo link thanh toán
+      if (req.body.digitalSignature && String(req.body.digitalSignature).startsWith("data:image")) {
+        rental.contract = rental.contract || {};
+        rental.contract.digitalSignature = String(req.body.digitalSignature).trim();
+        rental.contract.termsAccepted = true;
+        rental.markModified("contract");
+
+        try {
+          const RentalContract = require("../models/RentalContract");
+          const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+          await RentalContract.updateMany(
+            {
+              $or: [
+                { contract_code: contractCode },
+                { contract_code: rental.contract?.contractNumber },
+                { contract_code: `HD-${rental.rentalCode}` },
+                { contract_code: rental.rentalCode },
+                { renter_id: rental.renter, equipment_id: rental.equipment },
+              ],
+            },
+            {
+              $set: {
+                "renter_signature.signed": true,
+                "renter_signature.signature_image": rental.contract.digitalSignature,
+                "renter_signature.signature_data": rental.contract.digitalSignature,
+                "renter_signature.signature_type": "drawn",
+              },
+            }
+          );
+        } catch (syncErr) {
+          console.warn("Lưu chữ ký sang RentalContract (createPaymentLink):", syncErr.message);
+        }
+      }
     }
     await rental.save();
 
@@ -496,6 +530,32 @@ const paymentController = {
         });
       } catch (chatErr) {
         console.warn("Lỗi gửi tin nhắn hợp đồng đã thanh toán (webhook):", chatErr.message);
+      }
+
+      // Đồng bộ trạng thái thanh toán sang RentalContract
+      try {
+        const RentalContract = require("../models/RentalContract");
+        const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await RentalContract.updateMany(
+          {
+            $or: [
+              { contract_code: contractCode },
+              { contract_code: rental.contract?.contractNumber },
+              { contract_code: `HD-${rental.rentalCode}` },
+              { contract_code: rental.rentalCode },
+              { renter_id: renterId, equipment_id: rental.equipment?._id || rental.equipment },
+            ],
+          },
+          {
+            $set: {
+              payment_status: "paid",
+              paid_at: rental.payment?.paidAt || new Date(),
+              payment_amount: paidAmount,
+            },
+          }
+        );
+      } catch (cSyncErr) {
+        console.warn("Đồng bộ trạng thái thanh toán sang RentalContract (webhook):", cSyncErr.message);
       }
 
       // Bắn Socket.IO realtime để client Renter & Owner nhận thông báo tức thì
@@ -846,6 +906,32 @@ const paymentController = {
         });
       } catch (chatErr) {
         console.warn("Lỗi gửi tin nhắn hợp đồng đã thanh toán (verifyPayment):", chatErr.message);
+      }
+
+      // Đồng bộ trạng thái thanh toán sang RentalContract
+      try {
+        const RentalContract = require("../models/RentalContract");
+        const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await RentalContract.updateMany(
+          {
+            $or: [
+              { contract_code: contractCode },
+              { contract_code: rental.contract?.contractNumber },
+              { contract_code: `HD-${rental.rentalCode}` },
+              { contract_code: rental.rentalCode },
+              { renter_id: renterId, equipment_id: rental.equipment?._id || rental.equipment },
+            ],
+          },
+          {
+            $set: {
+              payment_status: "paid",
+              paid_at: rental.payment?.paidAt || new Date(),
+              payment_amount: paidAmount,
+            },
+          }
+        );
+      } catch (cSyncErr) {
+        console.warn("Đồng bộ trạng thái thanh toán sang RentalContract (verifyPayment):", cSyncErr.message);
       }
 
       try {

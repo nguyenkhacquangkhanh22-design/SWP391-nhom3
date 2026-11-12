@@ -53,6 +53,20 @@ export default function ContractConfirmationModal({
     setError("");
     setLoading(true);
     const confirmedSigner = signerName.trim() || renterName;
+
+    // Lưu chữ ký vào localStorage để bảo toàn tuyệt đối sau khi PayOS chuyển hướng
+    if (handwrittenSignature) {
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(`smartequip_sig_${contractCode}`, handwrittenSignature);
+          window.localStorage.setItem(`smartequip_sig_${rental.rentalCode}`, handwrittenSignature);
+          if (rental._id) window.localStorage.setItem(`smartequip_sig_${rental._id}`, handwrittenSignature);
+        }
+      } catch (storageErr) {
+        console.warn("Cache localStorage chữ ký:", storageErr);
+      }
+    }
+
     try {
       const res = await smartEquipApi.confirmContract(token, rental._id, {
         termsAccepted: true,
@@ -84,23 +98,42 @@ export default function ContractConfirmationModal({
     setLoading(true);
     setError("");
     try {
+      const sigToSave =
+        handwrittenSignature ||
+        rental.contract?.digitalSignature ||
+        (typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem(`smartequip_sig_${contractCode}`) ||
+            window.localStorage.getItem(`smartequip_sig_${rental.rentalCode}`) ||
+            (rental._id ? window.localStorage.getItem(`smartequip_sig_${rental._id}`) : null)
+          : "") ||
+        "";
+
+      if (sigToSave && typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem(`smartequip_sig_${contractCode}`, sigToSave);
+          window.localStorage.setItem(`smartequip_sig_${rental.rentalCode}`, sigToSave);
+          if (rental._id) window.localStorage.setItem(`smartequip_sig_${rental._id}`, sigToSave);
+        } catch (e) {}
+      }
+
       // 1. Luôn cập nhật và xác nhận chữ ký điện tử vào hợp đồng
       const confirmedSigner = signerName.trim() || renterName;
       try {
         await smartEquipApi.confirmContract(token, rental._id, {
           termsAccepted: true,
           renterSignature: confirmedSigner,
-          digitalSignature: handwrittenSignature || rental.contract?.digitalSignature || "",
+          digitalSignature: sigToSave,
         });
       } catch (signErr: any) {
         console.warn("Lưu xác nhận ký hợp đồng notice:", signErr?.message);
       }
 
-      // 2. Gọi API POST /api/payments/create-payment-link (truyền vào rentalId, amount, description)
+      // 2. Gọi API POST /api/payments/create-payment-link (truyền vào rentalId, amount, description, digitalSignature)
       const response = await axios.post("/api/payments/create-payment-link", {
         rentalId: rental._id,
         amount: totalAmountToPay,
         description: `TT don ${rental.rentalCode}`,
+        digitalSignature: sigToSave,
       });
 
       const { checkoutUrl } = response.data;

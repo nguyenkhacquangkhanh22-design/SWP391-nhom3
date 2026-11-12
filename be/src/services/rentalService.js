@@ -470,7 +470,22 @@ class RentalService {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
-    if (rental.status === "CONTRACT_SIGNED" && rental.contract?.signedAt) {
+    const hasExistingDrawnSig = Boolean(
+      rental.contract?.digitalSignature &&
+      String(rental.contract.digitalSignature).startsWith("data:image")
+    );
+    const isNewSigProvided = Boolean(
+      digitalSignature &&
+      String(digitalSignature).trim() &&
+      String(digitalSignature).startsWith("data:image")
+    );
+
+    if (
+      rental.status === "CONTRACT_SIGNED" &&
+      rental.contract?.signedAt &&
+      hasExistingDrawnSig &&
+      !isNewSigProvided
+    ) {
       return await Rental.findById(rental._id)
         .populate("equipment", "title images dailyRate depositAmount category")
         .populate("owner", "name email phone trust_score bankInfo")
@@ -587,6 +602,7 @@ class RentalService {
       rental.contract.moderatorStatus = "moderator_approved";
     }
 
+    rental.markModified("contract");
     await rental.save();
 
     // Đồng bộ chữ ký sang RentalContract & RentalRequest nếu có
@@ -617,7 +633,7 @@ class RentalService {
             status: "signed",
             "renter_signature.signed": true,
             "renter_signature.signed_at": rental.contract.signedAt || new Date(),
-            "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
+            "renter_signature.signature_data": signatureImg || rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
             "renter_signature.signature_image": signatureImg,
             "renter_signature.signature_type": signatureImg ? "drawn" : "typed",
             "renter_signature.signer_name": signature || renterUser.name,
@@ -1425,14 +1441,22 @@ class RentalService {
           r.contract.ownerCertificateCode = contract.owner_signature?.certificate_code || "";
           if (contract.renter_signature?.signed) {
             r.contract.termsAccepted = true;
-            r.contract.digitalSignature =
+            const validImage =
               (r.contract.digitalSignature && r.contract.digitalSignature.startsWith("data:image") ? r.contract.digitalSignature : "") ||
-              contract.renter_signature?.signature_image ||
-              contract.renter_signature?.signature_data ||
-              r.contract.digitalSignature ||
-              "";
+              (contract.renter_signature?.signature_image && contract.renter_signature.signature_image.startsWith("data:image") ? contract.renter_signature.signature_image : "") ||
+              (contract.renter_signature?.signature_data && contract.renter_signature.signature_data.startsWith("data:image") ? contract.renter_signature.signature_data : "");
+
+            r.contract.digitalSignature = validImage || r.contract.digitalSignature || "";
             r.contract.renterSignature = r.contract.renterSignature || contract.renter_signature?.signer_name || "";
             r.contract.signedAt = r.contract.signedAt || contract.renter_signature?.signed_at || null;
+            if (validImage && !r.renter_signature) {
+              r.renter_signature = {
+                signed: true,
+                signed_at: r.contract.signedAt,
+                signature_image: validImage,
+                signer_name: r.contract.renterSignature,
+              };
+            }
           }
         }
       }
