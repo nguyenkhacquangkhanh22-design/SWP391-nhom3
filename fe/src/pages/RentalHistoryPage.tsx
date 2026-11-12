@@ -788,8 +788,8 @@ export default function RentalHistoryPage() {
                 r.contract?.signedAt ||
                 upperStatus === "CONTRACT_SIGNED"
               );
-              // Hiển thị Ký hợp đồng & Thanh toán khi đơn đã được duyệt/đã có HĐ và chưa ký/chưa thanh toán
-              const canSign = isApproved && !isPaidConfirmed && !r.contract?.termsAccepted;
+              // Phải đồng ý ký HĐ trong chat trước, sau đó mới hiện Ký hợp đồng & Thanh toán
+              const canSign = isApproved && hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted;
               const canPay = (upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_REJECTED") && !isWaitingPaymentApproval && !isPaymentVerifying;
               const canReturn =
                 upperStatus === "PAID" ||
@@ -1318,7 +1318,19 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng khi đã được duyệt */}
+                    {/* Chưa đồng ý ký HĐ trong chat: Vào chat để trao đổi & bấm Đồng ý ký HĐ */}
+                    {isApproved && !hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted && (
+                      <button
+                        onClick={() => setChatRental(r)}
+                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-blue-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
+                        title="Vào đoạn chat để trao đổi điều khoản và bấm Đồng ý ký hợp đồng"
+                      >
+                        <span>💬</span>
+                        <span>Vào chat Đồng ý ký HĐ</span>
+                      </button>
+                    )}
+
+                    {/* Nút ký hợp đồng khi đã được duyệt VÀ ĐÃ ĐỒNG Ý KÝ */}
                     {canSign && (
                       <button
                         onClick={() => setSigningRental(r)}

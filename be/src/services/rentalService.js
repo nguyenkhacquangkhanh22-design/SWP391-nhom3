@@ -1286,6 +1286,10 @@ class RentalService {
               moderatorApproved: modApproved,
               moderatorStatus: modStatus,
               ownerSigned: ownerSigned,
+              ownerSignature: ct?.owner_signature?.signature_image || ct?.owner_signature?.signature_data || "",
+              ownerSignerName: ct?.owner_signature?.signer_name || "",
+              ownerSignedAt: ct?.owner_signature?.signed_at || null,
+              ownerCertificateCode: ct?.owner_signature?.certificate_code || "",
             },
           });
         } else {
@@ -1302,6 +1306,14 @@ class RentalService {
           if (ct && existingRental.contract.moderatorStatus !== modStatus) {
             existingRental.contract.moderatorStatus = modStatus;
             existingRental.contract.moderatorApproved = modApproved;
+            needsSave = true;
+          }
+          if (ct && ct.owner_signature?.signed && !existingRental.contract.ownerSigned) {
+            existingRental.contract.ownerSigned = true;
+            existingRental.contract.ownerSignature = ct.owner_signature?.signature_image || ct.owner_signature?.signature_data || "";
+            existingRental.contract.ownerSignerName = ct.owner_signature?.signer_name || "";
+            existingRental.contract.ownerSignedAt = ct.owner_signature?.signed_at || null;
+            existingRental.contract.ownerCertificateCode = ct.owner_signature?.certificate_code || "";
             needsSave = true;
           }
           if (needsSave) {
@@ -1385,6 +1397,10 @@ class RentalService {
           r.contract.moderatorStatus = contract.status === "approved" ? "moderator_approved" : contract.status;
           r.contract.moderatorApproved = contract.status === "moderator_approved" || contract.status === "signed";
           r.contract.ownerSigned = Boolean(contract.owner_signature?.signed);
+          r.contract.ownerSignature = contract.owner_signature?.signature_image || contract.owner_signature?.signature_data || "";
+          r.contract.ownerSignerName = contract.owner_signature?.signer_name || "";
+          r.contract.ownerSignedAt = contract.owner_signature?.signed_at || null;
+          r.contract.ownerCertificateCode = contract.owner_signature?.certificate_code || "";
         }
       }
     } catch (enrichErr) {

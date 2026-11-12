@@ -72,7 +72,7 @@ const RETURN_NAME_MAP = {
   air: { name: "Thu hồi qua đường hàng không / Máy bay", fee: 150000, icon: "✈️" },
 };
 
-function buildContractHtmlServer(rental) {
+function buildContractHtmlServer(rental, options = {}) {
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const rentalCode = rental.rentalCode;
 
@@ -179,6 +179,49 @@ function buildContractHtmlServer(rental) {
 
   const paidDateStr = rental.payment?.paidAt
     ? new Date(rental.payment.paidAt).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : signedDateStr;
+
+  const isOwnerSigned = Boolean(
+    options.isOwnerSigned ||
+      options.ownerSignature ||
+      rental.contract?.ownerSigned ||
+      rental.contract?.owner_signature?.signed ||
+      rental.owner_signature?.signed ||
+      rental.contract?.ownerSignature ||
+      rental.contract?.contractNumber ||
+      rental.contract?.moderatorApproved ||
+      ["APPROVED", "CONTRACT_SIGNED", "PAID", "ACTIVE", "COMPLETED"].includes(String(rental.status).toUpperCase())
+  );
+
+  const ownerSignatureImg =
+    options.ownerSignature ||
+    rental.contract?.ownerSignature ||
+    rental.owner_signature?.signature_image ||
+    rental.contract?.owner_signature?.signature_image ||
+    "";
+
+  const ownerSignerName =
+    options.ownerSignerName ||
+    rental.contract?.ownerSignerName ||
+    rental.owner_signature?.signer_name ||
+    ownerName;
+
+  const ownerSignedDateStr = rental.contract?.ownerSignedAt
+    ? new Date(rental.contract.ownerSignedAt).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : rental.owner_signature?.signed_at
+    ? new Date(rental.owner_signature.signed_at).toLocaleDateString("vi-VN", {
         hour: "2-digit",
         minute: "2-digit",
         day: "2-digit",
@@ -441,10 +484,26 @@ function buildContractHtmlServer(rental) {
       <div class="signatures-grid">
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN CHO THUÊ (BÊN A)</div>
-          <div class="note">(${isConfirmedPaid ? "Ký điện tử, đóng dấu chứng thực" : "Chờ xác nhận thanh toán"})</div>
-          <div class="sign-area">${sealSvg}</div>
-          <div class="sign-name">${ownerName}</div>
-          <div class="sign-date">${isConfirmedPaid ? "Đã chứng thực qua SmartEquip Hub" : "Bản mẫu SmartEquip"}</div>
+          <div class="note">(${isOwnerSigned ? "Chữ ký điện tử của Bên Cho Thuê" : "Chờ Chủ máy ký số"})</div>
+          <div class="sign-area" style="position:relative;">
+            ${
+              ownerSignatureImg && ownerSignatureImg.startsWith("data:image")
+                ? `<img src="${ownerSignatureImg}" alt="Chữ ký Chủ máy" class="signature-img" />`
+                : isOwnerSigned
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#0f766e; line-height:1.2;">${ownerSignerName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên A)</div>
+                   </div>`
+                : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
+            }
+            ${
+              isConfirmedPaid
+                ? `<div style="position:absolute; right:5px; top:-10px; opacity:0.85; pointer-events:none; transform:scale(0.85);">${getOfficialSealSvg()}</div>`
+                : ""
+            }
+          </div>
+          <div class="sign-name">${ownerSignerName}</div>
+          <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
         <div class="sign-col">

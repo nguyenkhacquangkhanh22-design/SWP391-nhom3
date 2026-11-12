@@ -7,6 +7,9 @@ export interface BuildContractOptions {
   isSigned?: boolean;
   isOfficial?: boolean;
   hidePrintBar?: boolean;
+  ownerSignature?: string | null;
+  ownerSignerName?: string;
+  isOwnerSigned?: boolean;
 }
 
 /**
@@ -221,6 +224,49 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
       })
     : signedDateStr;
 
+  const isOwnerSigned = Boolean(
+    options.isOwnerSigned ||
+      options.ownerSignature ||
+      rental.contract?.ownerSigned ||
+      (rental as any).contract?.owner_signature?.signed ||
+      (rental as any).owner_signature?.signed ||
+      (rental.contract as any)?.ownerSignature ||
+      rental.contract?.contractNumber || // Hợp đồng đã có mã có nghĩa là Bên A đã khởi tạo/ký
+      rental.contract?.moderatorApproved ||
+      ["APPROVED", "CONTRACT_SIGNED", "PAID", "ACTIVE", "COMPLETED"].includes(String(rental.status).toUpperCase())
+  );
+
+  const ownerSignatureImg =
+    options.ownerSignature ||
+    (rental.contract as any)?.ownerSignature ||
+    (rental as any).owner_signature?.signature_image ||
+    (rental as any).contract?.owner_signature?.signature_image ||
+    "";
+
+  const ownerSignerName =
+    options.ownerSignerName ||
+    (rental.contract as any)?.ownerSignerName ||
+    (rental as any).owner_signature?.signer_name ||
+    ownerName;
+
+  const ownerSignedDateStr = (rental.contract as any)?.ownerSignedAt
+    ? new Date((rental.contract as any).ownerSignedAt).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : (rental as any).owner_signature?.signed_at
+    ? new Date((rental as any).owner_signature.signed_at).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : signedDateStr;
+
   const ownerBankInfo = (rental.owner as any)?.bankInfo;
   const bankNameDisplay = ownerBankInfo?.bankName || "MB Bank";
   const accNumDisplay = ownerBankInfo?.accountNumber || "111105056666";
@@ -231,8 +277,6 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         <strong>Điều khoản cam kết bổ sung do Chủ máy & Khách thuê thỏa thuận:</strong> ${rental.contract.contractTerms}
       </li>`
     : "";
-
-  const sealSvg = isConfirmedPaid ? getOfficialSealSvg() : getDraftSealSvg();
 
   const titleText = isConfirmedPaid
     ? "HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ (BẢN CHÍNH THỨC)"
@@ -572,10 +616,26 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         <!-- Bên A -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN CHO THUÊ (BÊN A)</div>
-          <div class="note">(${isConfirmedPaid ? "Ký điện tử, đóng dấu chứng thực" : "Chờ xác nhận thanh toán"})</div>
-          <div class="sign-area">${sealSvg}</div>
-          <div class="sign-name">${ownerName}</div>
-          <div class="sign-date">${isConfirmedPaid ? "Đã chứng thực qua SmartEquip Hub" : "Bản mẫu SmartEquip"}</div>
+          <div class="note">(${isOwnerSigned ? "Chữ ký điện tử của Bên Cho Thuê" : "Chờ Chủ máy ký số"})</div>
+          <div class="sign-area" style="position:relative;">
+            ${
+              ownerSignatureImg && ownerSignatureImg.startsWith("data:image")
+                ? `<img src="${ownerSignatureImg}" alt="Chữ ký Chủ máy" class="signature-img" />`
+                : isOwnerSigned
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#0f766e; line-height:1.2;">${ownerSignerName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên A)</div>
+                   </div>`
+                : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
+            }
+            ${
+              isConfirmedPaid
+                ? `<div style="position:absolute; right:5px; top:-10px; opacity:0.85; pointer-events:none; transform:scale(0.85);">${getOfficialSealSvg()}</div>`
+                : ""
+            }
+          </div>
+          <div class="sign-name">${ownerSignerName}</div>
+          <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
         <!-- Bên B -->

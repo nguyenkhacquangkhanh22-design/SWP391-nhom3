@@ -1532,6 +1532,29 @@ async function confirmEContract(req, res) {
   };
   await contract.save();
 
+  try {
+    const Rental = require("../models/Rental");
+    await Rental.updateMany(
+      {
+        $or: [
+          { "contract.contractNumber": contract.contract_code },
+          { renter: contract.renter_id, equipment: contract.equipment_id },
+        ],
+      },
+      {
+        $set: {
+          "contract.ownerSigned": true,
+          "contract.ownerSignature": finalImage || `E-SIGNED BY ${finalSigner}`,
+          "contract.ownerSignerName": finalSigner,
+          "contract.ownerSignedAt": new Date(),
+          "contract.ownerCertificateCode": certCode,
+        },
+      }
+    );
+  } catch (syncErr) {
+    console.error("Failed to sync owner signature to Rental:", syncErr);
+  }
+
   res.json({
     message: "Đã ghi nhận chữ ký điện tử của Owner trên hợp đồng.",
     contract,

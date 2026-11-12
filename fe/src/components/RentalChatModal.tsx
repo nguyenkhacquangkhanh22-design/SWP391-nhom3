@@ -594,6 +594,9 @@ export default function RentalChatModal({
                                   ...rentalToView.contract,
                                   contractNumber: msg.contract_data.contract_number || rentalToView.contract?.contractNumber,
                                   ownerSigned: true,
+                                  ownerSignature: rentalToView.contract?.ownerSignature || (rentalToView as any).owner_signature?.signature_image || (rentalToView as any).contract?.owner_signature?.signature_image || "",
+                                  ownerSignerName: rentalToView.contract?.ownerSignerName || (rentalToView as any).owner_signature?.signer_name || (typeof rentalToView.owner === "object" ? rentalToView.owner?.name : "Chủ máy"),
+                                  ownerSignedAt: rentalToView.contract?.ownerSignedAt || (rentalToView as any).owner_signature?.signed_at || undefined,
                                   termsAccepted: isSigned || rentalToView.contract?.termsAccepted,
                                   renterSignature: rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
                                   digitalSignature: rentalToView.contract?.digitalSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
@@ -613,35 +616,48 @@ export default function RentalChatModal({
                           <span>Xem file PDF hợp đồng</span>
                         </button>
 
-                        {/* Nút Ký hợp đồng cho Renter ngay trên thẻ HĐ */}
+                        {/* Nút cho Renter: Phải bấm Đồng ý ký HĐ trước, sau đó mới hiện Ký hợp đồng & Thanh toán */}
                         {!isOwnerCurrent && !currentRental.contract?.termsAccepted && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (msg.contract_data && !currentRental.contract?.contractNumber) {
-                                setCurrentRental((prev) => ({
-                                  ...prev,
-                                  totalAmount: msg.contract_data?.total_amount || prev.totalAmount,
-                                  contract: {
-                                    ...prev.contract,
-                                    contractNumber: msg.contract_data?.contract_number || prev.contract?.contractNumber,
-                                    ownerSigned: true,
-                                  },
-                                }));
-                              }
-                              if (onAgreeToSign) {
-                                onAgreeToSign(currentRental);
-                              } else {
-                                setShowSignModal(true);
-                              }
-                            }}
-                            disabled={agreeing}
-                            className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
-                            title="Mở bảng ký chữ ký tay điện tử và thanh toán hợp đồng"
-                          >
-                            <span>✍️</span>
-                            <span>Ký hợp đồng & Thanh toán</span>
-                          </button>
+                          !currentRental.contract?.agreedToSign ? (
+                            <button
+                              type="button"
+                              onClick={handleAgreeToSign}
+                              disabled={agreeing}
+                              className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
+                              title="Bấm để xác nhận đồng ý điều khoản trong hợp đồng trước khi ký"
+                            >
+                              <span>🤝</span>
+                              <span>{agreeing ? "Đang lưu..." : "Đồng ý ký hợp đồng"}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (msg.contract_data && !currentRental.contract?.contractNumber) {
+                                  setCurrentRental((prev) => ({
+                                    ...prev,
+                                    totalAmount: msg.contract_data?.total_amount || prev.totalAmount,
+                                    contract: {
+                                      ...prev.contract,
+                                      contractNumber: msg.contract_data?.contract_number || prev.contract?.contractNumber,
+                                      ownerSigned: true,
+                                    },
+                                  }));
+                                }
+                                if (onAgreeToSign) {
+                                  onAgreeToSign(currentRental);
+                                } else {
+                                  setShowSignModal(true);
+                                }
+                              }}
+                              disabled={agreeing}
+                              className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
+                              title="Mở bảng ký chữ ký tay điện tử và thanh toán hợp đồng"
+                            >
+                              <span>✍️</span>
+                              <span>Ký hợp đồng & Thanh toán</span>
+                            </button>
+                          )
                         )}
                       </div>
                     </div>

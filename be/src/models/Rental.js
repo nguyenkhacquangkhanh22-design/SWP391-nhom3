@@ -181,6 +181,10 @@ const rentalSchema = new mongoose.Schema(
         default: "none",
       },
       ownerSigned: { type: Boolean, default: false },
+      ownerSignature: { type: String, trim: true },
+      ownerSignerName: { type: String, trim: true },
+      ownerSignedAt: { type: Date },
+      ownerCertificateCode: { type: String, trim: true },
     },
     payment: {
       isPaid: { type: Boolean, default: false },
