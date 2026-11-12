@@ -578,7 +578,7 @@ export default function RentalChatModal({
                           {msg.contract_data.status === "PAID" || msg.contract_data.status === "ACTIVE"
                             ? "✓ Đã nhận tiền"
                             : msg.contract_data.is_signed
-                            ? "✓ Đã ký tay điện tử"
+                            ? "✓ Đã ký số điện tử"
                             : "Chờ ký / Dự thảo"}
                         </span>
                       </div>
@@ -699,7 +699,7 @@ export default function RentalChatModal({
                               }}
                               disabled={agreeing}
                               className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
-                              title="Mở bảng ký chữ ký tay điện tử và thanh toán hợp đồng"
+                              title="Xác nhận ký hợp đồng điện tử và thanh toán"
                             >
                               <span>✍️</span>
                               <span>Ký hợp đồng & Thanh toán</span>

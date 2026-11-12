@@ -32,11 +32,9 @@ export default function ContractPdfModal({
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
 
   const isSignedOrOfficial = Boolean(
-    Boolean(signatureUrl) ||
-      rental.contract?.termsAccepted ||
+    rental.contract?.termsAccepted ||
       Boolean(rental.contract?.signedAt) ||
-      (rental.contract?.digitalSignature && rental.contract.digitalSignature.startsWith("data:image")) ||
-      (rental as any).renter_signature?.signed ||
+      Boolean((rental as any).renter_signature?.signed) ||
       String(rental.status).toUpperCase() === "CONTRACT_SIGNED" ||
       String(rental.status).toUpperCase() === "PAID" ||
       String(rental.status).toUpperCase() === "ACTIVE" ||

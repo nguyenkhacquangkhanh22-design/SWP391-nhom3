@@ -454,7 +454,7 @@ class RentalService {
     );
 
     if (!hasAnySignature) {
-      throw new AppError(400, "Vui lòng vẽ chữ ký tay hoặc nhập họ tên để ký hợp đồng");
+      throw new AppError(400, "Vui lòng xác nhận họ tên để ký hợp đồng");
     }
 
     const userIdStr = renterUser._id ? renterUser._id.toString() : String(renterUser.User_Id || renterUser.id || "");
