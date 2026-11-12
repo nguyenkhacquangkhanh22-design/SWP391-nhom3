@@ -145,21 +145,57 @@ export default function OwnerContractsTab({
   const [viewingPdfRental, setViewingPdfRental] = useState<Rental | null>(null);
 
   const convertContractToRental = (c: RentalContract): Rental => {
+    const cleanCode = c.contract_code ? c.contract_code.replace(/^HD-/, "") : "";
     const matchedRental = directRentals.find(
       (r) =>
         r.contract?.contractNumber === c.contract_code ||
-        r.rentalCode === c.contract_code.replace(/^HD-/, "") ||
-        String(r._id) === String(c.request_id)
+        (cleanCode && r.rentalCode === cleanCode) ||
+        (cleanCode && r.contract?.contractNumber === `HD-${cleanCode}`) ||
+        String(r._id) === String(c.request_id) ||
+        (c.renter_id && (String(typeof r.renter === "object" && r.renter ? (r.renter as any)._id : r.renter) === String((c.renter_id as any)?._id || c.renter_id)))
     );
+
+    const isSignedOrPaid = Boolean(
+      c.renter_signature?.signed ||
+      matchedRental?.contract?.termsAccepted ||
+      Boolean(matchedRental?.contract?.signedAt) ||
+      (matchedRental?.contract?.digitalSignature && String(matchedRental.contract.digitalSignature).startsWith("data:image")) ||
+      (c.renter_signature?.signature_image && String(c.renter_signature.signature_image).startsWith("data:image")) ||
+      ["signed", "contract_signed", "payment_pending", "paid", "active", "completed"].includes(String(c.status).toLowerCase()) ||
+      ["CONTRACT_SIGNED", "PAID", "ACTIVE", "COMPLETED"].includes(String(matchedRental?.status || "").toUpperCase())
+    );
+
+    const renterSignatureImg =
+      (c.renter_signature?.signature_image && String(c.renter_signature.signature_image).startsWith("data:image")
+        ? c.renter_signature.signature_image
+        : null) ||
+      (matchedRental?.contract?.digitalSignature && String(matchedRental.contract.digitalSignature).startsWith("data:image")
+        ? matchedRental.contract.digitalSignature
+        : null) ||
+      c.renter_signature?.signature_image ||
+      matchedRental?.contract?.digitalSignature ||
+      "";
+
+    const renterSignerName =
+      c.renter_signature?.signer_name ||
+      matchedRental?.contract?.renterSignature ||
+      (typeof c.renter_id === "object" ? (c.renter_id as any)?.name : null) ||
+      (typeof matchedRental?.renter === "object" ? matchedRental.renter?.name : null) ||
+      "Khách thuê";
+
+    const signedAt =
+      c.renter_signature?.signed_at
+        ? new Date(c.renter_signature.signed_at).toISOString()
+        : matchedRental?.contract?.signedAt
+        ? new Date(matchedRental.contract.signedAt).toISOString()
+        : isSignedOrPaid
+        ? new Date().toISOString()
+        : undefined;
+
     if (matchedRental) {
-      const isRenterSignedMatched = Boolean(
-        c.renter_signature?.signed ||
-          matchedRental.contract?.termsAccepted ||
-          matchedRental.contract?.signedAt ||
-          (matchedRental.contract?.digitalSignature && matchedRental.contract.digitalSignature.startsWith("data:image"))
-      );
       return {
         ...matchedRental,
+        status: isSignedOrPaid ? (matchedRental.status === "PAID" ? "PAID" : "CONTRACT_SIGNED") : matchedRental.status,
         contract: {
           ...matchedRental.contract,
           contractNumber: c.contract_code,
@@ -167,34 +203,32 @@ export default function OwnerContractsTab({
           ownerSignature: c.owner_signature?.signature_image || c.owner_signature?.signature_data || matchedRental.contract?.ownerSignature || "",
           ownerSignerName: c.owner_signature?.signer_name || (c.owner_id as any)?.name || user?.name || "Chủ máy",
           ownerSignedAt: c.owner_signature?.signed_at ? new Date(c.owner_signature.signed_at).toISOString() : (matchedRental.contract?.ownerSignedAt ? String(matchedRental.contract.ownerSignedAt) : undefined),
-          renterSignature: isRenterSignedMatched
-            ? (c.renter_signature?.signer_name || matchedRental.contract?.renterSignature)
-            : undefined,
-          digitalSignature: isRenterSignedMatched
-            ? (c.renter_signature?.signature_image || matchedRental.contract?.digitalSignature || c.renter_signature?.signature_data)
-            : undefined,
-          signedAt: isRenterSignedMatched
-            ? (c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (matchedRental.contract?.signedAt ? new Date(matchedRental.contract.signedAt).toISOString() : undefined))
-            : undefined,
+          renterSignature: isSignedOrPaid ? renterSignerName : undefined,
+          digitalSignature: isSignedOrPaid ? renterSignatureImg : undefined,
+          signedAt,
           contractTerms: c.terms_content || matchedRental.contract?.contractTerms,
-          termsAccepted: isRenterSignedMatched,
+          termsAccepted: isSignedOrPaid,
+        },
+        renter_signature: c.renter_signature || {
+          signed: isSignedOrPaid,
+          signature_image: renterSignatureImg,
+          signer_name: renterSignerName,
         },
         owner_signature: c.owner_signature,
       };
     }
 
     const equipObj = typeof c.equipment_id === "object" ? c.equipment_id : ({ _id: c.equipment_id, title: c.title } as any);
-    const renterObj = typeof c.renter_id === "object" ? c.renter_id : ({ _id: c.renter_id, name: "Khách thuê" } as any);
+    const renterObj = typeof c.renter_id === "object" ? c.renter_id : ({ _id: c.renter_id, name: renterSignerName } as any);
     const isPaid = c.payment_status === "paid" || (c as any).payment_status === "PAID";
-    const isRenterSigned = Boolean(c.renter_signature?.signed || ["signed", "contract_signed", "active", "completed"].includes(c.status));
     const calculatedDays = c.start_date && c.end_date
       ? Math.max(1, Math.ceil((new Date(c.end_date).getTime() - new Date(c.start_date).getTime()) / (1000 * 60 * 60 * 24)))
       : 1;
 
     return {
       _id: c._id,
-      rentalCode: c.contract_code.replace(/^HD-/, ""),
-      status: isPaid ? "PAID" : isRenterSigned ? "CONTRACT_SIGNED" : "APPROVED",
+      rentalCode: cleanCode || `RC-${c._id.toString().slice(-6)}`,
+      status: isPaid ? "PAID" : isSignedOrPaid ? "CONTRACT_SIGNED" : "APPROVED",
       equipment: equipObj,
       renter: renterObj,
       owner: {
@@ -222,17 +256,16 @@ export default function OwnerContractsTab({
         ownerSignature: c.owner_signature?.signature_image || c.owner_signature?.signature_data || "",
         ownerSignerName: c.owner_signature?.signer_name || (c.owner_id as any)?.name || user?.name || "Chủ máy",
         ownerSignedAt: c.owner_signature?.signed_at ? new Date(c.owner_signature.signed_at).toISOString() : new Date().toISOString(),
-        renterSignature: isRenterSigned
-          ? (c.renter_signature?.signer_name || renterObj?.name || undefined)
-          : undefined,
-        digitalSignature: isRenterSigned
-          ? (c.renter_signature?.signature_image || c.renter_signature?.signature_data || undefined)
-          : undefined,
-        signedAt: isRenterSigned
-          ? (c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : new Date().toISOString())
-          : undefined,
+        renterSignature: isSignedOrPaid ? renterSignerName : undefined,
+        digitalSignature: isSignedOrPaid ? renterSignatureImg : undefined,
+        signedAt,
         contractTerms: c.terms_content,
-        termsAccepted: isRenterSigned,
+        termsAccepted: isSignedOrPaid,
+      },
+      renter_signature: c.renter_signature || {
+        signed: isSignedOrPaid,
+        signature_image: renterSignatureImg,
+        signer_name: renterSignerName,
       },
       owner_signature: c.owner_signature,
     } as any;
@@ -526,11 +559,20 @@ export default function OwnerContractsTab({
     // Step 2: Gửi Người thuê qua Chat
     // Step 3: Trao đổi & Renter ký tên
     // Step 4: Thanh toán chuyển khoản & Bàn giao thiết bị
+    const isRenterSigned = Boolean(
+      c.renter_signature?.signed ||
+      ["signed", "contract_signed", "paid", "active", "completed"].includes(String(c.status).toLowerCase()) ||
+      c.payment_status === "paid"
+    );
+
     const step1Done = true;
-    const step2Done = ["moderator_approved", "signed", "contract_signed", "active", "completed"].includes(c.status);
-    const step3Active = c.status === "moderator_approved";
-    const step3Done = ["signed", "contract_signed", "active", "completed"].includes(c.status);
-    const step4Done = ["active", "completed"].includes(c.status);
+    const step2Done = Boolean(
+      ["moderator_approved", "signed", "contract_signed", "paid", "active", "completed"].includes(String(c.status).toLowerCase()) ||
+      isRenterSigned
+    );
+    const step3Active = !isRenterSigned && ["moderator_approved", "pending_renter_signature", "approved"].includes(String(c.status).toLowerCase());
+    const step3Done = isRenterSigned;
+    const step4Done = ["active", "completed"].includes(String(c.status).toLowerCase()) || c.payment_status === "paid";
 
     const steps = [
       {
@@ -778,10 +820,10 @@ export default function OwnerContractsTab({
                   <span className={`status-badge status-${c.status}`}>
                     {c.status === "draft"
                       ? "📝 Bước 1: Bản nháp (Chưa gửi)"
+                      : (c.status === "signed" || c.renter_signature?.signed || c.payment_status === "paid")
+                      ? (c.payment_status === "paid" ? "💳 Bước 4: Đã thanh toán" : "✍️ Bước 3: Người thuê đã ký tên")
                       : c.status === "moderator_approved"
                       ? "📨 Bước 2: Đã gửi Người thuê • Chờ ký"
-                      : c.status === "signed"
-                      ? "✍️ Bước 3: Người thuê đã ký tên"
                       : c.status === "active"
                       ? "🚀 Đang thuê (Đã bàn giao)"
                       : c.status === "completed"
@@ -797,7 +839,7 @@ export default function OwnerContractsTab({
               {/* 4-Step Visual Progress Bar */}
               {renderWorkflowStepper(c)}
 
-              {c.status === "moderator_approved" && (
+              {c.status === "moderator_approved" && !c.renter_signature?.signed && c.payment_status !== "paid" && (
                 <div
                   style={{
                     margin: "12px 0",
@@ -829,7 +871,7 @@ export default function OwnerContractsTab({
                 </div>
               )}
 
-              {c.status === "signed" && (
+              {(c.status === "signed" || c.renter_signature?.signed || c.payment_status === "paid") && (
                 <div
                   style={{
                     margin: "12px 0",
@@ -847,7 +889,7 @@ export default function OwnerContractsTab({
                   }}
                 >
                   <div>
-                    ✍️ <strong>Người thuê ({c.renter_id?.name || "Renter"}) đã ký tên xác nhận Hợp đồng!</strong><br />
+                    ✍️ <strong>Người thuê ({c.renter_signature?.signer_name || c.renter_id?.name || "Renter"}) đã ký tên xác nhận Hợp đồng!</strong><br />
                     Hợp đồng đã có đầy đủ hiệu lực pháp lý. Bạn có thể kiểm tra thanh toán hoặc chuẩn bị Bàn giao thiết bị.
                   </div>
                   <button
@@ -895,8 +937,10 @@ export default function OwnerContractsTab({
                 <div>
                   <span className="meta-label">Chữ ký Người thuê (Bên B):</span>
                   <span className="meta-val">
-                    {c.renter_signature?.signed || ["signed", "contract_signed", "active", "completed"].includes(c.status) ? (
-                      <span style={{ color: "#10b981", fontWeight: 700 }}>✅ Người thuê đã ký</span>
+                    {c.renter_signature?.signed || ["signed", "contract_signed", "paid", "active", "completed"].includes(String(c.status).toLowerCase()) || c.payment_status === "paid" ? (
+                      <span style={{ color: "#10b981", fontWeight: 700 }}>
+                        ✅ Người thuê đã ký ({c.renter_signature?.signer_name || c.renter_id?.name || "Renter"})
+                      </span>
                     ) : (
                       <span style={{ color: "#fb923c", fontWeight: 600 }}>⏳ Đã gửi - Chờ Renter ký</span>
                     )}

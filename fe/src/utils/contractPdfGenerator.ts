@@ -650,7 +650,7 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
           <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
-        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc huy hiệu ký số điện tử, không hiển thị phông chữ viết tay giả -->
+        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc chữ ký điện tử xác nhận của Người thuê -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</div>
           <div class="note">(${isSigned ? "Chữ ký điện tử của Bên Thuê" : "Chờ Người thuê ký số"})</div>
@@ -662,13 +662,9 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
                      <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
                    </div>`
                 : isSigned
-                ? `<div style="text-align:center; padding:12px 0;">
-                     <div style="font-size:10pt; color:#059669; font-weight:bold; margin-bottom:4px; display:inline-flex; align-items:center; gap:5px; background:#ecfdf5; border:1px solid #a7f3d0; padding:4px 14px; border-radius:6px;">
-                       ✓ Đã ký số điện tử (Bên B)
-                     </div>
-                     <div style="font-size:8.5pt; color:#64748b; font-style:italic;">
-                       (Xác thực trực tuyến qua tài khoản SmartEquip)
-                     </div>
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#1d4ed8; line-height:1.2;">${renterName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
                    </div>`
                 : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt; padding:16px 0;">(Chưa ký tên)</div>`
             }

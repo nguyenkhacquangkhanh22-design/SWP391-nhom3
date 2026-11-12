@@ -237,6 +237,7 @@ export interface Rental {
     | "disputed";
   contract: RentalContract;
   owner_signature?: any;
+  renter_signature?: any;
   payment: RentalPayment;
   returnInfo?: RentalReturnRequest;
   returnRequest?: RentalReturnRequest;

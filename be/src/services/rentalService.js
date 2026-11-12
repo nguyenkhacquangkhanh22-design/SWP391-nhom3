@@ -593,31 +593,47 @@ class RentalService {
     try {
       const RentalRequest = require("../models/RentalRequest");
       const RentalContract = require("../models/RentalContract");
-      const matchingReq = await RentalRequest.findOne({
-        $or: [
-          { request_code: rental.rentalCode },
-          { renter_id: rental.renter, equipment_id: rental.equipment, status: { $in: ["approved", "contract_created"] } },
-        ],
-      });
-      const contractQuery = matchingReq
-        ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
-        : { contract_code: rental.contract?.contractNumber };
-
+      const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
       const isDrawnSig = Boolean(
         rental.contract.digitalSignature &&
           String(rental.contract.digitalSignature).startsWith("data:image")
       );
-      await RentalContract.updateMany(contractQuery, {
-        $set: {
-          status: "signed",
-          "renter_signature.signed": true,
-          "renter_signature.signed_at": rental.contract.signedAt || new Date(),
-          "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
-          "renter_signature.signature_image": isDrawnSig ? rental.contract.digitalSignature : "",
-          "renter_signature.signature_type": isDrawnSig ? "drawn" : "typed",
-          "renter_signature.signer_name": signature || renterUser.name,
+      const signatureImg = isDrawnSig
+        ? rental.contract.digitalSignature
+        : (digitalSignature && String(digitalSignature).startsWith("data:image") ? digitalSignature : "");
+
+      await RentalContract.updateMany(
+        {
+          $or: [
+            { contract_code: contractCode },
+            { contract_code: rental.contract?.contractNumber },
+            { contract_code: `HD-${rental.rentalCode}` },
+            { contract_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment },
+          ],
         },
-      });
+        {
+          $set: {
+            status: "signed",
+            "renter_signature.signed": true,
+            "renter_signature.signed_at": rental.contract.signedAt || new Date(),
+            "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
+            "renter_signature.signature_image": signatureImg,
+            "renter_signature.signature_type": signatureImg ? "drawn" : "typed",
+            "renter_signature.signer_name": signature || renterUser.name,
+          },
+        }
+      );
+
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment },
+          ],
+        },
+        { $set: { status: "signed" } }
+      );
     } catch (syncErr) {
       console.warn("Đồng bộ chữ ký sang RentalContract:", syncErr.message);
     }

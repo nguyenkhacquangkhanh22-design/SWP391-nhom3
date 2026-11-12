@@ -704,34 +704,109 @@ async function getContracts(req, res) {
     .sort({ createdAt: -1 })
     .lean();
 
-  // Đồng bộ payment_status chuẩn xác từ đơn Rental
+  // Đồng bộ renter_signature, status và payment_status chuẩn xác từ đơn Rental
   const Rental = require("../models/Rental");
   const enrichedContracts = await Promise.all(
     contracts.map(async (c) => {
-      if (c.payment_status === "paid") return c;
-
+      const cleanCode = c.contract_code ? c.contract_code.replace(/^HD-/, "") : "";
       const rental = await Rental.findOne({
         $or: [
           { "contract.contractNumber": c.contract_code },
-          { rentalCode: c.contract_code.replace(/^HD-/, "") },
-          { _id: c.request_id },
+          ...(cleanCode ? [{ rentalCode: cleanCode }, { "contract.contractNumber": `HD-${cleanCode}` }] : []),
+          ...(c.request_id ? [{ _id: c.request_id }] : []),
+          ...(c.renter_id && c.equipment_id ? [{ renter: c.renter_id._id || c.renter_id, equipment: c.equipment_id._id || c.equipment_id }] : []),
         ],
       })
-        .select("status payment")
+        .select("status payment contract renter")
         .lean();
 
       if (rental) {
-        const isPaid =
-          rental.status === "PAID" ||
-          rental.payment?.isPaid === true ||
-          rental.payment?.paymentStatus === "paid";
+        const isRenterSigned = Boolean(
+          c.renter_signature?.signed ||
+            rental.contract?.termsAccepted ||
+            Boolean(rental.contract?.signedAt) ||
+            (rental.contract?.digitalSignature && String(rental.contract.digitalSignature).startsWith("data:image")) ||
+            ["CONTRACT_SIGNED", "PAID", "ACTIVE", "COMPLETED"].includes(String(rental.status || "").toUpperCase())
+        );
 
+        const isPaid = Boolean(
+          c.payment_status === "paid" ||
+            rental.status === "PAID" ||
+            rental.payment?.isPaid === true ||
+            rental.payment?.paymentStatus === "paid"
+        );
+
+        let signatureImg =
+          c.renter_signature?.signature_image ||
+          (rental.contract?.digitalSignature && String(rental.contract.digitalSignature).startsWith("data:image")
+            ? rental.contract.digitalSignature
+            : "") ||
+          "";
+
+        let signerName =
+          c.renter_signature?.signer_name ||
+          rental.contract?.renterSignature ||
+          (typeof c.renter_id === "object" ? c.renter_id?.name : "Khách thuê");
+
+        let signedAt =
+          c.renter_signature?.signed_at ||
+          rental.contract?.signedAt ||
+          (isRenterSigned ? new Date() : undefined);
+
+        let newStatus = c.status;
         if (isPaid) {
-          await RentalContract.updateOne({ _id: c._id }, { $set: { payment_status: "paid" } });
-          return { ...c, payment_status: "paid" };
-        } else if (rental.payment?.paymentStatus === "pending_confirmation") {
-          return { ...c, payment_status: "pending_confirmation" };
+          newStatus = ["active", "completed"].includes(c.status) ? c.status : "paid";
+        } else if (isRenterSigned) {
+          newStatus = ["signed", "contract_signed", "paid", "active", "completed"].includes(c.status)
+            ? c.status
+            : "signed";
         }
+
+        const updatedRenterSig = {
+          signed: isRenterSigned,
+          signed_at: signedAt,
+          signature_data: c.renter_signature?.signature_data || rental.contract?.digitalSignature || "",
+          signer_name: signerName,
+          signature_image: signatureImg,
+          signature_type: signatureImg ? "drawn" : (c.renter_signature?.signature_type || "typed"),
+          certificate_code: c.renter_signature?.certificate_code || "",
+        };
+
+        const paymentStatus = isPaid
+          ? "paid"
+          : rental.payment?.paymentStatus === "pending_confirmation"
+          ? "pending_confirmation"
+          : c.payment_status;
+
+        // Cập nhật ngầm vào RentalContract trong DB để đồng bộ hoàn toàn
+        if (
+          c.status !== newStatus ||
+          Boolean(c.renter_signature?.signed) !== isRenterSigned ||
+          (!c.renter_signature?.signature_image && signatureImg) ||
+          c.payment_status !== paymentStatus
+        ) {
+          try {
+            await RentalContract.updateOne(
+              { _id: c._id },
+              {
+                $set: {
+                  status: newStatus,
+                  renter_signature: updatedRenterSig,
+                  payment_status: paymentStatus,
+                },
+              }
+            );
+          } catch (updErr) {
+            console.warn("Lỗi sync RentalContract:", updErr.message);
+          }
+        }
+
+        return {
+          ...c,
+          status: newStatus,
+          renter_signature: updatedRenterSig,
+          payment_status: paymentStatus,
+        };
       }
       return c;
     })
