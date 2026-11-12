@@ -306,8 +306,14 @@ export default function OwnerEquipmentsTab({
     const finalPricePerHour = pricePerHour === "" ? 0 : Number(pricePerHour);
     const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
 
-    if (finalPricePerDay < 0 || finalPricePerHour < 0 || finalDepositAmount < 0) {
+    if (finalPricePerHour < 0 || finalDepositAmount < 0) {
       onError("Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0).");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (finalPricePerDay <= 2000) {
+      onError("Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ.");
       setIsSubmitting(false);
       return;
     }
@@ -1466,12 +1472,24 @@ export default function OwnerEquipmentsTab({
                 </h4>
                 <div className="form-grid-3">
                   <div>
-                    <label className="field-label">Giá thuê theo ngày (VND) *</label>
+                    <label className="field-label">
+                      Giá thuê theo ngày (VND) *{" "}
+                      <span
+                        style={{
+                          fontSize: "0.75rem",
+                          color: pricePerDay !== "" && Number(pricePerDay) <= 2000 ? "#f87171" : "#10b981",
+                          fontWeight: 600,
+                        }}
+                      >
+                        (Phải trên 2.000 đ)
+                      </span>
+                    </label>
                     <input
                       className="input-field"
                       type="number"
-                      min={0}
-                      step={1}
+                      min={2001}
+                      step={1000}
+                      placeholder="Ví dụ: 50000"
                       value={pricePerDay}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1487,6 +1505,11 @@ export default function OwnerEquipmentsTab({
                       }}
                       required
                     />
+                    {pricePerDay !== "" && Number(pricePerDay) <= 2000 && (
+                      <span style={{ color: "#f87171", fontSize: "0.75rem", marginTop: "4px", display: "block" }}>
+                        ⚠️ Thiết lập giá cho thuê phải trên 2.000 VNĐ
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="field-label">Giá thuê theo giờ (VND)</label>

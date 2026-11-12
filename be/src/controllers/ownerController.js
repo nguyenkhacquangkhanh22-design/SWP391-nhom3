@@ -221,7 +221,6 @@ async function createEquipmentListing(req, res) {
 
   if (
     isNaN(pDay) ||
-    pDay < 0 ||
     isNaN(pHour) ||
     pHour < 0 ||
     isNaN(pDeposit) ||
@@ -230,6 +229,10 @@ async function createEquipmentListing(req, res) {
     pWeekend < 0
   ) {
     throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+  }
+
+  if (pDay <= 2000) {
+    throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ");
   }
 
   const equipment = await Equipment.create({
@@ -320,7 +323,6 @@ async function updateEquipment(req, res) {
 
   if (pricing) {
     if (
-      (pricing.price_per_day !== undefined && Number(pricing.price_per_day) < 0) ||
       (pricing.price_per_hour !== undefined && Number(pricing.price_per_hour) < 0) ||
       (pricing.deposit_amount !== undefined && Number(pricing.deposit_amount) < 0) ||
       (pricing.weekend_rate !== undefined && Number(pricing.weekend_rate) < 0)
@@ -328,8 +330,12 @@ async function updateEquipment(req, res) {
       throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
     }
     if (pricing.price_per_day !== undefined) {
-      equipment.pricing.price_per_day = Number(pricing.price_per_day);
-      equipment.dailyRate = Number(pricing.price_per_day);
+      const pDay = Number(pricing.price_per_day);
+      if (isNaN(pDay) || pDay <= 2000) {
+        throw new AppError(400, "Thiết lập giá cho thuê thiết bị theo ngày phải trên 2.000 VNĐ");
+      }
+      equipment.pricing.price_per_day = pDay;
+      equipment.dailyRate = pDay;
     }
     if (pricing.deposit_amount !== undefined) equipment.pricing.deposit_amount = 0;
     if (pricing.price_per_hour !== undefined) equipment.pricing.price_per_hour = Number(pricing.price_per_hour);
@@ -2841,7 +2847,13 @@ async function updateOwnerRentalContractTerms(req, res) {
     if (!rental.contract) rental.contract = {};
     rental.contract.contractTerms = String(contractTerms).trim();
   }
-  if (dailyRate !== undefined && Number(dailyRate) >= 0) rental.dailyRate = Number(dailyRate);
+  if (dailyRate !== undefined) {
+    const rateNum = Number(dailyRate);
+    if (isNaN(rateNum) || rateNum <= 2000) {
+      throw new AppError(400, "Thiết lập đơn giá cho thuê theo ngày phải trên 2.000 VNĐ");
+    }
+    rental.dailyRate = rateNum;
+  }
   if (totalDays !== undefined && Number(totalDays) >= 1) rental.totalDays = Number(totalDays);
   if (rentalFee !== undefined && Number(rentalFee) >= 0) rental.rentalFee = Number(rentalFee);
   if (depositAmount !== undefined && Number(depositAmount) >= 0) rental.depositAmount = Number(depositAmount);
