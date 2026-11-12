@@ -84,28 +84,37 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
 
   const effectiveSignature =
     options.signatureUrl ||
-    rental.contract?.digitalSignature ||
-    rental.contract?.renterSignature ||
+    (rental as any).renter_signature?.signature_image ||
+    (rental.contract as any)?.renter_signature?.signature_image ||
+    (rental.contract?.digitalSignature && rental.contract.digitalSignature.startsWith("data:image")
+      ? rental.contract.digitalSignature
+      : null) ||
+    ((rental as any).renter_signature?.signature_data &&
+    String((rental as any).renter_signature.signature_data).startsWith("data:image")
+      ? (rental as any).renter_signature.signature_data
+      : null) ||
+    (rental.contract?.renterSignature && rental.contract.renterSignature.startsWith("data:image")
+      ? rental.contract.renterSignature
+      : null) ||
     null;
 
-  // Xác định hợp đồng đã có chữ ký của khách hoặc đã được thanh toán/duyệt
+  // Chỉ xác định Người thuê (Bên B) đã ký khi thực sự có xác nhận ký hợp đồng hoặc ảnh chữ ký điện tử
   const hasSignature = Boolean(
     options.isSigned ||
       rental.contract?.termsAccepted ||
-      Boolean(effectiveSignature) ||
       Boolean(rental.contract?.signedAt) ||
+      Boolean((rental as any).renter_signature?.signed) ||
+      Boolean(effectiveSignature && effectiveSignature.startsWith("data:image")) ||
       String(rental.status).toUpperCase() === "CONTRACT_SIGNED"
   );
 
-  // Nếu hợp đồng đã ký hoặc đã duyệt/thanh toán -> HỢP ĐỒNG CHÍNH THỨC 100%
-  // Nếu chưa ký và đang xem bản dự thảo -> HỢP ĐỒNG MẪU
+  // Hợp đồng chính thức khi Người thuê đã ký hoặc đã thanh toán
   const isConfirmedPaid = Boolean(
     hasSignature ||
       rental.payment?.isPaid === true ||
       rental.payment?.paymentStatus === "paid" ||
       String(rental.status).toUpperCase() === "PAID" ||
       String(rental.status).toUpperCase() === "ACTIVE" ||
-      String(rental.status).toUpperCase() === "CONFIRMED" ||
       String(rental.status).toUpperCase() === "COMPLETED" ||
       options.isOfficial === true
   );
@@ -620,7 +629,10 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
           <div class="sign-area" style="position:relative;">
             ${
               ownerSignatureImg && ownerSignatureImg.startsWith("data:image")
-                ? `<img src="${ownerSignatureImg}" alt="Chữ ký Chủ máy" class="signature-img" />`
+                ? `<div style="text-align:center;">
+                     <img src="${ownerSignatureImg}" alt="Chữ ký Chủ máy" class="signature-img" />
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên A)</div>
+                   </div>`
                 : isOwnerSigned
                 ? `<div style="text-align:center;">
                      <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#0f766e; line-height:1.2;">${ownerSignerName}</div>
@@ -641,13 +653,19 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         <!-- Bên B -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</div>
-          <div class="note">(Chữ ký tay điện tử của Người thuê)</div>
+          <div class="note">(${isSigned ? "Chữ ký điện tử của Bên Thuê" : "Chờ Người thuê ký số"})</div>
           <div class="sign-area">
             ${
               effectiveSignature && effectiveSignature.startsWith("data:image")
-                ? `<img src="${effectiveSignature}" alt="Chữ ký tay của Người thuê" class="signature-img" />`
+                ? `<div style="text-align:center;">
+                     <img src="${effectiveSignature}" alt="Chữ ký điện tử của Người thuê" class="signature-img" />
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
+                   </div>`
                 : isSigned
-                ? `<div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#1e3a8a;">${renterName}</div>`
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#0f766e; line-height:1.2;">${renterName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
+                   </div>`
                 : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
             }
           </div>

@@ -603,12 +603,18 @@ class RentalService {
         ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
         : { contract_code: rental.contract?.contractNumber };
 
+      const isDrawnSig = Boolean(
+        rental.contract.digitalSignature &&
+          String(rental.contract.digitalSignature).startsWith("data:image")
+      );
       await RentalContract.updateMany(contractQuery, {
         $set: {
           status: "signed",
           "renter_signature.signed": true,
           "renter_signature.signed_at": rental.contract.signedAt || new Date(),
           "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
+          "renter_signature.signature_image": isDrawnSig ? rental.contract.digitalSignature : "",
+          "renter_signature.signature_type": isDrawnSig ? "drawn" : "typed",
           "renter_signature.signer_name": signature || renterUser.name,
         },
       });
@@ -1401,6 +1407,17 @@ class RentalService {
           r.contract.ownerSignerName = contract.owner_signature?.signer_name || "";
           r.contract.ownerSignedAt = contract.owner_signature?.signed_at || null;
           r.contract.ownerCertificateCode = contract.owner_signature?.certificate_code || "";
+          if (contract.renter_signature?.signed) {
+            r.contract.termsAccepted = true;
+            r.contract.digitalSignature =
+              (r.contract.digitalSignature && r.contract.digitalSignature.startsWith("data:image") ? r.contract.digitalSignature : "") ||
+              contract.renter_signature?.signature_image ||
+              contract.renter_signature?.signature_data ||
+              r.contract.digitalSignature ||
+              "";
+            r.contract.renterSignature = r.contract.renterSignature || contract.renter_signature?.signer_name || "";
+            r.contract.signedAt = r.contract.signedAt || contract.renter_signature?.signed_at || null;
+          }
         }
       }
     } catch (enrichErr) {

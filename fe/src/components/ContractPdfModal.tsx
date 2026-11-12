@@ -32,15 +32,14 @@ export default function ContractPdfModal({
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
 
   const isSignedOrOfficial = Boolean(
-    rental.contract?.renterSignature ||
-      rental.contract?.digitalSignature ||
-      rental.contract?.signedAt ||
+    Boolean(signatureUrl) ||
       rental.contract?.termsAccepted ||
-      Boolean(signatureUrl) ||
+      Boolean(rental.contract?.signedAt) ||
+      (rental.contract?.digitalSignature && rental.contract.digitalSignature.startsWith("data:image")) ||
+      (rental as any).renter_signature?.signed ||
       String(rental.status).toUpperCase() === "CONTRACT_SIGNED" ||
       String(rental.status).toUpperCase() === "PAID" ||
       String(rental.status).toUpperCase() === "ACTIVE" ||
-      String(rental.status).toUpperCase() === "CONFIRMED" ||
       String(rental.status).toUpperCase() === "COMPLETED" ||
       rental.payment?.isPaid
   );
@@ -80,7 +79,7 @@ export default function ContractPdfModal({
     openContractPdfPreview(rental, {
       signatureUrl,
       signerName,
-      isSigned: true,
+      isSigned: isSignedOrOfficial,
       isOfficial: isSignedOrOfficial,
       ownerSignature,
       ownerSignerName,
@@ -92,7 +91,7 @@ export default function ContractPdfModal({
     downloadContractHtml(rental, {
       signatureUrl,
       signerName,
-      isSigned: true,
+      isSigned: isSignedOrOfficial,
       isOfficial: isSignedOrOfficial,
       ownerSignature,
       ownerSignerName,

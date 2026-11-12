@@ -38,7 +38,9 @@ export default function ContractConfirmationModal({
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const totalAmountToPay = rental.totalAmount || (rental.rentalFee + (rental.shippingFee || 0)); // KHÔNG CẦN TIỀN CỌC! (Tiền thuê + phí vận chuyển)
 
-  const handleGoToPayment = (e: React.FormEvent) => {
+  const [currentRentalState, setCurrentRentalState] = useState<Rental>(rental);
+
+  const handleGoToPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!termsAccepted) {
       setError("Vui lòng tích chọn đồng ý với các điều khoản của hợp đồng thuê.");
@@ -49,6 +51,30 @@ export default function ContractConfirmationModal({
       return;
     }
     setError("");
+    setLoading(true);
+    try {
+      const res = await smartEquipApi.confirmContract(token, rental._id, {
+        termsAccepted: true,
+        renterSignature: signerName.trim() || renterName,
+        digitalSignature: handwrittenSignature,
+      });
+      const updated = res.data || {
+        ...currentRentalState,
+        status: "CONTRACT_SIGNED",
+        contract: {
+          ...currentRentalState.contract,
+          termsAccepted: true,
+          renterSignature: signerName.trim() || renterName,
+          digitalSignature: handwrittenSignature,
+          signedAt: new Date().toISOString(),
+        },
+      };
+      setCurrentRentalState(updated);
+    } catch (signErr: any) {
+      console.warn("Lưu chữ ký điện tử:", signErr?.message);
+    } finally {
+      setLoading(false);
+    }
     setStep("payment");
   };
 
@@ -79,7 +105,7 @@ export default function ContractConfirmationModal({
 
       const { checkoutUrl } = response.data;
       if (checkoutUrl) {
-        if (onSuccess) onSuccess(rental);
+        if (onSuccess) onSuccess(currentRentalState);
         // Chuyển hướng người dùng sang cổng thanh toán PayOS
         window.location.href = checkoutUrl;
       } else {
@@ -440,7 +466,7 @@ export default function ContractConfirmationModal({
       {/* Modal Xem & Tải Hợp Đồng PDF */}
       {showPdfModal && (
         <ContractPdfModal
-          rental={rental}
+          rental={currentRentalState}
           isOpen={showPdfModal}
           onClose={() => setShowPdfModal(false)}
           signatureUrl={handwrittenSignature}

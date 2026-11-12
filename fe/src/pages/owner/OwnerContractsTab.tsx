@@ -152,6 +152,12 @@ export default function OwnerContractsTab({
         String(r._id) === String(c.request_id)
     );
     if (matchedRental) {
+      const isRenterSignedMatched = Boolean(
+        c.renter_signature?.signed ||
+          matchedRental.contract?.termsAccepted ||
+          matchedRental.contract?.signedAt ||
+          (matchedRental.contract?.digitalSignature && matchedRental.contract.digitalSignature.startsWith("data:image"))
+      );
       return {
         ...matchedRental,
         contract: {
@@ -161,11 +167,17 @@ export default function OwnerContractsTab({
           ownerSignature: c.owner_signature?.signature_image || c.owner_signature?.signature_data || matchedRental.contract?.ownerSignature || "",
           ownerSignerName: c.owner_signature?.signer_name || (c.owner_id as any)?.name || user?.name || "Chủ máy",
           ownerSignedAt: c.owner_signature?.signed_at ? new Date(c.owner_signature.signed_at).toISOString() : (matchedRental.contract?.ownerSignedAt ? String(matchedRental.contract.ownerSignedAt) : undefined),
-          renterSignature: c.renter_signature?.signer_name || matchedRental.contract?.renterSignature,
-          digitalSignature: c.renter_signature?.signature_data || matchedRental.contract?.digitalSignature,
-          signedAt: c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (matchedRental.contract?.signedAt ? new Date(matchedRental.contract.signedAt).toISOString() : undefined),
+          renterSignature: isRenterSignedMatched
+            ? (c.renter_signature?.signer_name || matchedRental.contract?.renterSignature)
+            : undefined,
+          digitalSignature: isRenterSignedMatched
+            ? (c.renter_signature?.signature_image || matchedRental.contract?.digitalSignature || c.renter_signature?.signature_data)
+            : undefined,
+          signedAt: isRenterSignedMatched
+            ? (c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (matchedRental.contract?.signedAt ? new Date(matchedRental.contract.signedAt).toISOString() : undefined))
+            : undefined,
           contractTerms: c.terms_content || matchedRental.contract?.contractTerms,
-          termsAccepted: Boolean(c.renter_signature?.signed || matchedRental.contract?.termsAccepted),
+          termsAccepted: isRenterSignedMatched,
         },
         owner_signature: c.owner_signature,
       };
@@ -210,9 +222,15 @@ export default function OwnerContractsTab({
         ownerSignature: c.owner_signature?.signature_image || c.owner_signature?.signature_data || "",
         ownerSignerName: c.owner_signature?.signer_name || (c.owner_id as any)?.name || user?.name || "Chủ máy",
         ownerSignedAt: c.owner_signature?.signed_at ? new Date(c.owner_signature.signed_at).toISOString() : new Date().toISOString(),
-        renterSignature: c.renter_signature?.signer_name || (isRenterSigned ? renterObj?.name : undefined),
-        digitalSignature: c.renter_signature?.signature_data || (isRenterSigned ? renterObj?.name : undefined),
-        signedAt: c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : (isRenterSigned ? new Date().toISOString() : undefined),
+        renterSignature: isRenterSigned
+          ? (c.renter_signature?.signer_name || renterObj?.name || undefined)
+          : undefined,
+        digitalSignature: isRenterSigned
+          ? (c.renter_signature?.signature_image || c.renter_signature?.signature_data || undefined)
+          : undefined,
+        signedAt: isRenterSigned
+          ? (c.renter_signature?.signed_at ? new Date(c.renter_signature.signed_at).toISOString() : new Date().toISOString())
+          : undefined,
         contractTerms: c.terms_content,
         termsAccepted: isRenterSigned,
       },

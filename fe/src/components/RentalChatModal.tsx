@@ -218,7 +218,33 @@ export default function RentalChatModal({
         rentalId: currentRental._id,
         otherUserId: partnerUser._id,
       });
-      setMessages(res.data || []);
+      const fetchedMessages = res.data || [];
+      setMessages(fetchedMessages);
+      // Đồng bộ chữ ký điện tử mới nhất từ rental_id được populate trong tin nhắn
+      for (let i = fetchedMessages.length - 1; i >= 0; i--) {
+        const populatedRental = fetchedMessages[i]?.rental_id;
+        if (populatedRental && typeof populatedRental === "object" && populatedRental.contract) {
+          setCurrentRental((prev) => ({
+            ...prev,
+            status: populatedRental.status || prev.status,
+            totalAmount: populatedRental.totalAmount || prev.totalAmount,
+            contract: {
+              ...prev.contract,
+              ...populatedRental.contract,
+              digitalSignature: populatedRental.contract.digitalSignature || prev.contract?.digitalSignature,
+              renterSignature: populatedRental.contract.renterSignature || prev.contract?.renterSignature,
+              signedAt: populatedRental.contract.signedAt || prev.contract?.signedAt,
+              termsAccepted: Boolean(populatedRental.contract.termsAccepted || prev.contract?.termsAccepted),
+              agreedToSign: Boolean(populatedRental.contract.agreedToSign || prev.contract?.agreedToSign),
+              ownerSigned: Boolean(populatedRental.contract.ownerSigned || prev.contract?.ownerSigned),
+              ownerSignature: populatedRental.contract.ownerSignature || prev.contract?.ownerSignature,
+              ownerSignerName: populatedRental.contract.ownerSignerName || prev.contract?.ownerSignerName,
+              ownerSignedAt: populatedRental.contract.ownerSignedAt || prev.contract?.ownerSignedAt,
+            },
+          }));
+          break;
+        }
+      }
       // Mark as read
       if (partnerUser._id) {
         smartEquipApi.markChatAsRead(token, {
@@ -578,13 +604,27 @@ export default function RentalChatModal({
                           type="button"
                           onClick={() => {
                             let rentalToView = { ...currentRental };
+                            const populatedContract =
+                              typeof msg.rental_id === "object" && msg.rental_id !== null
+                                ? msg.rental_id.contract
+                                : undefined;
                             if (msg.contract_data) {
-                              const isSigned = msg.contract_data.is_signed || msg.contract_data.status === "CONTRACT_SIGNED" || msg.contract_data.status === "PAID";
+                              const isRenterSigned = Boolean(
+                                msg.contract_data.is_signed ||
+                                  msg.contract_data.status === "CONTRACT_SIGNED" ||
+                                  msg.contract_data.status === "PAID" ||
+                                  populatedContract?.termsAccepted ||
+                                  rentalToView.contract?.termsAccepted ||
+                                  populatedContract?.signedAt ||
+                                  rentalToView.contract?.signedAt ||
+                                  (populatedContract?.digitalSignature && populatedContract.digitalSignature.startsWith("data:image")) ||
+                                  (rentalToView.contract?.digitalSignature && rentalToView.contract.digitalSignature.startsWith("data:image"))
+                              );
                               const isPaid = msg.contract_data.status === "PAID" || rentalToView.payment?.isPaid;
                               rentalToView = {
                                 ...rentalToView,
                                 totalAmount: msg.contract_data.total_amount || rentalToView.totalAmount,
-                                status: isPaid ? "PAID" : isSigned ? "CONTRACT_SIGNED" : rentalToView.status,
+                                status: isPaid ? "PAID" : isRenterSigned ? "CONTRACT_SIGNED" : rentalToView.status,
                                 payment: {
                                   ...rentalToView.payment,
                                   isPaid: Boolean(isPaid),
@@ -592,15 +632,22 @@ export default function RentalChatModal({
                                 },
                                 contract: {
                                   ...rentalToView.contract,
-                                  contractNumber: msg.contract_data.contract_number || rentalToView.contract?.contractNumber,
+                                  ...populatedContract,
+                                  contractNumber: msg.contract_data.contract_number || populatedContract?.contractNumber || rentalToView.contract?.contractNumber,
                                   ownerSigned: true,
-                                  ownerSignature: rentalToView.contract?.ownerSignature || (rentalToView as any).owner_signature?.signature_image || (rentalToView as any).contract?.owner_signature?.signature_image || "",
-                                  ownerSignerName: rentalToView.contract?.ownerSignerName || (rentalToView as any).owner_signature?.signer_name || (typeof rentalToView.owner === "object" ? rentalToView.owner?.name : "Chủ máy"),
-                                  ownerSignedAt: rentalToView.contract?.ownerSignedAt || (rentalToView as any).owner_signature?.signed_at || undefined,
-                                  termsAccepted: isSigned || rentalToView.contract?.termsAccepted,
-                                  renterSignature: rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
-                                  digitalSignature: rentalToView.contract?.digitalSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"),
-                                  signedAt: rentalToView.contract?.signedAt || (isSigned ? new Date().toISOString() : undefined),
+                                  ownerSignature: populatedContract?.ownerSignature || rentalToView.contract?.ownerSignature || (rentalToView as any).owner_signature?.signature_image || (rentalToView as any).contract?.owner_signature?.signature_image || "",
+                                  ownerSignerName: populatedContract?.ownerSignerName || rentalToView.contract?.ownerSignerName || (rentalToView as any).owner_signature?.signer_name || (typeof rentalToView.owner === "object" ? rentalToView.owner?.name : "Chủ máy"),
+                                  ownerSignedAt: populatedContract?.ownerSignedAt || rentalToView.contract?.ownerSignedAt || (rentalToView as any).owner_signature?.signed_at || undefined,
+                                  termsAccepted: isRenterSigned,
+                                  renterSignature: isRenterSigned
+                                    ? (populatedContract?.renterSignature || rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"))
+                                    : undefined,
+                                  digitalSignature: isRenterSigned
+                                    ? (populatedContract?.digitalSignature || rentalToView.contract?.digitalSignature || undefined)
+                                    : undefined,
+                                  signedAt: isRenterSigned
+                                    ? (populatedContract?.signedAt || rentalToView.contract?.signedAt || new Date().toISOString())
+                                    : undefined,
                                 },
                               };
                               setCurrentRental(rentalToView);
