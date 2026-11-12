@@ -82,6 +82,16 @@ const paymentController = {
         Number(amount) || rental.totalAmount || rental.rentalFee || 0
       );
     }
+
+    // Làm tròn số tiền đến hàng nghìn để tránh lỗi các ngân hàng (Napas 247) từ chối chuyển khoản tiền lẻ
+    if (payAmount > 0 && payAmount % 1000 !== 0) {
+      payAmount = Math.ceil(payAmount / 1000) * 1000;
+    }
+    // Đảm bảo hạn mức tối thiểu 2.000 VNĐ theo chuẩn Napas
+    if (payAmount > 0 && payAmount < 2000) {
+      payAmount = 2000;
+    }
+
     if (payAmount <= 0) {
       throw new AppError(400, "Số tiền thanh toán phải lớn hơn 0");
     }
