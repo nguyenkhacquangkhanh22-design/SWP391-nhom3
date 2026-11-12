@@ -40,6 +40,7 @@ router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respon
 router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
 router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
 router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
+router.post("/rentals/:id/confirm-return", asyncHandler(ownerController.confirmOwnerRentalReturn));
 router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));
 router.post("/rentals/:id/cancel", asyncHandler(ownerController.cancelRentalByOwner));
 router.post("/rentals/:id/review-renter", asyncHandler(ownerController.reviewRenter));

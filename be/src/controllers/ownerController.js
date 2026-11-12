@@ -508,6 +508,10 @@ async function getRentalRequests(req, res) {
           ? "rejected"
           : upperStatus === "PAID"
           ? "confirmed"
+          : upperStatus === "RETURNED" || upperStatus === "RETURN_REQUESTED"
+          ? "returned"
+          : upperStatus === "COMPLETED"
+          ? "completed"
           : "pending";
 
       if (!exists) {
@@ -2641,6 +2645,122 @@ async function confirmOwnerRentalPayment(req, res) {
   }
 }
 
+// Xác nhận nhận lại thiết bị hoàn trả từ khách và hoàn tất đơn thuê
+async function confirmOwnerRentalReturn(req, res) {
+  const { id } = req.params;
+  const { condition_note, notes } = req.body || {};
+  const ownerId = req.user._id;
+
+  const rental = await Rental.findOne({ _id: id, owner: ownerId })
+    .populate("renter", "name email phone User_Id")
+    .populate("equipment", "title images dailyRate depositAmount category");
+
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy đơn thuê của bạn");
+  }
+
+  const upperStatus = String(rental.status || "").toUpperCase();
+  const validReturningStatuses = [
+    "RETURNED",
+    "RETURN_REQUESTED",
+    "ACTIVE",
+    "PAID",
+    "IN_PROGRESS",
+    "CONFIRMED",
+    "confirmed",
+    "returned",
+  ];
+  if (!validReturningStatuses.includes(upperStatus)) {
+    throw new AppError(
+      400,
+      `Không thể xác nhận hoàn tất đơn ở trạng thái '${rental.status}'`
+    );
+  }
+
+  rental.status = "COMPLETED";
+  rental.completedAt = new Date();
+  rental.returnInspection = {
+    inspectedAt: new Date(),
+    inspectedBy: req.user._id,
+    conditionNote: condition_note || "Đã kiểm tra và nhận lại đầy đủ thiết bị, linh phụ kiện.",
+    notes: notes || "",
+  };
+  await rental.save();
+
+  // Mở lại lịch khả dụng và trạng thái thiết bị sẵn sàng cho thuê lại
+  const equipmentId = rental.equipment?._id || rental.equipment;
+  if (equipmentId) {
+    try {
+      await unlockEquipmentSchedule(equipmentId, rental.rentalCode);
+      await Equipment.findByIdAndUpdate(equipmentId, { status: "available" });
+    } catch (e) {
+      console.warn("Lỗi mở lịch thiết bị khi hoàn tất đơn:", e?.message);
+    }
+  }
+
+  // Đồng bộ RentalRequest và RentalContract nếu có
+  try {
+    const RentalRequest = require("../models/RentalRequest");
+    await RentalRequest.updateMany(
+      { request_code: rental.rentalCode },
+      { $set: { status: "completed" } }
+    );
+    if (rental.contract?.contractNumber) {
+      const RentalContract = require("../models/RentalContract");
+      await RentalContract.updateMany(
+        { contract_code: rental.contract.contractNumber },
+        { $set: { status: "completed" } }
+      );
+    }
+  } catch (syncErr) {
+    console.warn("Lỗi đồng bộ RentalRequest/Contract hoàn tất:", syncErr.message);
+  }
+
+  // Gửi thông báo cho Người thuê (Renter)
+  if (UserNotification && rental.renter?._id) {
+    try {
+      await UserNotification.create({
+        user_id: rental.renter._id,
+        title: "🎉 Thiết bị đã được nhận lại & Hoàn tất đơn thuê!",
+        message: `Chủ thiết bị (${req.user.name}) đã xác nhận nhận lại máy và nghiệm thu hoàn tất đơn thuê #${rental.rentalCode} cho "${rental.equipment?.title || "Thiết bị"}". Cảm ơn bạn đã tin tưởng SmartEquip!`,
+        related_record_id: rental._id,
+      });
+    } catch (notifErr) {
+      console.warn("Lỗi tạo thông báo hoàn tất cho Renter:", notifErr?.message);
+    }
+  }
+
+  // Bắn Socket.IO realtime thông báo hoàn tất
+  try {
+    const { getIO } = require("../config/socket");
+    const io = getIO();
+    const renterMongoId = String(rental.renter?._id || rental.renter || "");
+    const renterUserCode = String(rental.renter?.User_Id || "");
+    const toastData = {
+      type: "rental_completed",
+      rentalId: rental._id,
+      rentalCode: rental.rentalCode,
+      equipmentTitle: rental.equipment?.title || "Thiết bị",
+      renterId: renterMongoId,
+      renterUserCode: renterUserCode,
+      ownerId: String(ownerId),
+      title: "🎉 Đơn thuê đã hoàn tất!",
+      message: `Chủ máy đã xác nhận nhận lại thiết bị cho đơn #${rental.rentalCode}. Bạn có thể để lại đánh giá thiết bị!`,
+      link: "/rentals/history",
+      createdAt: new Date(),
+    };
+    io.emit("rental:completed", toastData);
+  } catch (socketErr) {
+    console.warn("Socket emit error on confirmOwnerRentalReturn:", socketErr?.message);
+  }
+
+  return res.json({
+    success: true,
+    message: "Đã xác nhận nhận lại thiết bị và hoàn tất đơn thuê thành công!",
+    rental,
+  });
+}
+
 async function updateOwnerRentalContractTerms(req, res) {
   const { id } = req.params;
   const ownerId = req.user._id;
@@ -3114,6 +3234,7 @@ module.exports = {
   getOwnerRentals,
   respondOwnerRental,
   confirmOwnerRentalPayment,
+  confirmOwnerRentalReturn,
   updateOwnerRentalContractTerms,
   cancelRentalByOwner,
   reviewRenter,

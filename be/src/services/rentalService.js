@@ -836,11 +836,66 @@ class RentalService {
 
     await rental.save();
 
+    const populatedRental = await Rental.findById(rental._id)
+      .populate("equipment", "title images dailyRate depositAmount category")
+      .populate("owner", "name email phone");
+
+    // 1. Tạo thông báo cho Chủ máy (Owner)
+    if (UserNotification && populatedRental?.owner) {
+      try {
+        const ownerId = populatedRental.owner._id || populatedRental.owner;
+        const equipTitle = populatedRental.equipment?.title || "Thiết bị";
+        const schedTimeStr = returnTime ? new Date(returnTime).toLocaleString("vi-VN") : "Sớm nhất";
+        await UserNotification.create({
+          user_id: ownerId,
+          title: "📦 Khách thuê báo trả thiết bị!",
+          message: `Khách hàng ${renterUser.name} đã gửi yêu cầu trả thiết bị "${equipTitle}" (Đơn #${rental.rentalCode}). Hẹn trả: ${schedTimeStr} tại: ${returnLocation || rental.deliveryAddress || "Địa chỉ theo hợp đồng"}. Tình trạng: ${rental.returnInfo.returnCondition}`,
+          related_record_id: rental._id,
+        });
+      } catch (notifErr) {
+        console.warn("Lỗi tạo thông báo báo trả thiết bị cho Owner:", notifErr?.message);
+      }
+    }
+
+    // 2. Phát Socket.IO realtime cho Owner & Hệ thống
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const ownerIdStr = String(populatedRental.owner?._id || populatedRental.owner || "");
+      const toastData = {
+        type: "rental_returned",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: ownerIdStr,
+        renterName: renterUser.name || "Khách thuê",
+        renterId: String(renterUser._id),
+        equipmentTitle: populatedRental.equipment?.title || "Thiết bị",
+        returnInfo: rental.returnInfo,
+        title: "📦 Khách thuê báo trả thiết bị!",
+        message: `Khách ${renterUser.name} vừa gửi yêu cầu trả "${populatedRental.equipment?.title || "Thiết bị"}" (Đơn #${rental.rentalCode}). Vui lòng kiểm tra và nhận lại thiết bị!`,
+        link: "/owner",
+        createdAt: new Date(),
+      };
+      io.emit("rental:returned", toastData);
+      io.emit("notification:new_rental", toastData);
+    } catch (socketErr) {
+      console.warn("Socket emit error on requestReturn:", socketErr?.message);
+    }
+
+    // 3. Đồng bộ trạng thái sang RentalRequest nếu có
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        { request_code: rental.rentalCode },
+        { $set: { status: "returned" } }
+      );
+    } catch (rrErr) {
+      console.warn("Lỗi đồng bộ RentalRequest on requestReturn:", rrErr?.message);
+    }
+
     return {
       message: "Yêu cầu hoàn trả thiết bị đã được gửi thành công. Chủ thiết bị sẽ tiến hành nghiệm thu.",
-      rental: await Rental.findById(rental._id)
-        .populate("equipment", "title images dailyRate depositAmount category")
-        .populate("owner", "name email phone"),
+      rental: populatedRental,
     };
   }
 

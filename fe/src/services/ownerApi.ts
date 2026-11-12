@@ -267,6 +267,17 @@ export const ownerApi = {
       token
     ),
 
+  confirmOwnerRentalReturn: (
+    token: string,
+    rentalId: string,
+    data?: { condition_note?: string; notes?: string }
+  ) =>
+    request<{ success: boolean; message: string; rental: any }>(
+      `/api/owner/rentals/${rentalId}/confirm-return`,
+      { method: "POST", body: JSON.stringify(data || {}) },
+      token
+    ),
+
   updateOwnerRentalContractTerms: (
     token: string,
     rentalId: string,

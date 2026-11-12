@@ -145,12 +145,24 @@ export default function OwnerPortal() {
       void loadAllData(false);
     };
 
+    const handleRentalReturned = (data: any) => {
+      const currentUserId = (user as any)?._id || (user as any)?.id;
+      if (data?.ownerId && currentUserId && String(data.ownerId) !== String(currentUserId)) {
+        return;
+      }
+      playNewOrderBell();
+      setSuccess(`📦 Khách thuê vừa gửi yêu cầu trả thiết bị #${data?.rentalCode || ""}! Vui lòng kiểm tra và nghiệm thu.`);
+      void fetchNotifications();
+      void loadAllData(false);
+    };
+
     socket.on("payment:approved", handleLivePayment);
     socket.on("payment:submitted", handleLivePayment);
     socket.on("payment:success_owner", handleLivePayment);
     socket.on("rental:created", handleNewRental);
     socket.on("notification:new_rental", handleNewRental);
     socket.on("rental:approved", handleLivePayment);
+    socket.on("rental:returned", handleRentalReturned);
 
     return () => {
       socket.off("payment:approved", handleLivePayment);
@@ -159,6 +171,7 @@ export default function OwnerPortal() {
       socket.off("rental:created", handleNewRental);
       socket.off("notification:new_rental", handleNewRental);
       socket.off("rental:approved", handleLivePayment);
+      socket.off("rental:returned", handleRentalReturned);
     };
   }, [token]);
 
@@ -527,6 +540,15 @@ export default function OwnerPortal() {
             📬 Yêu cầu thuê
             {stats && stats.pendingRequests > 0 && (
               <span className="badge-count">{stats.pendingRequests}</span>
+            )}
+            {requests.filter((r) => String(r.status).toLowerCase() === "returned").length > 0 && (
+              <span
+                className="badge-count"
+                style={{ background: "#9333ea", marginLeft: stats && stats.pendingRequests > 0 ? "4px" : "8px" }}
+                title="Có đơn khách báo trả đồ cần nghiệm thu"
+              >
+                {requests.filter((r) => String(r.status).toLowerCase() === "returned").length} trả
+              </span>
             )}
           </button>
           <button

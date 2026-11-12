@@ -68,6 +68,8 @@ export interface RentalRequest {
     | "rejected"
     | "contract_created"
     | "active"
+    | "returned"
+    | "return_requested"
     | "completed"
     | "cancelled";
   moderator_id?: { _id: string; name: string; email: string };
