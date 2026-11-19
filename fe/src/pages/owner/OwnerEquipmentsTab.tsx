@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../app/AuthProvider";
 import { smartEquipApi } from "../../services/smartEquipApi";
 import type { Equipment } from "../../types/owner";

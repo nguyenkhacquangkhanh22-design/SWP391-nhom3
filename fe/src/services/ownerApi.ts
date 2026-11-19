@@ -214,6 +214,16 @@ export const ownerApi = {
       token
     ),
 
+  getRentalChecklist: (token: string, rentalId: string) =>
+    request<{ checklist: any }>(`/api/owner/rentals/${rentalId}/checklist`, { method: "GET" }, token),
+
+  saveRentalChecklist: (token: string, rentalId: string, data: { items: any[]; notes?: string; is_return?: boolean }) =>
+    request<{ message: string; checklist: any }>(
+      `/api/owner/rentals/${rentalId}/checklist`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
   submitStatusRequest: (
     token: string,
     id: string,
