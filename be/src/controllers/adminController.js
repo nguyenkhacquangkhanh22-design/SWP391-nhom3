@@ -8,6 +8,7 @@ const RentalContract = require("../models/RentalContract");
 const HandoverRecord = require("../models/HandoverRecord");
 const AuditLog = require("../models/AuditLog");
 const ContractTemplate = require("../models/ContractTemplate");
+const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -1255,6 +1256,134 @@ async function updateContractTemplateStatus(req, res) {
   });
 }
 
+// ==========================================
+// UC_A27: Equipment Status & Maintenance Review
+// ==========================================
+async function listEquipmentStatusRequests(req, res) {
+  const { status, target_status, search } = req.query;
+  const filter = {};
+
+  if (status && ["pending", "approved", "rejected"].includes(status)) {
+    filter.status = status;
+  }
+  if (target_status && ["available", "maintenance", "retired", "damaged", "hidden"].includes(target_status)) {
+    filter.target_status = target_status;
+  }
+
+  const [requests, totalPending, totalApproved, totalRejected] = await Promise.all([
+    EquipmentStatusRequest.find(filter)
+      .populate("equipment_id", "title name images condition status visibility serial_number")
+      .populate("owner_id", "name email phone")
+      .populate("reviewed_by", "name email")
+      .sort({ createdAt: -1 })
+      .lean(),
+    EquipmentStatusRequest.countDocuments({ status: "pending" }),
+    EquipmentStatusRequest.countDocuments({ status: "approved" }),
+    EquipmentStatusRequest.countDocuments({ status: "rejected" }),
+  ]);
+
+  let filteredRequests = requests;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filteredRequests = requests.filter((r) => {
+      const eqTitle = (r.equipment_id?.title || r.equipment_id?.name || "").toLowerCase();
+      const ownerName = (r.owner_id?.name || "").toLowerCase();
+      const ownerEmail = (r.owner_id?.email || "").toLowerCase();
+      return eqTitle.includes(q) || ownerName.includes(q) || ownerEmail.includes(q);
+    });
+  }
+
+  res.json({
+    requests: filteredRequests,
+    stats: {
+      total: requests.length,
+      pending: totalPending,
+      approved: totalApproved,
+      rejected: totalRejected,
+    },
+  });
+}
+
+async function reviewEquipmentStatusRequest(req, res) {
+  const { id } = req.params;
+  const { status, moderator_note } = req.body;
+
+  if (!["approved", "rejected"].includes(status)) {
+    throw new AppError(400, "Trạng thái thẩm định chỉ có thể là approved hoặc rejected.");
+  }
+
+  if (status === "rejected" && (!moderator_note || !moderator_note.trim())) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối yêu cầu đổi trạng thái.");
+  }
+
+  const statusRequest = await EquipmentStatusRequest.findById(id);
+  if (!statusRequest) {
+    throw new AppError(404, "Không tìm thấy yêu cầu đổi trạng thái thiết bị.");
+  }
+
+  if (statusRequest.status !== "pending") {
+    throw new AppError(400, "Yêu cầu này đã được xử lý trước đó.");
+  }
+
+  statusRequest.status = status;
+  statusRequest.moderator_note = moderator_note ? moderator_note.trim() : "";
+  statusRequest.reviewed_at = new Date();
+  statusRequest.reviewed_by = req.user._id;
+
+  if (status === "approved") {
+    const equipment = await Equipment.findById(statusRequest.equipment_id);
+    if (equipment) {
+      if (statusRequest.target_status === "hidden") {
+        equipment.visibility = "hidden";
+        equipment.hidden_reason = statusRequest.reason || "Chủ máy yêu cầu tạm ẩn thiết bị";
+      } else {
+        equipment.status = statusRequest.target_status;
+        if (statusRequest.target_status === "maintenance") {
+          equipment.visibility = "hidden"; // Ẩn khỏi marketplace khi đang bảo trì
+          equipment.hidden_reason = "Thiết bị đang trong kỳ bảo trì & bảo dưỡng định kỳ";
+        } else if (statusRequest.target_status === "available") {
+          equipment.visibility = "published";
+          equipment.hidden_reason = "";
+        }
+      }
+      await equipment.save();
+    }
+  }
+
+  await statusRequest.save();
+
+  // Create notification for Owner
+  try {
+    await UserNotification.create({
+      user_id: statusRequest.owner_id,
+      title: status === "approved" ? "Yêu cầu chuyển trạng thái thiết bị được chấp thuận" : "Yêu cầu chuyển trạng thái thiết bị bị từ chối",
+      message: status === "approved"
+        ? `Yêu cầu chuyển thiết bị sang trạng thái ${statusRequest.target_status.toUpperCase()} đã được Quản trị viên duyệt.`
+        : `Yêu cầu chuyển thiết bị sang ${statusRequest.target_status.toUpperCase()} bị từ chối. Lý do: ${moderator_note}`,
+      type: "equipment_status_review",
+      read: false,
+    });
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: status === "approved" ? "EQUIPMENT_STATUS_APPROVED" : "EQUIPMENT_STATUS_REJECTED",
+    targetType: "EquipmentStatusRequest",
+    targetId: statusRequest._id,
+    details: {
+      equipment_id: statusRequest.equipment_id,
+      target_status: statusRequest.target_status,
+      moderator_note: statusRequest.moderator_note,
+    },
+  });
+
+  res.json({
+    message: status === "approved" ? "Đã duyệt yêu cầu đổi trạng thái thiết bị." : "Đã từ chối yêu cầu đổi trạng thái thiết bị.",
+    request: statusRequest,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1275,4 +1404,6 @@ module.exports = {
   createContractTemplate,
   updateContractTemplate,
   updateContractTemplateStatus,
+  listEquipmentStatusRequests,
+  reviewEquipmentStatusRequest,
 };

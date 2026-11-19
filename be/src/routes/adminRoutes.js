@@ -47,6 +47,10 @@ router.post("/contract-templates", asyncHandler(adminController.createContractTe
 router.put("/contract-templates/:id", asyncHandler(adminController.updateContractTemplate));
 router.patch("/contract-templates/:id/status", asyncHandler(adminController.updateContractTemplateStatus));
 
+// Equipment Status & Maintenance Requests review (UC_A27)
+router.get("/equipment-status-requests", asyncHandler(adminController.listEquipmentStatusRequests));
+router.patch("/equipment-status-requests/:id/review", asyncHandler(adminController.reviewEquipmentStatusRequest));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
