@@ -347,3 +347,37 @@ export interface AdminAuditLogsResponse {
     limit: number;
   };
 }
+
+// ==========================================
+// CONTRACT TEMPLATES (UC_A26)
+// ==========================================
+export interface ContractTemplateField {
+  key: string;
+  label: string;
+  required: boolean;
+}
+
+export interface AdminContractTemplate {
+  _id: string;
+  template_code: string;
+  name: string;
+  version: number;
+  terms_content: string;
+  fields: ContractTemplateField[];
+  status: "draft" | "published" | "retired";
+  created_by?: { _id: string; name: string; email: string; role: string };
+  published_by?: { _id: string; name: string; email: string; role: string };
+  published_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminContractTemplatesResponse {
+  templates: AdminContractTemplate[];
+  stats: {
+    total: number;
+    draft: number;
+    published: number;
+    retired: number;
+  };
+}

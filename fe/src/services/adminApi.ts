@@ -250,4 +250,66 @@ export const adminApi = {
       token
     );
   },
+
+  // ==========================================
+  // UC_A26: Digital Contract Templates
+  // ==========================================
+  listContractTemplates: (
+    token: string,
+    params?: { status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminContractTemplatesResponse>(
+      `/contract-templates${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createContractTemplate: (
+    token: string,
+    body: {
+      template_code: string;
+      name: string;
+      version?: number;
+      terms_content: string;
+      fields?: Array<{ key: string; label: string; required: boolean }>;
+      status?: "draft" | "published";
+    }
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      "/contract-templates",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateContractTemplate: (
+    token: string,
+    id: string,
+    body: {
+      name?: string;
+      terms_content?: string;
+      fields?: Array<{ key: string; label: string; required: boolean }>;
+      status?: "draft" | "published" | "retired";
+    }
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      `/contract-templates/${id}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateContractTemplateStatus: (
+    token: string,
+    id: string,
+    status: "draft" | "published" | "retired"
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      `/contract-templates/${id}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
+      token
+    ),
 };

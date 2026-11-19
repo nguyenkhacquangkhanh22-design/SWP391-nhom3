@@ -11,6 +11,7 @@ export type AdminTab =
   | "disputes"
   | "support"
   | "finance"
+  | "contract-templates"
   | "audit-logs";
 
 interface AdminSidebarProps {
@@ -157,6 +158,13 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">🏛️</span>
             <span>Duyệt Ngân Hàng & Rút Tiền</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("contract-templates")}
+          >
+            <span className="admin-nav-icon">📜</span>
+            <span>Mẫu Hợp Đồng (UC_A26)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "audit-logs" ? "is-active" : ""}`}

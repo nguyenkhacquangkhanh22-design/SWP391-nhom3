@@ -8,6 +8,7 @@ import AdminDisputesTab from "../../components/admin/AdminDisputesTab";
 import AdminKycTab from "../../components/admin/AdminKycTab";
 import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
+import AdminContractTemplateTab from "../../components/admin/AdminContractTemplateTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -596,6 +597,8 @@ export default function AdminDashboard() {
                 ? "Nhật ký hoạt động hệ thống (UC_A21)"
                 : activeTab === "finance"
                 ? "Quản lý Tài chính, Ví trung gian & Duyệt rút tiền (Admin Finance)"
+                : activeTab === "contract-templates"
+                ? "Mẫu Hợp Đồng Thuê Máy Ảnh Điện Tử (UC_A26)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2001,6 +2004,17 @@ export default function AdminDashboard() {
         {activeTab === "finance" && (
           <div style={{ marginTop: "20px" }}>
             <AdminFinanceManager />
+          </div>
+        )}
+
+        {/* Digital Contract Templates Tab (UC_A26) */}
+        {activeTab === "contract-templates" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminContractTemplateTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
           </div>
         )}
 
