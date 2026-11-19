@@ -266,7 +266,7 @@
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │ 4. NGHIỆP VỤ & ĐIỀU PHỐI (CONTROLLER & REALTIME EVENT TIER)                   │
 │    ├── adminController.js             : Thống kê tổng quan, quản lý người dùng│
-│    ├── ownerRegistrationC![1795105279590](image/README_WORKFLOW_SYSTEM_ADMIN_7UC/1795105279590.png)ontroller.js : Quy trình duyệt hồ sơ Owner           │
+│    ├── ownerRegistrationController.js : Quy trình duyệt hồ sơ Owner           │
 │    ├── walletController.js            : Xử lý giao dịch & lệnh rút tiền       │
 │    ├── socket.js                      : Kênh phát tin tức thì (ticket:replied)│
 │    └── auditLogger.js                 : Ghi vết kiểm toán (Actor, IP, Action) │
