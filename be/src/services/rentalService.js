@@ -128,6 +128,32 @@ class RentalService {
       throw new AppError(400, `Thiết bị hiện không khả dụng để thuê (${equipment.status})`);
     }
 
+    if (equipment.available_quantity !== undefined && equipment.available_quantity <= 0) {
+      throw new AppError(400, "Thiết bị hiện đã tạm hết hàng trong kho, không thể tạo yêu cầu thuê");
+    }
+
+    // Kiểm tra giờ bắt đầu thuê không được bé hơn giờ hiện tại nếu thuê trong ngày hôm nay
+    if (startDate && deliveryTime) {
+      const now = new Date();
+      const startDateTime = new Date(startDate);
+      const [delHours, delMins] = String(deliveryTime).split(":").map(Number);
+      startDateTime.setHours(isNaN(delHours) ? 9 : delHours, isNaN(delMins) ? 0 : delMins, 0, 0);
+
+      const isToday =
+        startDateTime.getFullYear() === now.getFullYear() &&
+        startDateTime.getMonth() === now.getMonth() &&
+        startDateTime.getDate() === now.getDate();
+
+      if (isToday && startDateTime.getTime() < now.getTime()) {
+        const curH = String(now.getHours()).padStart(2, "0");
+        const curM = String(now.getMinutes()).padStart(2, "0");
+        throw new AppError(
+          400,
+          `Giờ nhận máy của ngày hôm nay (${deliveryTime}) không được bé hơn giờ hiện tại (${curH}:${curM}).`
+        );
+      }
+    }
+
     if (equipment.owner && equipment.owner.toString() === renterUser._id.toString()) {
       throw new AppError(400, "Bạn không thể thuê thiết bị của chính mình");
     }
