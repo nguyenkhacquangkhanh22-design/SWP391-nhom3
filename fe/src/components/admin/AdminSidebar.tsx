@@ -159,20 +159,6 @@ export default function AdminSidebar({
             </span>
           </button>
           <button
-            className={`admin-nav-item ${activeTab === "maintenance-logs" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("maintenance-logs")}
-          >
-            <span className="admin-nav-icon">⚙️</span>
-            <span>Sổ Bảo Trì & Shutter (UC_A33)</span>
-          </button>
-          <button
-            className={`admin-nav-item ${activeTab === "lab-cleanroom" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("lab-cleanroom")}
-          >
-            <span className="admin-nav-icon">📊</span>
-            <span>Hiệu Suất & Bảo Dưỡng Máy</span>
-          </button>
-          <button
             className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("contract-templates")}
           >
