@@ -66,6 +66,12 @@ export default function RentalRequestModal({
       return;
     }
 
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (startDate < todayStr) {
+      setError("Ngày bắt đầu thuê không được ở trong quá khứ.");
+      return;
+    }
+
     if (totalDays <= 0) {
       setError("Ngày kết thúc phải sau ngày bắt đầu ít nhất 1 ngày.");
       return;

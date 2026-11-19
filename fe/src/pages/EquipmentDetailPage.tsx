@@ -159,6 +159,19 @@ export default function EquipmentDetailPage() {
       }
     }
 
+    if (startDate && startDate === todayStr && deliveryTime) {
+      const now = new Date();
+      const [h, m] = deliveryTime.split(":").map(Number);
+      const deliveryDateTime = new Date();
+      deliveryDateTime.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+
+      if (deliveryDateTime < now) {
+        const curH = String(now.getHours()).padStart(2, "0");
+        const curM = String(now.getMinutes()).padStart(2, "0");
+        errors.deliveryTime = `Giờ nhận máy của ngày hôm nay (${deliveryTime}) không được bé hơn giờ hiện tại (${curH}:${curM}).`;
+      }
+    }
+
     if (startDate && endDate && startDate === endDate && deliveryTime && returnTime) {
       if (returnTime <= deliveryTime) {
         errors.returnTime = "Giờ trả máy phải sau giờ nhận máy ít nhất 1 giờ.";
@@ -769,9 +782,18 @@ export default function EquipmentDetailPage() {
                       type="time"
                       value={deliveryTime}
                       onChange={(e) => setDeliveryTime(e.target.value)}
-                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none transition-all ${
+                        fieldErrors.deliveryTime
+                          ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                          : "border-[#283754] focus:border-orange-500"
+                      }`}
                       required
                     />
+                    {fieldErrors.deliveryTime && (
+                      <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                        <span>⚠️</span> {fieldErrors.deliveryTime}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
