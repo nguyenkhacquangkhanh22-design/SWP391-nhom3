@@ -59,6 +59,10 @@ router.post("/memberships/grant", asyncHandler(adminController.grantOwnerMembers
 router.get("/settlements", asyncHandler(adminController.listSettlements));
 router.patch("/settlements/:id/approve", asyncHandler(adminController.approveSettlement));
 
+// Handover & Return Records inspection (UC_A30)
+router.get("/handover-records", asyncHandler(adminController.listHandoverRecords));
+router.patch("/handover-records/:id/review", asyncHandler(adminController.reviewHandoverRecord));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));

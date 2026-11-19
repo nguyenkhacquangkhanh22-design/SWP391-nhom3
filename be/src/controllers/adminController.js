@@ -1662,6 +1662,111 @@ async function approveSettlement(req, res) {
   });
 }
 
+// ==========================================
+// UC_A30: Handover & Return Records Inspection
+// ==========================================
+async function listHandoverRecords(req, res) {
+  const { record_type, review_status, contract_id, search } = req.query;
+  const filter = {};
+
+  if (record_type && ["handover", "return"].includes(record_type)) {
+    filter.record_type = record_type;
+  }
+  if (review_status && ["pending", "verified", "needs_changes"].includes(review_status)) {
+    filter["moderator_review.status"] = review_status;
+  }
+  if (contract_id) {
+    filter.contract_id = contract_id;
+  }
+
+  const [records, totalHandover, totalReturn, totalPendingReview, totalVerified] = await Promise.all([
+    HandoverRecord.find(filter)
+      .populate("equipment_id", "title name images serial_number condition")
+      .populate("owner_id", "name email phone")
+      .populate("renter_id", "name email phone")
+      .populate("contract_id", "contract_code")
+      .populate("moderator_review.moderator_id", "name email")
+      .sort({ record_date: -1 })
+      .lean(),
+    HandoverRecord.countDocuments({ record_type: "handover" }),
+    HandoverRecord.countDocuments({ record_type: "return" }),
+    HandoverRecord.countDocuments({ "moderator_review.status": "pending" }),
+    HandoverRecord.countDocuments({ "moderator_review.status": "verified" }),
+  ]);
+
+  let filtered = records;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = records.filter((r) => {
+      const eqTitle = (r.equipment_id?.title || r.equipment_id?.name || "").toLowerCase();
+      const ownerName = (r.owner_id?.name || "").toLowerCase();
+      const renterName = (r.renter_id?.name || "").toLowerCase();
+      const contractCode = (r.contract_id?.contract_code || "").toLowerCase();
+      return eqTitle.includes(q) || ownerName.includes(q) || renterName.includes(q) || contractCode.includes(q);
+    });
+  }
+
+  res.json({
+    records: filtered,
+    stats: {
+      total: records.length,
+      handover: totalHandover,
+      return: totalReturn,
+      pendingReview: totalPendingReview,
+      verified: totalVerified,
+    },
+  });
+}
+
+async function reviewHandoverRecord(req, res) {
+  const { id } = req.params;
+  const { status, note } = req.body;
+
+  if (!["verified", "needs_changes"].includes(status)) {
+    throw new AppError(400, "Trạng thái chỉ có thể là verified hoặc needs_changes.");
+  }
+
+  const record = await HandoverRecord.findById(id);
+  if (!record) {
+    throw new AppError(404, "Không tìm thấy biên bản bàn giao/hoàn trả.");
+  }
+
+  record.moderator_review = {
+    status,
+    note: note ? note.trim() : (status === "verified" ? "Đã đối soát tính toàn vẹn phụ kiện & tình trạng thiết bị" : "Cần bổ sung bằng chứng"),
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+  };
+
+  if (!record.moderator_review_history) {
+    record.moderator_review_history = [];
+  }
+  record.moderator_review_history.push({
+    status,
+    note: record.moderator_review.note,
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+  });
+
+  await record.save();
+
+  await recordAuditLog(req, {
+    action: "HANDOVER_RECORD_REVIEWED",
+    targetType: "HandoverRecord",
+    targetId: record._id,
+    details: {
+      record_type: record.record_type,
+      status: record.moderator_review.status,
+      note: record.moderator_review.note,
+    },
+  });
+
+  res.json({
+    message: status === "verified" ? "Đã xác nhận kiểm tra biên bản thành công." : "Đã yêu cầu bổ sung bằng chứng biên bản.",
+    record,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1688,4 +1793,6 @@ module.exports = {
   grantOwnerMembership,
   listSettlements,
   approveSettlement,
+  listHandoverRecords,
+  reviewHandoverRecord,
 };
