@@ -1925,14 +1925,14 @@ setNotice(
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Vui lòng chụp từ <strong>1 - 3 ảnh rõ nét</strong> các góc máy, màn hình, ống kính và linh phụ kiện ngay khi nhận máy từ shipper. Bằng chứng này sẽ bảo vệ bạn tuyệt đối khỏi các rủi ro bị đổ lỗi trầy xước lúc hoàn trả!
+              Vui lòng chụp từ <strong>1 - 6 ảnh rõ nét</strong> các góc máy: mặt trước, mặt sau màn hình, ống kính, cảm biến và phụ kiện ngay khi nhận máy từ shipper. Bằng chứng này sẽ bảo vệ bạn tuyệt đối khỏi các rủi ro bị đổ lỗi trầy xước lúc hoàn trả!
             </p>
 
             <form onSubmit={handleCheckinSubmit} className="space-y-4 text-xs">
               {/* Image Previews & Upload Button */}
               <div>
                 <label className="block font-bold text-slate-300 mb-2">
-                  Ảnh ngoại quan thực tế (Tối đa 3 ảnh) *
+                  Ảnh ngoại quan thực tế 6 góc (Tối đa 6 ảnh) *
                 </label>
                 <div className="flex items-center gap-3 flex-wrap">
                   {checkinImages.map((img, idx) => (
@@ -1949,7 +1949,7 @@ setNotice(
                     </div>
                   ))}
 
-                  {checkinImages.length < 3 && (
+                  {checkinImages.length < 6 && (
                     <label className="w-20 h-20 rounded-xl border-2 border-dashed border-blue-500/40 hover:border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 flex flex-col items-center justify-center cursor-pointer text-blue-300 transition-all">
                       <span className="text-2xl">📷</span>
                       <span className="text-[10px] font-bold mt-1">+ Thêm ảnh</span>
@@ -1960,11 +1960,11 @@ setNotice(
                         className="hidden"
                         onChange={(e) => {
                           const files = Array.from(e.target.files || []);
-                          files.slice(0, 3 - checkinImages.length).forEach((file) => {
+                          files.slice(0, 6 - checkinImages.length).forEach((file) => {
                             const reader = new FileReader();
                             reader.onloadend = () => {
                               if (reader.result) {
-                                setCheckinImages((prev) => [...prev, reader.result as string].slice(0, 3));
+                                setCheckinImages((prev) => [...prev, reader.result as string].slice(0, 6));
                               }
                             };
                             reader.readAsDataURL(file);

@@ -885,7 +885,7 @@ class RentalService {
    * UC_R10_CHECKIN: Xác nhận nhận máy & Lưu ảnh ngoại quan ban đầu (Handover Check-in)
    */
   async submitHandoverCheckin(rentalId, user, checkinData = {}) {
-    const { images = [], note = "" } = checkinData;
+    const { images = [], note = "", angles = [] } = checkinData;
 
     const rental = await Rental.findById(rentalId).populate("equipment owner");
     if (!rental) {
@@ -901,6 +901,7 @@ class RentalService {
     rental.handoverCheckin = {
       receivedAt: new Date(),
       images: Array.isArray(images) ? images : [],
+      inspection_angles: Array.isArray(angles) ? angles : [],
       note: String(note || "").trim(),
       confirmedByRenter: true,
     };

@@ -252,6 +252,12 @@ const rentalSchema = new mongoose.Schema(
     handoverCheckin: {
       receivedAt: { type: Date },
       images: [{ type: String }],
+      inspection_angles: [
+        {
+          angle: { type: String },
+          url: { type: String },
+        },
+      ],
       note: { type: String, trim: true },
       confirmedByRenter: { type: Boolean, default: false },
     },
