@@ -15,6 +15,7 @@ import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAudit
 import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
 import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
 import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
+import AdminMaintenanceLogTab from "../../components/admin/AdminMaintenanceLogTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -617,6 +618,8 @@ export default function AdminDashboard() {
                 ? "Giám Sát Rủi Ro & Phòng Chống Gian Lận Thuê Máy (UC_A31)"
                 : activeTab === "damage-tariffs"
                 ? "Khung Biểu Phí Đền Bù & Khấu Hao Thiết Bị Chuẩn Hóa (UC_A32)"
+                : activeTab === "maintenance-logs"
+                ? "Sổ Theo Dõi Bảo Trì & Số Shot Màn Trập Máy Ảnh (UC_A33)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2097,6 +2100,18 @@ export default function AdminDashboard() {
           <div style={{ marginTop: "20px" }}>
             <AdminDamageTariffTab
               token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Maintenance & Shutter Logs Tab (UC_A33) */}
+        {activeTab === "maintenance-logs" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminMaintenanceLogTab
+              token={token}
+              equipments={equipments}
               onError={setError}
               onSuccess={setSuccess}
             />

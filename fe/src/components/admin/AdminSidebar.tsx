@@ -9,6 +9,7 @@ export type AdminTab =
   | "kyc"
   | "equipments"
   | "equipment-status"
+  | "maintenance-logs"
   | "memberships"
   | "settlements"
   | "handover-records"
@@ -162,6 +163,13 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">🛠️</span>
             <span>Duyệt Bảo Dưỡng (UC_A27)</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "maintenance-logs" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("maintenance-logs")}
+          >
+            <span className="admin-nav-icon">⚙️</span>
+            <span>Sổ Bảo Trì & Shutter (UC_A33)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}

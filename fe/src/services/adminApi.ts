@@ -509,4 +509,59 @@ export const adminApi = {
       { method: "PUT", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A33: Equipment Maintenance & Shutter Logs
+  // ==========================================
+  listMaintenanceLogs: (
+    token: string,
+    params?: { maintenance_type?: string; status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.maintenance_type) query.set("maintenance_type", params.maintenance_type);
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminMaintenanceLogsResponse>(
+      `/maintenance-logs${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createMaintenanceLog: (
+    token: string,
+    body: {
+      equipment_id: string;
+      maintenance_type?: string;
+      current_shutter_count?: number;
+      max_rated_shutter?: number;
+      service_center?: string;
+      cost?: number;
+      scheduled_date?: string;
+      next_due_date?: string;
+      technician_notes?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; log: import("../types/admin").AdminMaintenanceLog }>(
+      "/maintenance-logs",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateMaintenanceLogStatus: (
+    token: string,
+    id: string,
+    body: {
+      status: "scheduled" | "in_progress" | "completed" | "cancelled";
+      completed_date?: string;
+      cost?: number;
+      technician_notes?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; log: import("../types/admin").AdminMaintenanceLog }>(
+      `/maintenance-logs/${id}/status`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

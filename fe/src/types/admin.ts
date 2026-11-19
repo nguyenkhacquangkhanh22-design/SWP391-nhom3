@@ -656,3 +656,54 @@ export interface AdminDamageTariffsResponse {
     active: number;
   };
 }
+
+// ==========================================
+// EQUIPMENT MAINTENANCE & SHUTTER TRACKING (UC_A33)
+// ==========================================
+export interface AdminMaintenanceLog {
+  _id: string;
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    serial_number?: string;
+    condition?: string;
+    status?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  maintenance_type: "sensor_cleaning" | "shutter_replacement" | "lens_calibration" | "firmware_update" | "periodic_inspection";
+  current_shutter_count: number;
+  max_rated_shutter: number;
+  service_center: string;
+  cost: number;
+  scheduled_date: string;
+  completed_date?: string;
+  next_due_date?: string;
+  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  technician_notes?: string;
+  created_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMaintenanceLogsResponse {
+  logs: AdminMaintenanceLog[];
+  stats: {
+    total: number;
+    scheduled: number;
+    inProgress: number;
+    completed: number;
+    shutterAlerts: number;
+    totalCost: number;
+  };
+}
