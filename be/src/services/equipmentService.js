@@ -190,6 +190,21 @@ class EquipmentService {
     equipment.owner = equipment.owner || equipment.owner_id;
     equipment.owner_id = equipment.owner_id || equipment.owner;
 
+    // Tính toán số lượng khả dụng thực tế theo thời gian thực (Trừ đi các đơn thuê đang hoạt động)
+    const totalQty = equipment.quantity !== undefined ? equipment.quantity : 1;
+    try {
+      const Rental = require("../models/Rental");
+      const activeRentals = await Rental.find({
+        equipment: id,
+        status: { $in: ["PENDING", "APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVE", "CONTRACT_SIGNED", "DISPUTED", "pending_handover"] },
+      }).select("quantity").lean();
+      const rentedCount = activeRentals.reduce((sum, r) => sum + (Number(r.quantity) || 1), 0);
+      const computedAvail = Math.max(0, totalQty - rentedCount);
+      equipment.available_quantity = computedAvail;
+    } catch (e) {
+      if (equipment.available_quantity === undefined) equipment.available_quantity = totalQty;
+    }
+
     // Lấy danh sách đánh giá thực tế của các khách thuê trước
     try {
       const Rental = require("../models/Rental");

@@ -21,6 +21,7 @@ export default function RentalRequestModal({
   const [endDate, setEndDate] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || "");
   const [renterNote, setRenterNote] = useState("");
+  const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,6 +40,8 @@ export default function RentalRequestModal({
   }
 
   const dailyRate = equipment.dailyRate || 0;
+  const availableQuantity = equipment.available_quantity !== undefined ? equipment.available_quantity : (equipment.quantity || 1);
+  const effectiveQty = Math.max(1, Math.min(availableQuantity > 0 ? availableQuantity : 1, quantity));
 
   // Giảm giá thuê dài hạn (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -51,7 +54,7 @@ export default function RentalRequestModal({
     discountLabel = "Giảm 10% (Thuê tuần >= 7 ngày)";
   }
 
-  const subtotalRentalFee = dailyRate * totalDays;
+  const subtotalRentalFee = dailyRate * totalDays * effectiveQty;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
   const totalAmount = rentalFee; // Tổng tiền chỉ gồm tiền thuê, không cộng tiền cọc
@@ -93,6 +96,7 @@ export default function RentalRequestModal({
         equipmentId: equipment._id,
         startDate,
         endDate,
+        quantity: effectiveQty,
         deliveryTime: effectiveDeliveryTime,
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
@@ -146,6 +150,39 @@ export default function RentalRequestModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pt-3 text-xs">
+          {/* Quantity Selector */}
+          <div className="p-3 bg-[#111b2b] border border-[#21324c] rounded-xl flex items-center justify-between">
+            <div>
+              <label className="block text-xs font-bold text-slate-200">
+                🔢 Số lượng cần thuê:
+              </label>
+              <span className="text-[11px] text-slate-400">
+                (Còn sẵn {availableQuantity} chiếc trong kho)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                disabled={quantity <= 1 || availableQuantity <= 0}
+                className="w-8 h-8 rounded-lg bg-[#1e2c44] hover:bg-[#283b5c] disabled:opacity-30 text-white font-bold text-sm flex items-center justify-center transition-all border border-[#2f4368]"
+              >
+                −
+              </button>
+              <span className="w-10 text-center font-mono font-bold text-amber-300 text-sm">
+                {effectiveQty}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuantity((prev) => Math.min(availableQuantity > 0 ? availableQuantity : 1, prev + 1))}
+                disabled={quantity >= availableQuantity || availableQuantity <= 0}
+                className="w-8 h-8 rounded-lg bg-[#1e2c44] hover:bg-[#283b5c] disabled:opacity-30 text-white font-bold text-sm flex items-center justify-center transition-all border border-[#2f4368]"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
           {/* Start and End date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

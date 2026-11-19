@@ -39,6 +39,11 @@ const rentalSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
     dailyRate: {
       type: Number,
       required: true,

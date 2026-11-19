@@ -126,6 +126,7 @@ export const smartEquipApi = {
       equipmentId: string;
       startDate: string;
       endDate: string;
+      quantity?: number;
       deliveryTime?: string;
       returnTime?: string;
       deliveryMethod?: string;

@@ -430,6 +430,22 @@ const paymentController = {
         String(orderCode);
       await rental.save();
 
+      // Cập nhật trừ số lượng khả dụng của thiết bị khi thanh toán thành công
+      if (!wasAlreadyPaid && rental.equipment) {
+        try {
+          const Equipment = require("../models/Equipment");
+          const eqId = rental.equipment._id || rental.equipment;
+          const rentQty = rental.quantity || 1;
+          const eqDoc = await Equipment.findById(eqId);
+          if (eqDoc) {
+            eqDoc.available_quantity = Math.max(0, (eqDoc.available_quantity !== undefined ? eqDoc.available_quantity : (eqDoc.quantity || 1)) - rentQty);
+            await eqDoc.save();
+          }
+        } catch (eqErr) {
+          console.warn("Lỗi trừ tồn kho thiết bị sau thanh toán:", eqErr);
+        }
+      }
+
       // Nạp đầy đủ thông tin thiết bị, chủ máy, người thuê
       await rental.populate("equipment owner renter");
 
@@ -805,6 +821,22 @@ const paymentController = {
           paymentInfo.transactions[0].reference || paymentInfo.id;
       }
       await rental.save();
+
+      // Cập nhật trừ số lượng khả dụng của thiết bị khi thanh toán thành công
+      if (!wasAlreadyPaid && rental.equipment) {
+        try {
+          const Equipment = require("../models/Equipment");
+          const eqId = rental.equipment._id || rental.equipment;
+          const rentQty = rental.quantity || 1;
+          const eqDoc = await Equipment.findById(eqId);
+          if (eqDoc) {
+            eqDoc.available_quantity = Math.max(0, (eqDoc.available_quantity !== undefined ? eqDoc.available_quantity : (eqDoc.quantity || 1)) - rentQty);
+            await eqDoc.save();
+          }
+        } catch (eqErr) {
+          console.warn("Lỗi trừ tồn kho thiết bị sau thanh toán:", eqErr);
+        }
+      }
 
       // Nạp đầy đủ thông tin thiết bị, chủ máy, người thuê
       await rental.populate("equipment owner renter");

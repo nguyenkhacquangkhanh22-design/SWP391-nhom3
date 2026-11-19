@@ -148,8 +148,18 @@ class RentalService {
       throw new AppError(400, `Thiết bị hiện không khả dụng để thuê (${equipment.status})`);
     }
 
-    if (equipment.available_quantity !== undefined && equipment.available_quantity <= 0) {
+    const rentQty = Math.max(1, Number(rentalData.quantity) || 1);
+    const availableQty = equipment.available_quantity !== undefined ? equipment.available_quantity : (equipment.quantity || 1);
+
+    if (availableQty <= 0) {
       throw new AppError(400, "Thiết bị hiện đã tạm hết hàng trong kho, không thể tạo yêu cầu thuê");
+    }
+
+    if (rentQty > availableQty) {
+      throw new AppError(
+        400,
+        `Số lượng thiết bị bạn muốn thuê (${rentQty} chiếc) vượt quá số lượng còn sẵn trong kho (${availableQty} chiếc)`
+      );
     }
 
     // Kiểm tra ngày và giờ bắt đầu thuê không được ở trong quá khứ
@@ -217,7 +227,7 @@ class RentalService {
 
     const dailyRate = equipment.dailyRate || (equipment.pricing ? equipment.pricing.price_per_day : 0) || 0;
     const depositAmount = 0; // Chính sách SmartEquip: Miễn 100% tiền cọc
-    const subtotalRentalFee = dailyRate * totalDays;
+    const subtotalRentalFee = dailyRate * totalDays * rentQty;
     const discountAmount = Math.round(subtotalRentalFee * discountRate);
     const rentalFee = subtotalRentalFee - discountAmount;
 
@@ -235,12 +245,12 @@ class RentalService {
     const rentalCode = `REQ-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const contractNumber = `HD-${Date.now().toString().slice(-6)}`;
     const standardContractTerms = `HỢP ĐỒNG THUÊ THIẾT BỊ CÔNG NGHỆ SMARTEQUIP #${contractNumber}
-1. ĐIỀU KHOẢN SỬ DỤNG: Người thuê cam kết sử dụng thiết bị đúng kỹ thuật, bảo quản nguyên vẹn thân máy, ống kính và phụ kiện đi kèm.
+1. ĐIỀU KHOẢN SỬ DỤNG: Người thuê cam kết sử dụng thiết bị đúng kỹ thuật, bảo quản nguyên vẹn thân máy, ống kính và phụ kiện đi kèm (Số lượng thuê: ${rentQty} chiếc).
 2. CÔNG THỨC PHỤ PHÍ QUÁ HẠN TRẢ MÁY:
    - Trả trễ dưới 60 phút: Miễn phí hỗ trợ (Thời gian ân hạn).
-   - Trả trễ từ 1 đến 4 giờ: Phụ phí 30% đơn giá ngày (${Math.round(dailyRate * 0.3).toLocaleString("vi-VN")} đ).
-   - Trả trễ từ 4 đến 8 giờ: Phụ phí 60% đơn giá ngày (${Math.round(dailyRate * 0.6).toLocaleString("vi-VN")} đ).
-   - Trả trễ trên 8 giờ hoặc sang ngày kế tiếp: Phụ phí 100% đơn giá ngày (${dailyRate.toLocaleString("vi-VN")} đ/ngày).
+   - Trả trễ từ 1 đến 4 giờ: Phụ phí 30% đơn giá ngày (${Math.round(dailyRate * 0.3 * rentQty).toLocaleString("vi-VN")} đ).
+   - Trả trễ từ 4 đến 8 giờ: Phụ phí 60% đơn giá ngày (${Math.round(dailyRate * 0.6 * rentQty).toLocaleString("vi-VN")} đ).
+   - Trả trễ trên 8 giờ hoặc sang ngày kế tiếp: Phụ phí 100% đơn giá ngày (${(dailyRate * rentQty).toLocaleString("vi-VN")} đ/ngày).
 3. BIÊN BẢN BÀN GIAO & NGOẠI QUAN: Người thuê có quyền tải lên tối đa 3 ảnh chụp ngoại quan thực tế lúc vừa nhận máy để làm bằng chứng đối chiếu khi trả đồ.
 4. BẢO HIỂM RƠI VỠ: ${hasInsurance ? `ĐÃ ĐĂNG KÝ GÓI BẢO HIỂM TOÀN DIỆN (Phí: ${insuranceFee.toLocaleString("vi-VN")} đ - Miễn đền bù tối đa 70% chi phí sửa chữa rủi ro trầy xước/va chạm nhẹ).` : "KHÔNG ĐĂNG KÝ GÓI BẢO HIỂM (Người thuê chịu 100% chi phí nếu xảy ra hỏng hóc do bất cẩn)."}`;
 
@@ -252,6 +262,7 @@ class RentalService {
       startDate: start,
       endDate: end,
       totalDays,
+      quantity: rentQty,
       dailyRate,
       rentalFee,
       depositAmount,
@@ -280,6 +291,12 @@ class RentalService {
     });
 
     await rental.save();
+
+    // Trừ số lượng còn sẵn trong kho của thiết bị
+    try {
+      equipment.available_quantity = Math.max(0, availableQty - rentQty);
+      await equipment.save();
+    } catch (e) {}
 
     // Keep the Owner Portal request in sync before returning success to the renter.
     try {

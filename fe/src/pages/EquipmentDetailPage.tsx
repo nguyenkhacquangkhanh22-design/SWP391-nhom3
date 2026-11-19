@@ -134,6 +134,7 @@ export default function EquipmentDetailPage() {
   const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
   const [returnMethod, setReturnMethod] = useState("motorcycle");
   const [hasInsurance, setHasInsurance] = useState(false);
+  const [rentalQuantity, setRentalQuantity] = useState(1);
   const [quickVerifying, setQuickVerifying] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -250,6 +251,9 @@ export default function EquipmentDetailPage() {
   }
 
   const dailyRate = equipment?.dailyRate || (equipment as any)?.pricing?.price_per_day || 0;
+  const availableQuantity = equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1);
+  const totalStockQuantity = equipment?.quantity || 1;
+  const effectiveRentalQty = Math.max(1, Math.min(availableQuantity > 0 ? availableQuantity : 1, rentalQuantity));
 
   // Giảm giá thuê dài ngày (>= 7 ngày giảm 10%, >= 30 ngày giảm 20%)
   let discountRate = 0;
@@ -262,7 +266,7 @@ export default function EquipmentDetailPage() {
     discountLabel = "Giảm 10% (Thuê tuần >= 7 ngày)";
   }
 
-  const subtotalRentalFee = dailyRate * totalDays;
+  const subtotalRentalFee = dailyRate * totalDays * effectiveRentalQty;
   const discountAmount = Math.round(subtotalRentalFee * discountRate);
   const rentalFee = subtotalRentalFee - discountAmount;
   // Tính phí bảo hiểm rơi vỡ toàn diện (+5% phí thuê)
@@ -307,6 +311,7 @@ export default function EquipmentDetailPage() {
         equipmentId: equipment!._id,
         startDate,
         endDate,
+        quantity: effectiveRentalQty,
         deliveryTime,
         returnTime,
         deliveryMethod,
@@ -315,6 +320,18 @@ export default function EquipmentDetailPage() {
         hasInsurance,
         renterNote: renterNote.trim(),
       });
+      // Cập nhật ngay số lượng còn sẵn trên giao diện
+      setEquipment((prev) =>
+        prev
+          ? {
+              ...prev,
+              available_quantity: Math.max(
+                0,
+                (prev.available_quantity !== undefined ? prev.available_quantity : (prev.quantity || 1)) - effectiveRentalQty,
+              ),
+            }
+          : prev,
+      );
       // Đã gửi đơn thành công -> Hiển thị popup thành công và thông báo toast
       showToast({
         type: "rental_created",
@@ -722,10 +739,10 @@ export default function EquipmentDetailPage() {
                   <span className="text-slate-400 flex items-center gap-1.5 font-medium">
                     <span>📦</span> Tình trạng thiết bị:
                   </span>
-                  {(equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)) > 0 ? (
+                  {availableQuantity > 0 ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Còn sẵn {equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)} / {equipment?.quantity || 1} chiếc
+                      Còn sẵn {availableQuantity} / {totalStockQuantity} chiếc
                     </span>
                   ) : (
                     <span className="text-rose-400 font-bold flex items-center gap-1">
@@ -774,6 +791,54 @@ export default function EquipmentDetailPage() {
 
               {/* Booking Form */}
               <form onSubmit={handleCreateRental} className="space-y-4 text-sm" noValidate>
+                {/* Bộ đếm chọn số lượng thuê thiết bị (Quantity Selector) */}
+                <div className="p-3 bg-gradient-to-r from-[#121d30] to-[#15233a] border border-[#233857] rounded-xl flex items-center justify-between shadow-inner">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <span>🔢</span> Số lượng muốn thuê:
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      (Tối đa {availableQuantity} chiếc có sẵn)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRentalQuantity((prev) => Math.max(1, prev - 1))}
+                      disabled={rentalQuantity <= 1 || availableQuantity <= 0}
+                      className="w-9 h-9 rounded-lg bg-[#1b283f] hover:bg-[#25395c] disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-base flex items-center justify-center transition-all border border-[#2f4368] active:scale-95 shadow-sm"
+                      title="Giảm số lượng thuê"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={availableQuantity > 0 ? availableQuantity : 1}
+                      value={rentalQuantity}
+                      disabled={availableQuantity <= 0}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (isNaN(val) || val < 1) {
+                          setRentalQuantity(1);
+                        } else {
+                          setRentalQuantity(Math.min(availableQuantity > 0 ? availableQuantity : 1, val));
+                        }
+                      }}
+                      className="w-14 h-9 text-center bg-[#0d1624] border border-[#2b3e60] rounded-lg text-amber-300 font-extrabold text-sm focus:outline-none focus:border-orange-500 shadow-inner font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRentalQuantity((prev) => Math.min(availableQuantity > 0 ? availableQuantity : 1, prev + 1))}
+                      disabled={rentalQuantity >= availableQuantity || availableQuantity <= 0}
+                      className="w-9 h-9 rounded-lg bg-[#1b283f] hover:bg-[#25395c] disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-base flex items-center justify-center transition-all border border-[#2f4368] active:scale-95 shadow-sm"
+                      title="Tăng số lượng thuê"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -1019,15 +1084,22 @@ export default function EquipmentDetailPage() {
                   </div>
 
                   <div className="flex justify-between text-xs text-slate-400">
+                    <span>Số lượng thuê:</span>
+                    <span className="text-amber-300 font-bold font-mono">
+                      {effectiveRentalQty} chiếc
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs text-slate-400">
                     <span>Số ngày thuê:</span>
-                    <span className="text-white font-bold">
+                    <span className="text-white font-bold font-mono">
                       {totalDays} ngày
                     </span>
                   </div>
 
                   <div className="flex justify-between text-xs text-slate-400">
-                    <span>Tiền thuê gốc ({totalDays} x Đơn giá):</span>
-                    <span className="text-white font-medium">
+                    <span>Tiền thuê gốc ({totalDays} ngày x {effectiveRentalQty} chiếc):</span>
+                    <span className="text-white font-medium font-mono">
                       {subtotalRentalFee.toLocaleString("vi-VN")} đ
                     </span>
                   </div>
