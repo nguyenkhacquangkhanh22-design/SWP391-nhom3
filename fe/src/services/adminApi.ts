@@ -376,4 +376,33 @@ export const adminApi = {
       { method: "POST", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A29: Rental Settlement & Escrow Release
+  // ==========================================
+  listSettlements: (
+    token: string,
+    params?: { payout_status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.payout_status) query.set("payout_status", params.payout_status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminSettlementsResponse>(
+      `/settlements${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  approveSettlement: (
+    token: string,
+    id: string,
+    body: { action: "approve" | "reject"; note?: string; transaction_code?: string }
+  ) =>
+    adminRequest<{ message: string; settlement: import("../types/admin").AdminSettlement }>(
+      `/settlements/${id}/approve`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

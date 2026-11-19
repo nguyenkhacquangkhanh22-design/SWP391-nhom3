@@ -465,3 +465,69 @@ export interface AdminMembershipsResponse {
     totalRevenue: number;
   };
 }
+
+// ==========================================
+// SETTLEMENTS & ESCROW AUDIT (UC_A29)
+// ==========================================
+export interface AdminSettlement {
+  _id: string;
+  settlement_code: string;
+  contract_id?: {
+    _id: string;
+    contract_code?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  renter_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  total_rental_fee: number;
+  overtime_fee: number;
+  damage_deduction: number;
+  deduction_reason?: string;
+  deposit_paid: number;
+  deposit_refund_to_renter: number;
+  platform_fee: number;
+  owner_payout_amount: number;
+  payout_status: "pending_owner_confirmation" | "pending_moderator_approval" | "confirmed" | "processing" | "paid" | "rejected";
+  bank_info?: {
+    bank_name?: string;
+    bank_code?: string;
+    account_number?: string;
+    account_holder?: string;
+  };
+  moderator_review?: {
+    moderator_id?: {
+      _id: string;
+      name: string;
+      email: string;
+    };
+    reviewed_at?: string;
+    note?: string;
+    transaction_code?: string;
+  };
+  paid_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminSettlementsResponse {
+  settlements: AdminSettlement[];
+  stats: {
+    total: number;
+    pendingApproval: number;
+    paid: number;
+    processing: number;
+    totalDepositRefund: number;
+    totalDamageDeduction: number;
+    totalPlatformFee: number;
+    totalOwnerPayout: number;
+  };
+}
