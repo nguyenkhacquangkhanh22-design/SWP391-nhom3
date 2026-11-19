@@ -10,6 +10,7 @@ const AuditLog = require("../models/AuditLog");
 const ContractTemplate = require("../models/ContractTemplate");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const OwnerMembership = require("../models/OwnerMembership");
+const DamageTariff = require("../models/DamageTariff");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -1887,6 +1888,167 @@ async function freezeRiskUser(req, res) {
   }
 }
 
+// ==========================================
+// UC_A32: Standard Damage Compensation Tariffs
+// ==========================================
+const DEFAULT_TARIFFS = [
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Mất nắp che trước/sau ống kính (Lens Cap)",
+    severity: "minor",
+    standard_fee: 150000,
+    fee_type: "fixed",
+    description: "Khấu trừ chi phí mua nắp che ống kính chính hãng",
+  },
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Vỡ / Nứt kính lọc bảo vệ (Filter UV/ND)",
+    severity: "minor",
+    standard_fee: 450000,
+    fee_type: "fixed",
+    description: "Đền bù kính lọc bảo vệ thay mới",
+  },
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Trầy xước lớp tráng phủ thấu kính trước (Coating Scratch)",
+    severity: "moderate",
+    standard_fee: 2500000,
+    fee_type: "fixed",
+    description: "Thay cụm thấu kính ngoài tại trung tâm bảo hành hãng",
+  },
+  {
+    category: "Thân Máy & Cảm Biến",
+    item_name: "Bụi bẩn bám cảm biến Full-frame (Cần vệ sinh chuyên sâu)",
+    severity: "minor",
+    standard_fee: 300000,
+    fee_type: "fixed",
+    description: "Chi phí vệ sinh sensor chuyên nghiệp tại phòng Lab",
+  },
+  {
+    category: "Thân Máy & Cảm Biến",
+    item_name: "Xước / Cháy cảm biến do tia Laser (Sensor Burn)",
+    severity: "severe",
+    standard_fee: 12000000,
+    fee_type: "fixed",
+    description: "Thay thế toàn bộ cụm cảm biến CMOS chính hãng",
+  },
+  {
+    category: "Phụ Kiện Điện Ảnh",
+    item_name: "Mất Pin Zin máy ảnh (Sony NP-FZ100 / Canon LP-E6NH)",
+    severity: "moderate",
+    standard_fee: 1400000,
+    fee_type: "fixed",
+    description: "Bồi thường mua lại pin zin nguyên seal",
+  },
+  {
+    category: "Phụ Kiện Điện Ảnh",
+    item_name: "Mất Thẻ Nhớ Tốc Độ Cao CFexpress Type A / SD V90",
+    severity: "moderate",
+    standard_fee: 2200000,
+    fee_type: "fixed",
+    description: "Thay thế thẻ nhớ tốc độ cao chuẩn quay 4K/8K",
+  },
+];
+
+async function listDamageTariffs(req, res) {
+  const { category, severity, search } = req.query;
+
+  // Auto seed default tariffs if table is empty
+  const count = await DamageTariff.countDocuments();
+  if (count === 0) {
+    await DamageTariff.insertMany(
+      DEFAULT_TARIFFS.map((t) => ({ ...t, updated_by: req.user._id }))
+    );
+  }
+
+  const filter = {};
+  if (category) filter.category = category;
+  if (severity) filter.severity = severity;
+
+  const tariffs = await DamageTariff.find(filter)
+    .populate("updated_by", "name email")
+    .sort({ category: 1, standard_fee: 1 })
+    .lean();
+
+  let filtered = tariffs;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = tariffs.filter(
+      (t) => t.item_name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+    );
+  }
+
+  const categories = [...new Set(tariffs.map((t) => t.category))];
+
+  res.json({
+    tariffs: filtered,
+    categories,
+    stats: {
+      total: tariffs.length,
+      active: tariffs.filter((t) => t.is_active).length,
+    },
+  });
+}
+
+async function createDamageTariff(req, res) {
+  const { category, item_name, severity, standard_fee, fee_type, description } = req.body;
+
+  if (!category || !item_name || standard_fee === undefined) {
+    throw new AppError(400, "Danh mục, tên linh kiện và biểu phí đền bù là bắt buộc.");
+  }
+
+  const tariff = new DamageTariff({
+    category: category.trim(),
+    item_name: item_name.trim(),
+    severity: ["minor", "moderate", "severe", "total_loss"].includes(severity) ? severity : "minor",
+    standard_fee: Number(standard_fee) || 0,
+    fee_type: fee_type === "percentage_of_value" ? "percentage_of_value" : "fixed",
+    description: description ? description.trim() : "",
+    is_active: true,
+    updated_by: req.user._id,
+  });
+
+  await tariff.save();
+
+  await recordAuditLog(req, {
+    action: "DAMAGE_TARIFF_CREATED",
+    targetType: "DamageTariff",
+    targetId: tariff._id,
+    details: { item_name: tariff.item_name, standard_fee: tariff.standard_fee },
+  });
+
+  res.status(201).json({ message: "Thêm biểu phí đền bù thành công.", tariff });
+}
+
+async function updateDamageTariff(req, res) {
+  const { id } = req.params;
+  const { standard_fee, is_active, description, severity } = req.body;
+
+  const tariff = await DamageTariff.findById(id);
+  if (!tariff) {
+    throw new AppError(404, "Không tìm thấy biểu phí bồi thường.");
+  }
+
+  if (standard_fee !== undefined) tariff.standard_fee = Number(standard_fee);
+  if (is_active !== undefined) tariff.is_active = Boolean(is_active);
+  if (description !== undefined) tariff.description = description.trim();
+  if (severity && ["minor", "moderate", "severe", "total_loss"].includes(severity)) {
+    tariff.severity = severity;
+  }
+  tariff.updated_by = req.user._id;
+
+  await tariff.save();
+
+  await recordAuditLog(req, {
+    action: "DAMAGE_TARIFF_UPDATED",
+    targetType: "DamageTariff",
+    targetId: tariff._id,
+    details: { item_name: tariff.item_name, standard_fee: tariff.standard_fee, is_active: tariff.is_active },
+  });
+
+  res.json({ message: "Cập nhật biểu phí đền bù thành công.", tariff });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1917,4 +2079,7 @@ module.exports = {
   reviewHandoverRecord,
   getRiskMonitor,
   freezeRiskUser,
+  listDamageTariffs,
+  createDamageTariff,
+  updateDamageTariff,
 };

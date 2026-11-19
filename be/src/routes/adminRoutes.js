@@ -67,6 +67,11 @@ router.patch("/handover-records/:id/review", asyncHandler(adminController.review
 router.get("/risk-monitor", asyncHandler(adminController.getRiskMonitor));
 router.patch("/risk-monitor/:userId/freeze", asyncHandler(adminController.freezeRiskUser));
 
+// Standard Damage Compensation Tariffs (UC_A32)
+router.get("/damage-tariffs", asyncHandler(adminController.listDamageTariffs));
+router.post("/damage-tariffs", asyncHandler(adminController.createDamageTariff));
+router.put("/damage-tariffs/:id", asyncHandler(adminController.updateDamageTariff));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
