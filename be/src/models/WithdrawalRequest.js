@@ -17,6 +17,7 @@ const withdrawalRequestSchema = new mongoose.Schema(
       bankName: { type: String, required: true, trim: true },
       accountNumber: { type: String, required: true, trim: true },
       accountHolderName: { type: String, required: true, trim: true },
+      qrCodeUrl: { type: String, default: "", trim: true },
       bankAccountId: { type: mongoose.Schema.Types.ObjectId },
     },
     status: {

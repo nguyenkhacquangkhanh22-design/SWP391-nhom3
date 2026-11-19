@@ -104,8 +104,24 @@ async function requestRental(req, res) {
     throw new AppError(400, "Bạn không thể tự thuê thiết bị của chính mình");
   }
 
+  const now = new Date();
   const startDate = new Date(start_date);
   const endDate = new Date(end_date);
+
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new AppError(400, "Định dạng thời gian thuê không hợp lệ");
+  }
+
+  // Giờ bắt đầu thuê không được bé hơn giờ thực tế hiện tại (cho phép sai số 5 phút do lệch múi giờ/mạng)
+  if (startDate.getTime() < now.getTime() - 5 * 60 * 1000) {
+    const curH = String(now.getHours()).padStart(2, "0");
+    const curM = String(now.getMinutes()).padStart(2, "0");
+    throw new AppError(
+      400,
+      `Thời gian bắt đầu thuê không được bé hơn thời gian hiện tại thực tế (${curH}:${curM}). Vui lòng chọn thời gian bắt đầu từ thời điểm hiện tại trở đi.`
+    );
+  }
+
   if (endDate <= startDate) {
     throw new AppError(400, "Thời gian trả phải sau thời gian bắt đầu thuê");
   }

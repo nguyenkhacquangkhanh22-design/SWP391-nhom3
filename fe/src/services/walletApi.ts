@@ -29,7 +29,7 @@ export const walletApi = {
   // Thêm tài khoản ngân hàng (tối đa 3 tài khoản, mặc định PENDING)
   addBankAccount: async (
     token: string | null | undefined,
-    data: { bankName: string; accountNumber: string; accountHolderName: string }
+    data: { bankName: string; accountNumber: string; accountHolderName: string; qrCodeUrl?: string }
   ) => {
     const res = await axios.post<{
       success: boolean;

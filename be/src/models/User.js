@@ -70,6 +70,7 @@ const userSchema = new mongoose.Schema(
         bankName: { type: String, required: true, trim: true },
         accountNumber: { type: String, required: true, trim: true },
         accountHolderName: { type: String, required: true, trim: true },
+        qrCodeUrl: { type: String, default: "", trim: true },
         status: {
           type: String,
           enum: ["PENDING", "APPROVED", "REJECTED"],

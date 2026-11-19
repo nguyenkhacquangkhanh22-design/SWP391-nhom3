@@ -84,10 +84,16 @@ export default function RentalRequestModal({
 
     setLoading(true);
     try {
+      const now = new Date();
+      const nextHour = Math.min(23, now.getHours() + 1);
+      const effectiveDeliveryTime =
+        startDate === todayStr ? `${String(nextHour).padStart(2, "0")}:00` : "09:00";
+
       const res = await smartEquipApi.createRentalRequest(token, {
         equipmentId: equipment._id,
         startDate,
         endDate,
+        deliveryTime: effectiveDeliveryTime,
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });

@@ -118,10 +118,44 @@ export default function EquipmentDetailPage() {
     setSuccess("");
 
     try {
-      const normalizedStart =
-        rentalType === "daily" && startDate.length === 10 ? `${startDate}T08:00:00` : startDate;
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+
+      // Kiểm tra giờ bắt đầu thuê không được bé hơn giờ thực tế hiện tại
+      let normalizedStart = startDate;
+      if (rentalType === "daily") {
+        if (startDate < todayStr) {
+          setError("Ngày bắt đầu thuê không được ở trong quá khứ.");
+          setIsSubmittingRent(false);
+          return;
+        }
+        if (startDate === todayStr) {
+          // Thuê trong ngày hôm nay: thời điểm bắt đầu tính từ giờ thực tế hiện tại
+          const curH = String(now.getHours()).padStart(2, "0");
+          const curM = String(now.getMinutes()).padStart(2, "0");
+          normalizedStart = `${startDate}T${curH}:${curM}:00`;
+        } else {
+          normalizedStart = `${startDate}T08:00:00`;
+        }
+      } else {
+        const checkStartTime = new Date(startDate);
+        if (isNaN(checkStartTime.getTime()) || checkStartTime.getTime() < now.getTime() - 2 * 60 * 1000) {
+          const curH = String(now.getHours()).padStart(2, "0");
+          const curM = String(now.getMinutes()).padStart(2, "0");
+          setError(`Thời gian bắt đầu thuê không được bé hơn thời gian hiện tại thực tế (${curH}:${curM}).`);
+          setIsSubmittingRent(false);
+          return;
+        }
+      }
+
       const normalizedEnd =
         rentalType === "daily" && endDate.length === 10 ? `${endDate}T18:00:00` : endDate;
+
+      if (new Date(normalizedEnd) <= new Date(normalizedStart)) {
+        setError("Thời gian trả máy phải sau thời gian bắt đầu thuê.");
+        setIsSubmittingRent(false);
+        return;
+      }
 
       await ownerApi.requestRental(token, equipment._id, {
         start_date: normalizedStart,
@@ -917,6 +951,11 @@ export default function EquipmentDetailPage() {
                       className="input-field"
                       type={rentalType === "daily" ? "date" : "datetime-local"}
                       value={startDate}
+                      min={
+                        rentalType === "daily"
+                          ? new Date().toISOString().split("T")[0]
+                          : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+                      }
                       onChange={(e) => setStartDate(e.target.value)}
                       required
                     />
@@ -929,7 +968,12 @@ export default function EquipmentDetailPage() {
                       className="input-field"
                       type={rentalType === "daily" ? "date" : "datetime-local"}
                       value={endDate}
-                      min={startDate || undefined}
+                      min={
+                        startDate ||
+                        (rentalType === "daily"
+                          ? new Date().toISOString().split("T")[0]
+                          : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16))
+                      }
                       onChange={(e) => setEndDate(e.target.value)}
                       required
                     />

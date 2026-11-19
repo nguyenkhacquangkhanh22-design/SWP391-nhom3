@@ -124,13 +124,32 @@ export default function EquipmentDetailPage() {
   }, [isLightboxOpen, imagesList.length]);
 
   // Delivery & Return state (Yêu cầu 3)
-  const [deliveryTime, setDeliveryTime] = useState("09:00");
-  const [returnTime, setReturnTime] = useState("17:00");
+  const [deliveryTime, setDeliveryTime] = useState(() => {
+    const now = new Date();
+    const nextH = Math.min(23, now.getHours() + 1);
+    return `${String(nextH).padStart(2, "0")}:00`;
+  });
+  const [returnTime, setReturnTime] = useState("18:00");
   const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
   const [returnMethod, setReturnMethod] = useState("motorcycle");
   const [hasInsurance, setHasInsurance] = useState(false);
   const [quickVerifying, setQuickVerifying] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Tự động điều chỉnh giờ nhận máy nếu chọn ngày hôm nay để tránh giờ trong quá khứ
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (startDate === todayStr) {
+      const now = new Date();
+      const [h, m] = deliveryTime.split(":").map(Number);
+      const checkDt = new Date();
+      checkDt.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+      if (checkDt < now) {
+        const nextHour = Math.min(23, now.getHours() + 1);
+        setDeliveryTime(`${String(nextHour).padStart(2, "0")}:00`);
+      }
+    }
+  }, [startDate]);
 
   const isKycVerified = user?.kycStatus === "verified";
 

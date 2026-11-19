@@ -26,6 +26,15 @@ export default function AdminFinanceManager() {
   const [rejectingWithdrawal, setRejectingWithdrawal] = useState<WithdrawalRequest | null>(null);
   const [rejectNote, setRejectNote] = useState<string>("");
 
+  // Modal Xem mã QR rút tiền cho Admin quét
+  const [viewingQrWithdrawal, setViewingQrWithdrawal] = useState<WithdrawalRequest | null>(null);
+  const [viewingBankQr, setViewingBankQr] = useState<{
+    qrCodeUrl: string;
+    bankName: string;
+    accountNumber: string;
+    ownerName: string;
+  } | null>(null);
+
   useEffect(() => {
     if (token) {
       if (activeTab === "banks") {
@@ -253,6 +262,7 @@ export default function AdminFinanceManager() {
                     <th className="p-3">Ngân hàng</th>
                     <th className="p-3">Số tài khoản</th>
                     <th className="p-3">Chủ tài khoản</th>
+                    <th className="p-3 text-center">Mã QR</th>
                     <th className="p-3">Thời gian thêm</th>
                     <th className="p-3 text-right">Thao tác</th>
                   </tr>
@@ -273,6 +283,27 @@ export default function AdminFinanceManager() {
                       </td>
                       <td className="p-3 font-bold uppercase text-slate-200">
                         {item.account.accountHolderName}
+                      </td>
+                      <td className="p-3 text-center">
+                        {item.account.qrCodeUrl ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setViewingBankQr({
+                                qrCodeUrl: item.account.qrCodeUrl || "",
+                                bankName: item.account.bankName,
+                                accountNumber: item.account.accountNumber,
+                                ownerName: item.ownerName,
+                              })
+                            }
+                            className="px-2 py-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                            title="Xem ảnh mã QR tài khoản"
+                          >
+                            <span>📱</span> Xem QR
+                          </button>
+                        ) : (
+                          <span className="text-slate-500 text-[10px]">Chưa tải</span>
+                        )}
                       </td>
                       <td className="p-3 text-slate-400 text-[11px] whitespace-nowrap">
                         {item.account.createdAt
@@ -364,6 +395,7 @@ export default function AdminFinanceManager() {
                     <th className="p-3">Ngân hàng thụ hưởng</th>
                     <th className="p-3">Số tài khoản</th>
                     <th className="p-3">Tên chủ tài khoản</th>
+                    <th className="p-3 text-center">Mã QR</th>
                     <th className="p-3">Trạng thái</th>
                     <th className="p-3 text-right">Thao tác</th>
                   </tr>
@@ -397,6 +429,17 @@ export default function AdminFinanceManager() {
                         </td>
                         <td className="p-3 uppercase font-semibold text-slate-200">
                           {w.bankInfoSnapshot?.accountHolderName}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setViewingQrWithdrawal(w)}
+                            className="px-2.5 py-1.5 bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 hover:text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                            title="Xem mã QR để quét chuyển khoản"
+                          >
+                            <span>📱</span>
+                            <span>Xem mã QR</span>
+                          </button>
                         </td>
                         <td className="p-3">
                           {isPending && (
@@ -515,6 +558,168 @@ export default function AdminFinanceManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XEM MÃ QR DUYỆT RÚT TIỀN (CHO ADMIN QUÉT CHUYỂN KHOẢN) */}
+      {viewingQrWithdrawal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#141d2d] border border-cyan-500/50 w-full max-w-md rounded-2xl p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>📱</span> Mã QR Chuyển Khoản Rút Tiền
+              </h3>
+              <button
+                type="button"
+                onClick={() => setViewingQrWithdrawal(null)}
+                className="text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Ảnh mã QR */}
+            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl shadow-inner">
+              {viewingQrWithdrawal.bankInfoSnapshot?.qrCodeUrl ? (
+                <img
+                  src={viewingQrWithdrawal.bankInfoSnapshot.qrCodeUrl}
+                  alt="Mã QR Chuyển Khoản"
+                  className="w-56 h-56 object-contain rounded-lg"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center">
+                  <img
+                    src={`https://img.vietqr.io/image/${encodeURIComponent(
+                      viewingQrWithdrawal.bankInfoSnapshot.bankName.split(" ")[0]
+                    )}-${encodeURIComponent(
+                      viewingQrWithdrawal.bankInfoSnapshot.accountNumber
+                    )}-compact.png?amount=${viewingQrWithdrawal.amount}&addInfo=SmartEquip%20Rut%20Tien&accountName=${encodeURIComponent(
+                      viewingQrWithdrawal.bankInfoSnapshot.accountHolderName
+                    )}`}
+                    alt="VietQR Tự Động"
+                    className="w-52 h-52 object-contain"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-1 font-semibold">
+                    (Mã VietQR tự động theo số tài khoản)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Chi tiết chuyển khoản */}
+            <div className="rounded-xl bg-[#0f1725] border border-slate-800 p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <span className="text-slate-400 font-medium">Số tiền cần chuyển:</span>
+                <span className="text-base font-black text-emerald-400 font-mono">
+                  {viewingQrWithdrawal.amount.toLocaleString("vi-VN")} đ
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Ngân hàng nhận:</span>
+                <span className="font-bold text-white text-right">
+                  {viewingQrWithdrawal.bankInfoSnapshot?.bankName}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Số tài khoản:</span>
+                <div className="flex items-center gap-1.5 font-mono font-bold text-amber-300">
+                  <span>{viewingQrWithdrawal.bankInfoSnapshot?.accountNumber}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        viewingQrWithdrawal.bankInfoSnapshot?.accountNumber || ""
+                      );
+                      alert("Đã sao chép số tài khoản!");
+                    }}
+                    className="text-[10px] text-slate-400 hover:text-white bg-slate-800 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Tên chủ tài khoản:</span>
+                <span className="uppercase font-bold text-white">
+                  {viewingQrWithdrawal.bankInfoSnapshot?.accountHolderName}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-slate-800/80">
+                <span className="text-slate-400">Chủ thiết bị (Owner):</span>
+                <span className="text-slate-300">
+                  {typeof viewingQrWithdrawal.ownerId === "object"
+                    ? viewingQrWithdrawal.ownerId?.name
+                    : "Owner"}
+                </span>
+              </div>
+            </div>
+
+            {/* Nút hành động trong Modal QR */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setViewingQrWithdrawal(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Đóng
+              </button>
+              {viewingQrWithdrawal.status === "PENDING" && (
+                <button
+                  type="button"
+                  disabled={actionLoadingId === viewingQrWithdrawal._id}
+                  onClick={() => {
+                    const target = viewingQrWithdrawal;
+                    setViewingQrWithdrawal(null);
+                    void handleApproveWithdrawal(target);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <span>💸</span>
+                  <span>Xác nhận đã chuyển</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XEM MÃ QR TÀI KHOẢN NGÂN HÀNG (TAB 1) */}
+      {viewingBankQr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#141d2d] border border-cyan-500/50 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-700">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <span>📱</span> Ảnh Mã QR Của Owner: {viewingBankQr.ownerName}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setViewingBankQr(null)}
+                className="text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex justify-center p-3 bg-white rounded-xl">
+              <img
+                src={viewingBankQr.qrCodeUrl}
+                alt="QR Bank"
+                className="w-56 h-56 object-contain"
+              />
+            </div>
+            <div className="text-xs text-slate-300 text-center space-y-1">
+              <div><strong>Ngân hàng:</strong> {viewingBankQr.bankName}</div>
+              <div className="font-mono text-amber-300 font-bold">STK: {viewingBankQr.accountNumber}</div>
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setViewingBankQr(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

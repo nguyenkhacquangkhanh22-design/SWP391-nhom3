@@ -152,19 +152,23 @@ class RentalService {
       throw new AppError(400, "Thiết bị hiện đã tạm hết hàng trong kho, không thể tạo yêu cầu thuê");
     }
 
-    // Kiểm tra giờ bắt đầu thuê không được bé hơn giờ hiện tại nếu thuê trong ngày hôm nay
-    if (startDate && deliveryTime) {
+    // Kiểm tra ngày và giờ bắt đầu thuê không được ở trong quá khứ
+    if (startDate) {
       const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      const startDayStr = String(startDate).slice(0, 10);
+
+      if (startDayStr < todayStr) {
+        throw new AppError(400, "Ngày bắt đầu thuê không được ở trong quá khứ");
+      }
+
       const startDateTime = new Date(startDate);
-      const [delHours, delMins] = String(deliveryTime).split(":").map(Number);
+      const [delHours, delMins] = String(deliveryTime || "09:00").split(":").map(Number);
       startDateTime.setHours(isNaN(delHours) ? 9 : delHours, isNaN(delMins) ? 0 : delMins, 0, 0);
 
-      const isToday =
-        startDateTime.getFullYear() === now.getFullYear() &&
-        startDateTime.getMonth() === now.getMonth() &&
-        startDateTime.getDate() === now.getDate();
+      const isToday = startDayStr === todayStr;
 
-      if (isToday && startDateTime.getTime() < now.getTime()) {
+      if (isToday && startDateTime.getTime() < now.getTime() - 2 * 60 * 1000) {
         const curH = String(now.getHours()).padStart(2, "0");
         const curM = String(now.getMinutes()).padStart(2, "0");
         throw new AppError(
