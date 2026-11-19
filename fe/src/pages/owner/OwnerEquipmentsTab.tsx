@@ -324,8 +324,8 @@ export default function OwnerEquipmentsTab({
     const finalPricePerHour = pricePerHour === "" ? 0 : Number(pricePerHour);
     const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
 
-    if (finalPricePerDay < 1000 || finalPricePerDay > 500000000) {
-      onError("Giá thuê theo ngày phải từ 1.000 đ đến 500.000.000 đ.");
+    if (finalPricePerDay < 2000 || finalPricePerDay > 500000000) {
+      onError("Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 đ đến 500.000.000 đ.");
       setIsSubmitting(false);
       return;
     }
@@ -1566,7 +1566,7 @@ export default function OwnerEquipmentsTab({
                     <input
                       className="input-field font-mono"
                       type="number"
-                      min={1000}
+                      min={2000}
                       max={500000000}
                       step={1}
                       placeholder="Ví dụ: 50000"
@@ -1580,14 +1580,25 @@ export default function OwnerEquipmentsTab({
                           if (!isNaN(num)) setPricePerDay(Math.min(500000000, Math.max(0, num)));
                         }
                       }}
+                      onBlur={() => {
+                        if (pricePerDay !== "" && Number(pricePerDay) < 2000) {
+                          setPricePerDay("2000");
+                        }
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
                       required
                     />
                     {pricePerDay !== "" && !isNaN(Number(pricePerDay)) && (
-                      <span className="text-[11px] text-amber-400 font-mono mt-1 block">
-                        ≈ {Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày
+                      <span
+                        className={`text-[11px] font-mono mt-1 block ${
+                          Number(pricePerDay) < 2000 ? "text-red-400 font-semibold" : "text-amber-400"
+                        }`}
+                      >
+                        {Number(pricePerDay) < 2000
+                          ? `⚠️ Tối thiểu từ 2.000 đ/ngày (hiện tại: ${Number(pricePerDay).toLocaleString("vi-VN")} đ)`
+                          : `≈ ${Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày`}
                       </span>
                     )}
                   </div>

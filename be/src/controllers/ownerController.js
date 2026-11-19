@@ -239,7 +239,7 @@ async function createEquipmentListing(req, res) {
   ) {
     throw new AppError(
       400,
-      "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+      "Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
     );
   }
 
@@ -356,14 +356,14 @@ async function updateEquipment(req, res) {
     const pWeekend = pricing.weekend_rate !== undefined ? Math.floor(Number(pricing.weekend_rate)) : undefined;
 
     if (
-      (pDay !== undefined && (isNaN(pDay) || pDay < 1000 || pDay > 500000000)) ||
+      (pDay !== undefined && (isNaN(pDay) || pDay < 2000 || pDay > 500000000)) ||
       (pHour !== undefined && (isNaN(pHour) || pHour < 0 || pHour > 50000000)) ||
       (pDeposit !== undefined && (isNaN(pDeposit) || pDeposit < 0 || pDeposit > 500000000)) ||
       (pWeekend !== undefined && (isNaN(pWeekend) || pWeekend < 0 || pWeekend > 500000000))
     ) {
       throw new AppError(
         400,
-        "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+        "Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
       );
     }
     if (pDay !== undefined) {
