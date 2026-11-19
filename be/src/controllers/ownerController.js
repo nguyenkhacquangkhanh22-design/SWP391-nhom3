@@ -10,6 +10,7 @@ const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
 const EquipmentBlackout = require("../models/EquipmentBlackout");
+const RentalChecklist = require("../models/RentalChecklist");
 const { getIO } = require("../config/socket");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
@@ -3180,6 +3181,94 @@ async function deleteEquipmentBlackout(req, res) {
   });
 }
 
+// UC_O17: Quản lý Checklist Phụ kiện Bàn giao & Thu hồi
+async function getRentalChecklist(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  let checklist = await RentalChecklist.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!checklist) {
+    const rental = await Rental.findById(id).populate("equipment");
+    const defaultItems = [];
+    if (rental && rental.equipment && Array.isArray(rental.equipment.accessories) && rental.equipment.accessories.length > 0) {
+      rental.equipment.accessories.forEach((acc) => {
+        defaultItems.push({
+          name: acc,
+          quantity: 1,
+          handover_checked: true,
+          return_checked: false,
+          condition_note: "Nguyên vẹn",
+        });
+      });
+    } else {
+      defaultItems.push(
+        { name: "Nắp đậy body / lens cap trước & sau", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Nguyên vẹn" },
+        { name: "Pin Lithium chính hãng", quantity: 2, handover_checked: true, return_checked: false, condition_note: "Sạc đầy 100%" },
+        { name: "Dock sạc đôi & cáp Type-C", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Hoạt động tốt" },
+        { name: "Dây đeo máy chống mỏi", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Nguyên vẹn" },
+        { name: "Túi đựng chống sốc", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Sạch sẽ" }
+      );
+    }
+
+    checklist = await RentalChecklist.create({
+      rental_id: id,
+      owner_id: ownerId,
+      equipment_id: rental?.equipment?._id || null,
+      items: defaultItems,
+      handover_confirmed_at: new Date(),
+    });
+  }
+
+  res.json({
+    message: "Lấy checklist phụ kiện thành công",
+    checklist,
+  });
+}
+
+async function saveRentalChecklist(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const { items, notes, is_return } = req.body;
+
+  let checklist = await RentalChecklist.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!checklist) {
+    checklist = new RentalChecklist({
+      rental_id: id,
+      owner_id: ownerId,
+      items: items || [],
+      notes: notes || "",
+    });
+  } else {
+    if (Array.isArray(items)) {
+      checklist.items = items;
+    }
+    if (notes !== undefined) {
+      checklist.notes = notes;
+    }
+  }
+
+  if (is_return) {
+    checklist.return_confirmed_at = new Date();
+  } else if (!checklist.handover_confirmed_at) {
+    checklist.handover_confirmed_at = new Date();
+  }
+
+  await checklist.save();
+
+  res.json({
+    message: is_return ? "Đã lưu biên bản đối chiếu phụ kiện thu hồi" : "Đã lưu checklist phụ kiện bàn giao",
+    checklist,
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -3193,6 +3282,8 @@ module.exports = {
   getEquipmentBlackouts,
   createEquipmentBlackout,
   deleteEquipmentBlackout,
+  getRentalChecklist,
+  saveRentalChecklist,
   submitEquipmentStatusUpdateRequest,
   getRentalRequests,
   respondRentalRequest,

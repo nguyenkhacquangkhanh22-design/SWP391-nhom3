@@ -41,6 +41,8 @@ router.post("/equipments/:id/status-request", asyncHandler(ownerController.submi
 router.get("/rental-requests", asyncHandler(ownerController.getRentalRequests));
 router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respondRentalRequest));
 router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
+router.get("/rentals/:id/checklist", asyncHandler(ownerController.getRentalChecklist));
+router.post("/rentals/:id/checklist", asyncHandler(ownerController.saveRentalChecklist));
 router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
 router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
 router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));
