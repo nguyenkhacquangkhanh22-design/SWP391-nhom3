@@ -11,10 +11,9 @@
 1. [Tổng Quan Nền Tảng & Kiến Trúc 4 Vai Trò (Roles)](#1-tổng-quan-nền-tảng--kiến-trúc-4-vai-trò)
 2. [Hướng Dẫn Khởi Chạy Dự Án (Getting Started)](#2-hướng-dẫn-khởi-chạy-dự-án-getting-started)
 3. [Tài Khoản Kiểm Thử Mặc Định (Demo & Testing Accounts)](#3-tài-khoản-kiểm-thử-mặc-định)
-4. [Bảng Tra Cứu Các Tài Liệu Đặc Tả Chi Tiết](#4-bảng-tra-cứu-các-tài-liệu-đặc-tả-chi-tiết)
-5. [Đặc Tả Nghiệp Vụ & Luồng Hoạt Động Phân Hệ System Admin (7 Use Case)](#5-đặc-tả-nghiệp-vụ-phân-hệ-system-admin)
-6. [Sơ Đồ Kiến Trúc Bảo Mật 5 Lớp (5-Tier Architecture)](#6-sơ-đồ-kiến-trúc-bảo-mật-5-lớp)
-7. [Hướng Dẫn Kiểm Thử Thủ Công Trọn Vẹn 1 Chu Trình (10 Bước Test Flow)](#7-hướng-dẫn-kiểm-thử-thủ-công-trọn-vẹn-1-chu-trình)
+4. [Đặc Tả Nghiệp Vụ & Luồng Hoạt Động Phân Hệ System Admin (7 Use Case)](#4-đặc-tả-nghiệp-vụ-phân-hệ-system-admin)
+5. [Sơ Đồ Kiến Trúc Bảo Mật 5 Lớp (5-Tier Architecture)](#5-sơ-đồ-kiến-trúc-bảo-mật-5-lớp)
+6. [Hướng Dẫn Kiểm Thử Thủ Công Trọn Vẹn 1 Chu Trình (10 Bước Test Flow)](#6-hướng-dẫn-kiểm-thử-thủ-công-trọn-vẹn-1-chu-trình)
 
 ---
 
@@ -65,20 +64,7 @@ npm run dev
 
 ---
 
-## 4. BẢNG TRA CỨU CÁC TÀI LIỆU ĐẶC TẢ CHI TIẾT
-
-Trong kho mã nguồn có sẵn các tài liệu thuyết minh kiến trúc và hướng dẫn kiểm thử chi tiết từng phân hệ:
-
-| Tệp Tài Liệu | Nội Dung Chính |
-| :--- | :--- |
-| 📄 [`README_WORKFLOW_SYSTEM_ADMIN_7UC.md`](./README_WORKFLOW_SYSTEM_ADMIN_7UC.md) | Đặc tả 7 Use Case cốt lõi Quản trị viên, kiến trúc bảo mật 5 lớp & Test guide 10 bước chi tiết |
-| 📄 [`README_WORKFLOW_REMAINING_USECASES.md`](./README_WORKFLOW_REMAINING_USECASES.md) | Đặc tả các Use Case mở rộng (Trade-In định giá máy cũ, Lab MTF, Gói đoàn phim 5 tổ...) |
-| 📄 [`README_AI_SHOT_TO_GEAR.md`](./README_AI_SHOT_TO_GEAR.md) | Module trí tuệ nhân tạo nhận diện khung hình & đề xuất cấu hình thiết bị quay chụp |
-| 📄 [`README_LUONG_CODE_VA_PLAN_TANTRIEU_24_COMMITS.md`](./README_LUONG_CODE_VA_PLAN_TANTRIEU_24_COMMITS.md) | Báo cáo nghiệm thu phân tích luồng code, bản đồ đóng góp kỹ thuật & kế hoạch commit |
-
----
-
-## 5. ĐẶC TẢ NGHIỆP VỤ PHÂN HỆ SYSTEM ADMIN
+## 4. ĐẶC TẢ NGHIỆP VỤ PHÂN HỆ SYSTEM ADMIN
 
 ### Bảng Tra Cứu Use Case Quản Trị Hệ Thống
 
@@ -96,7 +82,7 @@ Trong kho mã nguồn có sẵn các tài liệu thuyết minh kiến trúc và 
 
 ---
 
-## 6. SƠ ĐỒ KIẾN TRÚC BẢO MẬT 5 LỚP
+## 5. SƠ ĐỒ KIẾN TRÚC BẢO MẬT 5 LỚP
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────┐
@@ -144,7 +130,7 @@ Trong kho mã nguồn có sẵn các tài liệu thuyết minh kiến trúc và 
 
 ---
 
-## 7. HƯỚNG DẪN KIỂM THỬ THỦ CÔNG TRỌN VẸN 1 CHU TRÌNH
+## 6. HƯỚNG DẪN KIỂM THỬ THỦ CÔNG TRỌN VẸN 1 CHU TRÌNH
 
 Toàn bộ nghiệp vụ quản trị được thiết kế theo một luồng khép kín (End-to-End Life-Cycle) gồm 10 bước liên tục:
 
