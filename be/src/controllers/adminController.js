@@ -787,6 +787,36 @@ async function resolveDispute(req, res) {
     }
   }
 
+  // Tự động hoàn tiền cọc cho Renter vào Ví SmartEquip
+  if (status === "resolved" || status === "dismissed") {
+    const contract = dispute.contract_id;
+    const depositPaid = Number(contract?.deposit_amount || dispute.deposit_paid || 0);
+    const refundToRenter = Math.max(0, depositPaid - approvedAmount);
+    if (refundToRenter > 0 && dispute.renter_id) {
+      try {
+        await User.findByIdAndUpdate(dispute.renter_id, {
+          $inc: { walletBalance: refundToRenter },
+        });
+        const walletTransactionService = require("../services/walletTransactionService");
+        if (typeof walletTransactionService?.createTransaction === "function") {
+          await walletTransactionService.createTransaction({
+            user_id: dispute.renter_id,
+            type: "REFUND",
+            amount: refundToRenter,
+            balance_after: 0,
+            description: status === "dismissed"
+              ? `Hoàn 100% tiền cọc do bác bỏ khiếu nại tranh chấp #${dispute.dispute_code}`
+              : `Hoàn trả phần tiền cọc còn lại sau phán quyết tranh chấp #${dispute.dispute_code}`,
+            reference_code: dispute.dispute_code,
+            status: "SUCCESS",
+          });
+        }
+      } catch (rErr) {
+        console.warn("Credit renter wallet deposit refund error:", rErr.message);
+      }
+    }
+  }
+
   // If resolved or dismissed, handle financial settlement (UC_A16)
   let settlement = null;
   if (status === "resolved" || status === "dismissed") {
@@ -1655,25 +1685,63 @@ async function approveSettlement(req, res) {
   // Create notifications for Owner and Renter
   try {
     if (isApproval) {
+      const walletTransactionService = require("../services/walletTransactionService");
+
+      // 1. Hoàn trả tiền cọc cho Renter vào Ví SmartEquip
+      if (settlement.deposit_refund_to_renter > 0 && settlement.renter_id) {
+        await User.findByIdAndUpdate(settlement.renter_id, {
+          $inc: { walletBalance: settlement.deposit_refund_to_renter },
+        });
+        if (typeof walletTransactionService?.createTransaction === "function") {
+          await walletTransactionService.createTransaction({
+            user_id: settlement.renter_id,
+            type: "REFUND",
+            amount: settlement.deposit_refund_to_renter,
+            balance_after: 0,
+            description: `Hoàn tiền cọc quyết toán hợp đồng #${settlement.settlement_code}`,
+            reference_code: settlement.settlement_code,
+            status: "SUCCESS",
+          });
+        }
+      }
+
+      // 2. Giải ngân tiền cho thuê vào Ví của Owner
+      if (settlement.owner_payout_amount > 0 && settlement.owner_id) {
+        await User.findByIdAndUpdate(settlement.owner_id, {
+          $inc: { walletBalance: settlement.owner_payout_amount },
+        });
+        if (typeof walletTransactionService?.createTransaction === "function") {
+          await walletTransactionService.createTransaction({
+            user_id: settlement.owner_id,
+            type: "RENTAL_INCOME",
+            amount: settlement.owner_payout_amount,
+            balance_after: 0,
+            description: `Giải ngân tiền cho thuê hợp đồng #${settlement.settlement_code}`,
+            reference_code: settlement.settlement_code,
+            status: "SUCCESS",
+          });
+        }
+      }
+
       await Promise.all([
         UserNotification.create({
           user_id: settlement.owner_id,
           title: "Quyết Toán Thuê Máy Đã Được Giải Ngân",
-          message: `Bảng quyết toán ${settlement.settlement_code} đã được duyệt. Số tiền ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.owner_payout_amount)} đã được giải ngân.`,
+          message: `Bảng quyết toán ${settlement.settlement_code} đã được duyệt. Số tiền ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.owner_payout_amount)} đã được giải ngân vào Ví SmartEquip.`,
           type: "settlement_paid",
           read: false,
         }),
         UserNotification.create({
           user_id: settlement.renter_id,
           title: "Tiền Cọc Thuê Máy Đã Được Hoàn Trả",
-          message: `Hợp đồng thuê kết thúc. Số tiền cọc hoàn lại ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.deposit_refund_to_renter)} đã được giải phóng an toàn.`,
+          message: `Hợp đồng thuê kết thúc. Số tiền cọc hoàn lại ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.deposit_refund_to_renter)} đã được hoàn về Ví SmartEquip an toàn.`,
           type: "deposit_refunded",
           read: false,
         }),
       ]);
     }
   } catch (err) {
-    // Non-fatal
+    console.warn("Settlement wallet update / notification error:", err.message);
   }
 
   await recordAuditLog(req, {

@@ -3163,6 +3163,18 @@ async function cancelRentalByOwner(req, res) {
       if (rental.payment) {
         rental.payment.paymentStatus = "refunded";
       }
+      const walletTransactionService = require("../services/walletTransactionService");
+      if (walletTransactionService?.createTransaction) {
+        await walletTransactionService.createTransaction({
+          user_id: rental.renter._id,
+          type: "REFUND",
+          amount: refundAmount,
+          balance_after: 0,
+          description: `Chủ máy hủy đơn #${rental.rentalCode} - Hoàn tiền 100% vào Ví`,
+          reference_code: rental.rentalCode,
+          status: "SUCCESS",
+        });
+      }
     } catch (refErr) {
       console.error("Lỗi hoàn tiền vào ví khách khi Owner hủy đơn:", refErr);
     }

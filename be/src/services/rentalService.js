@@ -1692,24 +1692,49 @@ class RentalService {
       normStatus === "PAID";
 
     const { bankName, accountNumber, accountName } = cancelData;
+    const refundAmount = isPaid ? (rental.totalAmount || rental.rentalFee || 0) : 0;
     rental.status = "CANCELLED";
     rental.cancellation = {
       cancelledBy: renterUser._id,
       reason: reason,
       cancelledAt: new Date(),
+      refundAmount: refundAmount,
+      refundStatus: isPaid ? "completed" : "none",
     };
 
     if (isPaid) {
-      rental.payment.paymentStatus = "refund_pending";
-      if (bankName || accountNumber || accountName) {
-        rental.cancellation.refundInfo = {
-          bankName: String(bankName || "").trim(),
-          accountNumber: String(accountNumber || "").trim(),
-          accountName: String(accountName || "").trim(),
-          refundAmount: rental.totalAmount || rental.rentalFee || 0,
-          status: "pending",
-          note: `Khách yêu cầu hoàn tiền khi hủy đơn #${rental.rentalCode}`,
-        };
+      rental.payment.paymentStatus = "refunded";
+      rental.cancellation.refundInfo = {
+        bankName: String(bankName || "").trim(),
+        accountNumber: String(accountNumber || "").trim(),
+        accountName: String(accountName || "").trim(),
+        refundAmount: refundAmount,
+        status: "completed",
+        note: `Hoàn tiền tự động 100% khi khách hủy đơn #${rental.rentalCode}`,
+      };
+
+      // Tự động hoàn tiền 100% vào Ví SmartEquip của Renter
+      if (refundAmount > 0) {
+        try {
+          const User = require("../models/User");
+          await User.findByIdAndUpdate(renterUser._id, {
+            $inc: { walletBalance: refundAmount },
+          });
+          const walletTransactionService = require("./walletTransactionService");
+          if (walletTransactionService?.createTransaction) {
+            await walletTransactionService.createTransaction({
+              user_id: renterUser._id,
+              type: "REFUND",
+              amount: refundAmount,
+              balance_after: 0,
+              description: `Hoàn tiền hủy đơn thuê thiết bị #${rental.rentalCode}`,
+              reference_code: rental.rentalCode,
+              status: "SUCCESS",
+            });
+          }
+        } catch (wErr) {
+          console.error("Lỗi hoàn tiền vào ví khách khi Renter hủy đơn:", wErr);
+        }
       }
     }
 
@@ -1728,8 +1753,8 @@ class RentalService {
       try {
         await UserNotification.create({
           user_id: renterUser._id,
-          title: `📝 Đã ghi nhận yêu cầu hủy đơn & hoàn tiền #${rental.rentalCode}`,
-          message: `Yêu cầu hủy đơn và hoàn tiền ${(rental.totalAmount || rental.rentalFee || 0).toLocaleString("vi-VN")} đ của bạn đã được tiếp nhận. SmartEquip sẽ kiểm tra và hoàn tiền về STK ${accountNumber || "của bạn"} trong vòng 24 giờ.`,
+          title: `💰 Đã hoàn tiền ${refundAmount.toLocaleString("vi-VN")} đ cho đơn thuê #${rental.rentalCode}`,
+          message: `Đơn thuê #${rental.rentalCode} đã được hủy thành công. Hệ thống đã tự động hoàn trả 100% số tiền ${refundAmount.toLocaleString("vi-VN")} đ vào Ví SmartEquip của bạn. Bạn có thể kiểm tra số dư ví hoặc yêu cầu rút tiền bất cứ lúc nào.`,
           related_record_id: rental._id,
         });
       } catch (err) {}

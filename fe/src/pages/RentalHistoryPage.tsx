@@ -494,6 +494,12 @@ export default function RentalHistoryPage() {
 
   const getStatusBadge = (status: string, paymentStatus?: string) => {
     const s = status.toUpperCase();
+    if (s === "CANCELLED" && paymentStatus === "refunded") {
+      return {
+        label: "Đã hủy • Đã hoàn tiền 100% vào Ví",
+        className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold",
+      };
+    }
     if (s === "CANCELLED" && paymentStatus === "refund_pending") {
       return {
         label: "Đã hủy • Đang xử lý hoàn tiền",
