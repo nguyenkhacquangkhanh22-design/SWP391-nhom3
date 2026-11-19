@@ -201,6 +201,7 @@ async function createEquipmentListing(req, res) {
     pricing,
     rental_terms,
     cancellation_policy,
+    quantity,
   } = req.body;
 
   if (
@@ -256,6 +257,8 @@ async function createEquipmentListing(req, res) {
     condition: condition || "Tốt (95%)",
     dailyRate: Number(pricing.price_per_day) || 0,
     depositAmount: 0,
+    quantity: Math.max(1, Number(quantity) || 1),
+    available_quantity: Math.max(1, Number(quantity) || 1),
     pricing: {
       price_per_hour: Number(pricing.price_per_hour) || 0,
       price_per_day: Number(pricing.price_per_day) || 0,
@@ -312,6 +315,7 @@ async function updateEquipment(req, res) {
     rental_terms,
     cancellation_policy,
     visibility,
+    quantity,
   } = req.body;
 
   if (title) equipment.title = title.trim();
@@ -324,6 +328,12 @@ async function updateEquipment(req, res) {
   if (Array.isArray(images)) equipment.images = images;
   if (Array.isArray(accessories)) equipment.accessories = accessories;
   if (condition) equipment.condition = condition;
+  if (quantity !== undefined) {
+    const newQty = Math.max(1, Number(quantity) || 1);
+    const diff = newQty - (equipment.quantity || 1);
+    equipment.quantity = newQty;
+    equipment.available_quantity = Math.max(0, (equipment.available_quantity !== undefined ? equipment.available_quantity : 1) + diff);
+  }
 
   if (pricing) {
     const pDay = pricing.price_per_day !== undefined ? Math.floor(Number(pricing.price_per_day)) : undefined;

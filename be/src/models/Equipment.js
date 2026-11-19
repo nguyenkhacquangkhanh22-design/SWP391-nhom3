@@ -60,6 +60,16 @@ const equipmentSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    available_quantity: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
     pricing: {
       price_per_hour: {
         type: Number,
