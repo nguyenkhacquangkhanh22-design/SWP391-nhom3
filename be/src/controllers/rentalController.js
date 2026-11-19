@@ -188,6 +188,100 @@ class RentalController {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   }
+
+  /**
+   * UC_R15_EXTEND: POST /api/rentals/:id/extend-request (Khách gửi đề xuất gia hạn)
+   */
+  async requestRentalExtension(req, res) {
+    const { new_end_date, extraDays, reason } = req.body;
+    const rentalId = req.params.id;
+
+    const rental = await Rental.findById(rentalId).populate("equipment");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    if (rental.renter.toString() !== req.user._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền yêu cầu gia hạn đơn thuê này");
+    }
+
+    const currentEnd = new Date(rental.endDate);
+    let newEnd = new_end_date ? new Date(new_end_date) : null;
+    let days = Number(extraDays) || 1;
+
+    if (!newEnd) {
+      newEnd = new Date(currentEnd);
+      newEnd.setDate(newEnd.getDate() + days);
+    } else {
+      const diffMs = newEnd.getTime() - currentEnd.getTime();
+      days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    if (newEnd <= currentEnd) {
+      throw new AppError(400, "Ngày kết thúc mới phải sau ngày trả hiện tại");
+    }
+
+    const dailyRate = rental.dailyRate || rental.equipment?.dailyRate || 0;
+    const extraFee = days * dailyRate;
+
+    rental.extension_request = {
+      requested_end_date: newEnd,
+      extra_days: days,
+      extra_fee: extraFee,
+      renter_reason: reason || "Đoàn phim phát sinh thêm ngày quay",
+      status: "PENDING",
+      requested_at: new Date(),
+    };
+
+    await rental.save();
+
+    res.json({
+      success: true,
+      message: `Đã gửi đề xuất gia hạn thêm ${days} ngày tới Chủ máy thành công`,
+      rental,
+    });
+  }
+
+  /**
+   * UC_O15_EXTEND: POST /api/rentals/:id/respond-extension (Owner duyệt đề xuất)
+   */
+  async respondRentalExtension(req, res) {
+    const { action } = req.body; // "APPROVED" or "REJECTED"
+    const rentalId = req.params.id;
+
+    const rental = await Rental.findById(rentalId).populate("equipment");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    if (rental.owner.toString() !== req.user._id.toString()) {
+      throw new AppError(403, "Chỉ Chủ máy mới có quyền duyệt gia hạn");
+    }
+
+    if (!rental.extension_request || rental.extension_request.status !== "PENDING") {
+      throw new AppError(400, "Không có yêu cầu gia hạn đang chờ xử lý");
+    }
+
+    if (action === "APPROVED") {
+      rental.extension_request.status = "APPROVED";
+      rental.extension_request.responded_at = new Date();
+      rental.endDate = rental.extension_request.requested_end_date;
+      rental.totalDays = (rental.totalDays || 0) + (rental.extension_request.extra_days || 0);
+      rental.totalAmount = (rental.totalAmount || 0) + (rental.extension_request.extra_fee || 0);
+      rental.rentalFee = (rental.rentalFee || 0) + (rental.extension_request.extra_fee || 0);
+    } else {
+      rental.extension_request.status = "REJECTED";
+      rental.extension_request.responded_at = new Date();
+    }
+
+    await rental.save();
+
+    res.json({
+      success: true,
+      message: action === "APPROVED" ? "Đã chấp thuận gia hạn hợp đồng" : "Đã từ chối gia hạn",
+      rental,
+    });
+  }
 }
 
 module.exports = new RentalController();

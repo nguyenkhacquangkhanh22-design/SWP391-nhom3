@@ -152,6 +152,19 @@ const rentalSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    extension_request: {
+      requested_end_date: { type: Date },
+      extra_days: { type: Number, default: 0 },
+      extra_fee: { type: Number, default: 0 },
+      renter_reason: { type: String, default: "" },
+      status: {
+        type: String,
+        enum: ["NONE", "PENDING", "APPROVED", "REJECTED"],
+        default: "NONE",
+      },
+      requested_at: { type: Date },
+      responded_at: { type: Date },
+    },
     contract: {
       contractNumber: { type: String, trim: true },
       termsAccepted: { type: Boolean, default: false },
