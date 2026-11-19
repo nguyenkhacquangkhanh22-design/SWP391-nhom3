@@ -312,4 +312,34 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify({ status }) },
       token
     ),
+
+  // ==========================================
+  // UC_A27: Equipment Status & Maintenance
+  // ==========================================
+  listEquipmentStatusRequests: (
+    token: string,
+    params?: { status?: string; target_status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.target_status) query.set("target_status", params.target_status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminEquipmentStatusRequestsResponse>(
+      `/equipment-status-requests${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  reviewEquipmentStatusRequest: (
+    token: string,
+    id: string,
+    body: { status: "approved" | "rejected"; moderator_note?: string }
+  ) =>
+    adminRequest<{ message: string; request: import("../types/admin").AdminEquipmentStatusRequest }>(
+      `/equipment-status-requests/${id}/review`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

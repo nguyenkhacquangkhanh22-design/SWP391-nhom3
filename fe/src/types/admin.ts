@@ -381,3 +381,50 @@ export interface AdminContractTemplatesResponse {
     retired: number;
   };
 }
+
+// ==========================================
+// EQUIPMENT STATUS REQUESTS (UC_A27)
+// ==========================================
+export interface AdminEquipmentStatusRequest {
+  _id: string;
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    condition?: string;
+    status?: string;
+    visibility?: string;
+    serial_number?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  current_status: string;
+  target_status: "available" | "maintenance" | "retired" | "damaged" | "hidden";
+  reason: string;
+  evidence_photos: string[];
+  status: "pending" | "approved" | "rejected";
+  moderator_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEquipmentStatusRequestsResponse {
+  requests: AdminEquipmentStatusRequest[];
+  stats: {
+    total: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+  };
+}

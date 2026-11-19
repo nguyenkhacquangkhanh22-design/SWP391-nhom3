@@ -8,6 +8,7 @@ export type AdminTab =
   | "owner-apps"
   | "kyc"
   | "equipments"
+  | "equipment-status"
   | "disputes"
   | "support"
   | "finance"
@@ -123,6 +124,13 @@ export default function AdminSidebar({
                 </span>
               )}
             </span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "equipment-status" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("equipment-status")}
+          >
+            <span className="admin-nav-icon">🛠️</span>
+            <span>Duyệt Bảo Dưỡng (UC_A27)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "disputes" ? "is-active" : ""}`}
