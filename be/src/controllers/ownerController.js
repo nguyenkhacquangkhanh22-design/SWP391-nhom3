@@ -9,6 +9,7 @@ const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
+const EquipmentBlackout = require("../models/EquipmentBlackout");
 const { getIO } = require("../config/socket");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
@@ -3102,6 +3103,71 @@ async function reviewRenter(req, res) {
   });
 }
 
+// UC_O15: Quản lý ngày bận / chặn lịch của Owner
+async function getEquipmentBlackouts(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  const blackouts = await EquipmentBlackout.find({
+    equipment_id: id,
+    owner_id: ownerId,
+  }).sort({ start_date: 1 });
+
+  res.json({
+    message: "Lấy danh sách ngày bận thành công",
+    blackouts,
+  });
+}
+
+async function createEquipmentBlackout(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const { start_date, end_date, reason, note } = req.body;
+
+  if (!start_date || !end_date) {
+    throw new AppError(400, "Vui lòng chọn ngày bắt đầu và kết thúc chặn lịch");
+  }
+
+  const start = new Date(start_date);
+  const end = new Date(end_date);
+  if (end < start) {
+    throw new AppError(400, "Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
+  }
+
+  const blackout = await EquipmentBlackout.create({
+    equipment_id: id,
+    owner_id: ownerId,
+    start_date: start,
+    end_date: end,
+    reason: reason || "Lịch bận chụp riêng của Chủ máy",
+    note: note || "",
+  });
+
+  res.status(201).json({
+    message: "Đã thêm ngày bận chặn lịch thiết bị thành công",
+    blackout,
+  });
+}
+
+async function deleteEquipmentBlackout(req, res) {
+  const { id, blackoutId } = req.params;
+  const ownerId = req.user._id;
+
+  const blackout = await EquipmentBlackout.findOneAndDelete({
+    _id: blackoutId,
+    equipment_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!blackout) {
+    throw new AppError(404, "Không tìm thấy lịch chặn bận cần xóa");
+  }
+
+  res.json({
+    message: "Đã mở khóa lịch thiết bị thành công",
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -3112,6 +3178,9 @@ module.exports = {
   updateEquipment,
   toggleEquipmentVisibility,
   scheduleEquipmentAvailability,
+  getEquipmentBlackouts,
+  createEquipmentBlackout,
+  deleteEquipmentBlackout,
   submitEquipmentStatusUpdateRequest,
   getRentalRequests,
   respondRentalRequest,

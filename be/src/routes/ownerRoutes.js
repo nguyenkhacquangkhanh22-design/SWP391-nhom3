@@ -32,6 +32,9 @@ router.get("/equipments/:id", asyncHandler(ownerController.getEquipmentDetail));
 router.put("/equipments/:id", requireMembershipToPublish, asyncHandler(ownerController.updateEquipment));
 router.patch("/equipments/:id/visibility", requireMembershipToPublish, asyncHandler(ownerController.toggleEquipmentVisibility));
 router.post("/equipments/:id/schedule", asyncHandler(ownerController.scheduleEquipmentAvailability));
+router.get("/equipments/:id/blackouts", asyncHandler(ownerController.getEquipmentBlackouts));
+router.post("/equipments/:id/blackouts", asyncHandler(ownerController.createEquipmentBlackout));
+router.delete("/equipments/:id/blackouts/:blackoutId", asyncHandler(ownerController.deleteEquipmentBlackout));
 router.post("/equipments/:id/status-request", asyncHandler(ownerController.submitEquipmentStatusUpdateRequest));
 
 // 3. Rental Requests & Direct Rental Management

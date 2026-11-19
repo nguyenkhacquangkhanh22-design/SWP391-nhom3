@@ -11,6 +11,7 @@ const { buildContractHtmlServer } = require("../utils/contractHtmlBuilder");
 const crypto = require("crypto");
 const Rental = require("../models/Rental");
 const Equipment = require("../models/Equipment");
+const EquipmentBlackout = require("../models/EquipmentBlackout");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -76,6 +77,25 @@ class RentalService {
 
     if (excludeRentalId) {
       conflictQuery._id = { $ne: excludeRentalId };
+    }
+
+    // Kiểm tra lịch chặn bận đột xuất của Chủ máy (UC_O15)
+    const blackoutConflict = await EquipmentBlackout.findOne({
+      equipment_id: equipmentId,
+      $or: [
+        { start_date: { $lte: startRange }, end_date: { $gte: startRange } },
+        { start_date: { $lte: endRange }, end_date: { $gte: endRange } },
+        { start_date: { $gte: startRange }, end_date: { $lte: endRange } },
+      ],
+    });
+
+    if (blackoutConflict) {
+      return {
+        available: false,
+        conflictRental: `Chủ máy bận (${blackoutConflict.reason || "Lịch cá nhân"})`,
+        startDate: start,
+        endDate: end,
+      };
     }
 
     const conflict = await Rental.findOne(conflictQuery);
