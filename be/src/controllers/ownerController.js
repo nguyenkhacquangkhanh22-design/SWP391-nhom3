@@ -11,6 +11,7 @@ const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
 const EquipmentBlackout = require("../models/EquipmentBlackout");
 const RentalChecklist = require("../models/RentalChecklist");
+const EquipmentInspectionLog = require("../models/EquipmentInspectionLog");
 const { getIO } = require("../config/socket");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
@@ -3269,6 +3270,64 @@ async function saveRentalChecklist(req, res) {
   });
 }
 
+// UC_O18: Đánh giá Nhanh Thiệt hại & Sơ đồ Vết xước Ngoại quan khi Thu hồi
+async function getRentalInspectionLog(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  const inspection = await EquipmentInspectionLog.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  }).sort({ createdAt: -1 });
+
+  res.json({
+    message: "Lấy biên bản kiểm tra ngoại quan thành công",
+    inspection,
+  });
+}
+
+async function submitReturnInspection(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const {
+    overall_condition,
+    sensor_clean,
+    lens_clean,
+    shutter_working,
+    scratches,
+    photo_evidences,
+    deposit_action,
+    deduction_amount,
+    inspection_notes,
+  } = req.body;
+
+  const rental = await Rental.findById(id);
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy hợp đồng thuê");
+  }
+
+  const inspection = await EquipmentInspectionLog.create({
+    rental_id: id,
+    owner_id: ownerId,
+    equipment_id: rental.equipment,
+    inspection_type: "return",
+    overall_condition: overall_condition || "flawless",
+    sensor_clean: sensor_clean !== false,
+    lens_clean: lens_clean !== false,
+    shutter_working: shutter_working !== false,
+    scratches: Array.isArray(scratches) ? scratches : [],
+    photo_evidences: Array.isArray(photo_evidences) ? photo_evidences : [],
+    deposit_action: deposit_action || "full_refund",
+    deduction_amount: Number(deduction_amount) || 0,
+    inspection_notes: inspection_notes || "",
+  });
+
+  res.status(201).json({
+    message: "Đã lưu biên bản đánh giá ngoại quan thiết bị thu hồi thành công",
+    inspection,
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -3284,6 +3343,8 @@ module.exports = {
   deleteEquipmentBlackout,
   getRentalChecklist,
   saveRentalChecklist,
+  getRentalInspectionLog,
+  submitReturnInspection,
   submitEquipmentStatusUpdateRequest,
   getRentalRequests,
   respondRentalRequest,
