@@ -7,6 +7,7 @@ const Settlement = require("../models/Settlement");
 const RentalContract = require("../models/RentalContract");
 const HandoverRecord = require("../models/HandoverRecord");
 const AuditLog = require("../models/AuditLog");
+const ContractTemplate = require("../models/ContractTemplate");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -1096,6 +1097,164 @@ async function listAuditLogs(req, res) {
   });
 }
 
+// ==========================================
+// UC_A26: Digital Contract Template Management
+// ==========================================
+async function listContractTemplates(req, res) {
+  const { status, search } = req.query;
+  const filter = {};
+
+  if (status && ["draft", "published", "retired"].includes(status)) {
+    filter.status = status;
+  }
+
+  if (search && search.trim()) {
+    const regex = new RegExp(search.trim(), "i");
+    filter.$or = [{ template_code: regex }, { name: regex }];
+  }
+
+  const [templates, totalDraft, totalPublished, totalRetired] = await Promise.all([
+    ContractTemplate.find(filter)
+      .populate("created_by", "name email role")
+      .populate("published_by", "name email role")
+      .sort({ updatedAt: -1 })
+      .lean(),
+    ContractTemplate.countDocuments({ status: "draft" }),
+    ContractTemplate.countDocuments({ status: "published" }),
+    ContractTemplate.countDocuments({ status: "retired" }),
+  ]);
+
+  res.json({
+    templates,
+    stats: {
+      total: templates.length,
+      draft: totalDraft,
+      published: totalPublished,
+      retired: totalRetired,
+    },
+  });
+}
+
+async function createContractTemplate(req, res) {
+  const { template_code, name, version, terms_content, fields, status } = req.body;
+
+  if (!template_code || !name || !terms_content) {
+    throw new AppError(400, "Mã mẫu, tên hợp đồng và điều khoản thuê là bắt buộc.");
+  }
+
+  const parsedVersion = Number(version) || 1;
+  const existing = await ContractTemplate.findOne({
+    template_code: template_code.trim().toUpperCase(),
+    version: parsedVersion,
+  });
+
+  if (existing) {
+    throw new AppError(409, `Mẫu hợp đồng ${template_code} phiên bản ${parsedVersion} đã tồn tại.`);
+  }
+
+  const newTemplate = new ContractTemplate({
+    template_code: template_code.trim().toUpperCase(),
+    name: name.trim(),
+    version: parsedVersion,
+    terms_content: terms_content.trim(),
+    fields: Array.isArray(fields) ? fields : [],
+    status: ["draft", "published"].includes(status) ? status : "draft",
+    created_by: req.user._id,
+    published_by: status === "published" ? req.user._id : undefined,
+    published_at: status === "published" ? new Date() : undefined,
+  });
+
+  await newTemplate.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_CREATED",
+    targetType: "ContractTemplate",
+    targetId: newTemplate._id,
+    details: { template_code: newTemplate.template_code, version: newTemplate.version, status: newTemplate.status },
+  });
+
+  res.status(201).json({
+    message: "Tạo mẫu hợp đồng thành công.",
+    template: newTemplate,
+  });
+}
+
+async function updateContractTemplate(req, res) {
+  const { id } = req.params;
+  const { name, terms_content, fields, status } = req.body;
+
+  const template = await ContractTemplate.findById(id);
+  if (!template) {
+    throw new AppError(404, "Không tìm thấy mẫu hợp đồng.");
+  }
+
+  if (name) template.name = name.trim();
+  if (terms_content) template.terms_content = terms_content.trim();
+  if (Array.isArray(fields)) template.fields = fields;
+
+  if (status && ["draft", "published", "retired"].includes(status)) {
+    if (status === "published" && template.status !== "published") {
+      template.published_by = req.user._id;
+      template.published_at = new Date();
+    } else if (status === "retired" && template.status !== "retired") {
+      template.retired_by = req.user._id;
+      template.retired_at = new Date();
+    }
+    template.status = status;
+  }
+
+  await template.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_UPDATED",
+    targetType: "ContractTemplate",
+    targetId: template._id,
+    details: { template_code: template.template_code, status: template.status },
+  });
+
+  res.json({
+    message: "Cập nhật mẫu hợp đồng thành công.",
+    template,
+  });
+}
+
+async function updateContractTemplateStatus(req, res) {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!["draft", "published", "retired"].includes(status)) {
+    throw new AppError(400, "Trạng thái không hợp lệ (draft, published, retired).");
+  }
+
+  const template = await ContractTemplate.findById(id);
+  if (!template) {
+    throw new AppError(404, "Không tìm thấy mẫu hợp đồng.");
+  }
+
+  template.status = status;
+  if (status === "published") {
+    template.published_by = req.user._id;
+    template.published_at = new Date();
+  } else if (status === "retired") {
+    template.retired_by = req.user._id;
+    template.retired_at = new Date();
+  }
+
+  await template.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_STATUS_CHANGED",
+    targetType: "ContractTemplate",
+    targetId: template._id,
+    details: { status },
+  });
+
+  res.json({
+    message: `Đã chuyển trạng thái mẫu hợp đồng sang ${status}.`,
+    template,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1112,4 +1271,8 @@ module.exports = {
   listKycSubmissions,
   reviewKycSubmission,
   listAuditLogs,
+  listContractTemplates,
+  createContractTemplate,
+  updateContractTemplate,
+  updateContractTemplateStatus,
 };

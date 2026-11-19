@@ -41,6 +41,12 @@ router.patch("/kyc-submissions/:userId/review", asyncHandler(adminController.rev
 // Audit logs lookup (UC_A21)
 router.get("/audit-logs", asyncHandler(adminController.listAuditLogs));
 
+// Digital Contract Templates management (UC_A26)
+router.get("/contract-templates", asyncHandler(adminController.listContractTemplates));
+router.post("/contract-templates", asyncHandler(adminController.createContractTemplate));
+router.put("/contract-templates/:id", asyncHandler(adminController.updateContractTemplate));
+router.patch("/contract-templates/:id/status", asyncHandler(adminController.updateContractTemplateStatus));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
