@@ -66,6 +66,7 @@ export default function OwnerEquipmentsTab({
 
   const [accessoriesInput, setAccessoriesInput] = useState("");
   const [condition, setCondition] = useState("Tốt (95%)");
+  const [quantity, setQuantity] = useState<number | string>(1);
   const [pricePerDay, setPricePerDay] = useState<number | string>(500000);
   const [pricePerHour, setPricePerHour] = useState<number | string>(50000);
   const [depositAmount, setDepositAmount] = useState<number | string>(0);
@@ -259,6 +260,7 @@ export default function OwnerEquipmentsTab({
     setExternalUrlInput("");
     setAccessoriesInput("");
     setCondition("Tốt (95%)");
+    setQuantity(1);
     setPricePerDay(500000);
     setPricePerHour(50000);
     setDepositAmount(0);
@@ -281,6 +283,7 @@ export default function OwnerEquipmentsTab({
     setExternalUrlInput("");
     setAccessoriesInput(eq.accessories?.join(", ") || "");
     setCondition(eq.condition || "Tốt (95%)");
+    setQuantity(eq.quantity || 1);
     setPricePerDay(eq.pricing.price_per_day);
     setPricePerHour(eq.pricing.price_per_hour || 0);
     setDepositAmount(eq.pricing.deposit_amount);
@@ -332,6 +335,7 @@ export default function OwnerEquipmentsTab({
       images: finalImages,
       accessories: accessoriesList,
       condition,
+      quantity: Math.max(1, Number(quantity) || 1),
       pricing: {
         price_per_day: finalPricePerDay,
         price_per_hour: finalPricePerHour,
@@ -857,6 +861,9 @@ export default function OwnerEquipmentsTab({
                       ? "Đang thuê"
                       : "Bảo trì"}
                 </span>
+                <span className="owner-status-badge" style={{ background: "rgba(30, 58, 138, 0.6)", color: "#93c5fd", border: "1px solid rgba(59, 130, 246, 0.4)" }}>
+                  📦 Kho: {eq.available_quantity !== undefined ? eq.available_quantity : (eq.quantity || 1)} / {eq.quantity || 1}
+                </span>
               </div>
 
               <div className="owner-card-body">
@@ -1050,6 +1057,25 @@ export default function OwnerEquipmentsTab({
                     <option value="Tốt (95%)">Tốt (95%)</option>
                     <option value="Khá (85-90%)">Khá (85-90%)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="field-label">Số lượng máy trong kho (Chiếc/Bộ) *</label>
+                  <input
+                    className="input-field font-mono"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={quantity}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                      setQuantity(raw === "" ? "" : Math.max(1, Number(raw)));
+                    }}
+                    required
+                  />
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    📦 Quản lý tồn kho để khách biết số lượng còn sẵn
+                  </span>
                 </div>
 
                 <div>

@@ -35,6 +35,8 @@ export interface Equipment {
   cancellation_policy: string;
   visibility: "published" | "hidden" | "draft";
   status: "available" | "rented" | "maintenance" | "reserved";
+  quantity?: number;
+  available_quantity?: number;
   availability_schedule: EquipmentSchedule[];
   rating: number;
   review_count: number;
