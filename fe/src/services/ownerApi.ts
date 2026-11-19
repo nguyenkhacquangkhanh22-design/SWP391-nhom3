@@ -224,6 +224,16 @@ export const ownerApi = {
       token
     ),
 
+  getRentalInspection: (token: string, rentalId: string) =>
+    request<{ inspection: any }>(`/api/owner/rentals/${rentalId}/inspection`, { method: "GET" }, token),
+
+  submitReturnInspection: (token: string, rentalId: string, data: any) =>
+    request<{ message: string; inspection: any }>(
+      `/api/owner/rentals/${rentalId}/inspection`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
   submitStatusRequest: (
     token: string,
     id: string,
