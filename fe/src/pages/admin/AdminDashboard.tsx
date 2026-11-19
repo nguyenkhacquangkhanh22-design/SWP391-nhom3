@@ -16,6 +16,7 @@ import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
 import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
 import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
 import AdminMaintenanceLogTab from "../../components/admin/AdminMaintenanceLogTab";
+import LabMaintenanceKanban from "../../components/admin/LabMaintenanceKanban";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -620,6 +621,8 @@ export default function AdminDashboard() {
                 ? "Khung Biểu Phí Đền Bù & Khấu Hao Thiết Bị Chuẩn Hóa (UC_A32)"
                 : activeTab === "maintenance-logs"
                 ? "Sổ Theo Dõi Bảo Trì & Số Shot Màn Trập Máy Ảnh (UC_A33)"
+                : activeTab === "lab-cleanroom"
+                ? "Trạm Điều Phối Bảo Dưỡng Phòng Sạch ISO 5 (UC_A34)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2115,6 +2118,13 @@ export default function AdminDashboard() {
               onError={setError}
               onSuccess={setSuccess}
             />
+          </div>
+        )}
+
+        {/* Cleanroom Lab Kanban Tab (UC_A34) */}
+        {activeTab === "lab-cleanroom" && (
+          <div style={{ marginTop: "20px" }}>
+            <LabMaintenanceKanban />
           </div>
         )}
 

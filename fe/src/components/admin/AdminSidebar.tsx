@@ -10,6 +10,7 @@ export type AdminTab =
   | "equipments"
   | "equipment-status"
   | "maintenance-logs"
+  | "lab-cleanroom"
   | "memberships"
   | "settlements"
   | "handover-records"
@@ -170,6 +171,13 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">⚙️</span>
             <span>Sổ Bảo Trì & Shutter (UC_A33)</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "lab-cleanroom" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("lab-cleanroom")}
+          >
+            <span className="admin-nav-icon">🔬</span>
+            <span>Phòng Sạch Lab ISO 5 (UC_A34)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
