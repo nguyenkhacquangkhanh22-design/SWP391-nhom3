@@ -1527,6 +1527,141 @@ async function grantOwnerMembership(req, res) {
   });
 }
 
+// ==========================================
+// UC_A29: Rental Settlement & Escrow Release Audit
+// ==========================================
+async function listSettlements(req, res) {
+  const { payout_status, search } = req.query;
+  const filter = {};
+
+  if (payout_status && ["pending_owner_confirmation", "pending_moderator_approval", "confirmed", "processing", "paid", "rejected"].includes(payout_status)) {
+    filter.payout_status = payout_status;
+  }
+
+  const [settlements, totalPendingApproval, totalPaid, totalProcessing, statsAgg] = await Promise.all([
+    Settlement.find(filter)
+      .populate("owner_id", "name email phone")
+      .populate("renter_id", "name email phone")
+      .populate("contract_id", "contract_code")
+      .populate("moderator_review.moderator_id", "name email")
+      .sort({ createdAt: -1 })
+      .lean(),
+    Settlement.countDocuments({ payout_status: "pending_moderator_approval" }),
+    Settlement.countDocuments({ payout_status: "paid" }),
+    Settlement.countDocuments({ payout_status: "processing" }),
+    Settlement.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalDepositRefund: { $sum: "$deposit_refund_to_renter" },
+          totalDamageDeduction: { $sum: "$damage_deduction" },
+          totalPlatformFee: { $sum: "$platform_fee" },
+          totalOwnerPayout: { $sum: "$owner_payout_amount" },
+        },
+      },
+    ]),
+  ]);
+
+  let filtered = settlements;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = settlements.filter((s) => {
+      const code = (s.settlement_code || "").toLowerCase();
+      const ownerName = (s.owner_id?.name || "").toLowerCase();
+      const renterName = (s.renter_id?.name || "").toLowerCase();
+      const contractCode = (s.contract_id?.contract_code || "").toLowerCase();
+      return code.includes(q) || ownerName.includes(q) || renterName.includes(q) || contractCode.includes(q);
+    });
+  }
+
+  const agg = statsAgg[0] || {};
+
+  res.json({
+    settlements: filtered,
+    stats: {
+      total: settlements.length,
+      pendingApproval: totalPendingApproval,
+      paid: totalPaid,
+      processing: totalProcessing,
+      totalDepositRefund: agg.totalDepositRefund || 0,
+      totalDamageDeduction: agg.totalDamageDeduction || 0,
+      totalPlatformFee: agg.totalPlatformFee || 0,
+      totalOwnerPayout: agg.totalOwnerPayout || 0,
+    },
+  });
+}
+
+async function approveSettlement(req, res) {
+  const { id } = req.params;
+  const { action, note, transaction_code } = req.body;
+
+  if (!["approve", "reject"].includes(action)) {
+    throw new AppError(400, "Hành động chỉ có thể là approve hoặc reject.");
+  }
+
+  const settlement = await Settlement.findById(id);
+  if (!settlement) {
+    throw new AppError(404, "Không tìm thấy bảng quyết toán hợp đồng.");
+  }
+
+  const isApproval = action === "approve";
+  settlement.payout_status = isApproval ? "paid" : "rejected";
+  if (isApproval) {
+    settlement.paid_at = new Date();
+  }
+
+  settlement.moderator_review = {
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+    note: note ? note.trim() : (isApproval ? "Quản trị viên đã duyệt giải ngân và hoàn cọc" : "Bị từ chối quyết toán"),
+    transaction_code: transaction_code ? transaction_code.trim() : "",
+  };
+
+  await settlement.save();
+
+  // Create notifications for Owner and Renter
+  try {
+    if (isApproval) {
+      await Promise.all([
+        UserNotification.create({
+          user_id: settlement.owner_id,
+          title: "Quyết Toán Thuê Máy Đã Được Giải Ngân",
+          message: `Bảng quyết toán ${settlement.settlement_code} đã được duyệt. Số tiền ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.owner_payout_amount)} đã được giải ngân.`,
+          type: "settlement_paid",
+          read: false,
+        }),
+        UserNotification.create({
+          user_id: settlement.renter_id,
+          title: "Tiền Cọc Thuê Máy Đã Được Hoàn Trả",
+          message: `Hợp đồng thuê kết thúc. Số tiền cọc hoàn lại ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.deposit_refund_to_renter)} đã được giải phóng an toàn.`,
+          type: "deposit_refunded",
+          read: false,
+        }),
+      ]);
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: isApproval ? "SETTLEMENT_APPROVED" : "SETTLEMENT_REJECTED",
+    targetType: "Settlement",
+    targetId: settlement._id,
+    details: {
+      settlement_code: settlement.settlement_code,
+      payout_status: settlement.payout_status,
+      deposit_refund: settlement.deposit_refund_to_renter,
+      damage_deduction: settlement.damage_deduction,
+      transaction_code: settlement.moderator_review?.transaction_code,
+    },
+  });
+
+  res.json({
+    message: isApproval ? "Duyệt quyết toán & giải phóng tiền cọc thành công." : "Đã từ chối bảng quyết toán.",
+    settlement,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1551,4 +1686,6 @@ module.exports = {
   reviewEquipmentStatusRequest,
   listMemberships,
   grantOwnerMembership,
+  listSettlements,
+  approveSettlement,
 };
