@@ -265,6 +265,13 @@ async function createEquipmentListing(req, res) {
       price_per_day: Number(pricing.price_per_day) || 0,
       deposit_amount: 0,
       weekend_rate: Number(pricing.weekend_rate) || 0,
+      multi_day_discounts: Array.isArray(pricing.multi_day_discounts)
+        ? pricing.multi_day_discounts.filter((d) => Number(d.min_days) > 0 && Number(d.discount_percent) >= 0)
+        : [
+            { min_days: 3, discount_percent: 5 },
+            { min_days: 7, discount_percent: 15 },
+            { min_days: 30, discount_percent: 25 },
+          ],
     },
     rental_terms: rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.",
     cancellation_policy: cancellation_policy || "Miễn phí hủy trước 24 giờ.",
@@ -360,6 +367,11 @@ async function updateEquipment(req, res) {
     if (pDeposit !== undefined) equipment.pricing.deposit_amount = 0;
     if (pHour !== undefined) equipment.pricing.price_per_hour = pHour;
     if (pWeekend !== undefined) equipment.pricing.weekend_rate = pWeekend;
+    if (Array.isArray(pricing.multi_day_discounts)) {
+      equipment.pricing.multi_day_discounts = pricing.multi_day_discounts.filter(
+        (d) => Number(d.min_days) > 0 && Number(d.discount_percent) >= 0
+      );
+    }
   }
 
   if (!equipment.owner) {

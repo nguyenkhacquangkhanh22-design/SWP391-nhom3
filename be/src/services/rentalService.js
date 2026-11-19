@@ -192,12 +192,24 @@ class RentalService {
     const diffTime = Math.abs(end - start);
     const totalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-    // Áp dụng giảm giá thuê dài ngày
+    // Áp dụng giảm giá thuê dài ngày (Ưu tiên cấu hình Owner - UC_O16)
     let discountRate = 0;
-    if (totalDays >= 30) {
-      discountRate = 0.20; // Giảm 20% nếu >= 30 ngày
-    } else if (totalDays >= 7) {
-      discountRate = 0.10; // Giảm 10% nếu >= 7 ngày
+    const customTiers = equipment.pricing?.multi_day_discounts;
+    if (Array.isArray(customTiers) && customTiers.length > 0) {
+      const sortedTiers = [...customTiers].sort((a, b) => b.min_days - a.min_days);
+      const matched = sortedTiers.find((t) => totalDays >= t.min_days);
+      if (matched) {
+        discountRate = Number(matched.discount_percent) / 100;
+      }
+    } else {
+      if (totalDays >= 30) {
+        discountRate = 0.20; // Giảm 20% nếu >= 30 ngày
+      } else if (totalDays >= 7) {
+        discountRate = 0.10; // Giảm 10% nếu >= 7 ngày
+      } else if (totalDays >= 3) {
+        discountRate = 0.05; // Giảm 5% nếu >= 3 ngày
+      }
+    }
     }
 
     const dailyRate = equipment.dailyRate || (equipment.pricing ? equipment.pricing.price_per_day : 0) || 0;

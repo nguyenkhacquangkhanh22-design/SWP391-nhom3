@@ -91,6 +91,12 @@ const equipmentSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      multi_day_discounts: [
+        {
+          min_days: { type: Number, required: true },
+          discount_percent: { type: Number, required: true, min: 0, max: 100 },
+        },
+      ],
     },
     status: {
       type: String,
