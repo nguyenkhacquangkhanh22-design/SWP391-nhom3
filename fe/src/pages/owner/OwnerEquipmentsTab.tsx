@@ -3,6 +3,7 @@ import { useAuth } from "../../app/AuthProvider";
 import { smartEquipApi } from "../../services/smartEquipApi";
 import type { Equipment } from "../../types/owner";
 import { ownerApi } from "../../services/ownerApi";
+import Feedback from "../../components/Feedback";
 
 interface Props {
   equipments: Equipment[];
@@ -47,6 +48,7 @@ export default function OwnerEquipmentsTab({
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [scheduleEquipment, setScheduleEquipment] = useState<Equipment | null>(null);
   const [statusRequestEquipment, setStatusRequestEquipment] = useState<Equipment | null>(null);
+  const [formError, setFormError] = useState("");
 
   // Form states for Create/Edit
   const [title, setTitle] = useState("");
@@ -275,9 +277,11 @@ export default function OwnerEquipmentsTab({
     setRentalTerms("Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.");
     setCancellationPolicy("Miễn phí hủy trước 24 giờ.");
     setVisibility("published");
+    setFormError("");
   }
 
   function openEditModal(eq: Equipment) {
+    setFormError("");
     setEditingEquipment(eq);
     setTitle(eq.title);
     setCategory(eq.category);
@@ -310,6 +314,7 @@ export default function OwnerEquipmentsTab({
   async function handleSaveEquipment(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
+    setFormError("");
     onError("");
     onSuccess("");
 
@@ -325,17 +330,23 @@ export default function OwnerEquipmentsTab({
     const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
 
     if (finalPricePerDay < 2000 || finalPricePerDay > 500000000) {
-      onError("Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 đ đến 500.000.000 đ.");
+      const msg = "Thiết lập giá cho thuê thiết bị theo ngày phải từ 2.000 đ đến 500.000.000 đ.";
+      setFormError(msg);
+      onError(msg);
       setIsSubmitting(false);
       return;
     }
     if (finalPricePerHour < 0 || finalPricePerHour > 50000000) {
-      onError("Giá thuê theo giờ không hợp lệ (tối đa 50.000.000 đ).");
+      const msg = "Giá thuê theo giờ không hợp lệ (tối đa 50.000.000 đ).";
+      setFormError(msg);
+      onError(msg);
       setIsSubmitting(false);
       return;
     }
     if (finalDepositAmount < 0 || finalDepositAmount > 500000000) {
-      onError("Tiền đặt cọc không hợp lệ (tối đa 500.000.000 đ).");
+      const msg = "Tiền đặt cọc không hợp lệ (tối đa 500.000.000 đ).";
+      setFormError(msg);
+      onError(msg);
       setIsSubmitting(false);
       return;
     }
@@ -1031,6 +1042,11 @@ export default function OwnerEquipmentsTab({
             </div>
 
             <form onSubmit={handleSaveEquipment} className="owner-modal-form">
+              {formError && (
+                <div style={{ marginBottom: "16px" }}>
+                  <Feedback message={formError} onClose={() => setFormError("")} />
+                </div>
+              )}
               <div className="form-grid-2">
                 <div className="form-col-span-2">
                   <label className="field-label">Tên thiết bị bài đăng *</label>
@@ -1571,6 +1587,16 @@ export default function OwnerEquipmentsTab({
                       step={1}
                       placeholder="Ví dụ: 50000"
                       value={pricePerDay}
+                      style={{
+                        borderColor:
+                          pricePerDay === "" || Number(pricePerDay) < 2000
+                            ? "#ef4444"
+                            : undefined,
+                        background:
+                          pricePerDay !== "" && Number(pricePerDay) < 2000
+                            ? "rgba(239, 68, 68, 0.08)"
+                            : undefined,
+                      }}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/^0+(?=\d)/, "");
                         if (raw === "") {
@@ -1579,10 +1605,11 @@ export default function OwnerEquipmentsTab({
                           const num = Number(raw);
                           if (!isNaN(num)) setPricePerDay(Math.min(500000000, Math.max(0, num)));
                         }
+                        if (formError) setFormError("");
                       }}
                       onBlur={() => {
                         if (pricePerDay !== "" && Number(pricePerDay) < 2000) {
-                          setPricePerDay("2000");
+                          setPricePerDay(2000);
                         }
                       }}
                       onKeyDown={(e) => {
@@ -1590,15 +1617,17 @@ export default function OwnerEquipmentsTab({
                       }}
                       required
                     />
-                    {pricePerDay !== "" && !isNaN(Number(pricePerDay)) && (
-                      <span
-                        className={`text-[11px] font-mono mt-1 block ${
-                          Number(pricePerDay) < 2000 ? "text-red-400 font-semibold" : "text-amber-400"
-                        }`}
-                      >
-                        {Number(pricePerDay) < 2000
-                          ? `⚠️ Tối thiểu từ 2.000 đ/ngày (hiện tại: ${Number(pricePerDay).toLocaleString("vi-VN")} đ)`
-                          : `≈ ${Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày`}
+                    {pricePerDay === "" ? (
+                      <span className="text-[11px] font-mono mt-1 block text-red-400 font-semibold">
+                        ⚠️ Vui lòng nhập giá thuê ngày (tối thiểu từ 2.000 đ)
+                      </span>
+                    ) : Number(pricePerDay) < 2000 ? (
+                      <span className="text-[11px] font-mono mt-1 block text-red-400 font-semibold">
+                        ⚠️ Giá thuê tối thiểu phải từ 2.000 đ/ngày (hiện tại: {Number(pricePerDay).toLocaleString("vi-VN")} đ)
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-mono mt-1 block text-emerald-400 font-medium">
+                        ✓ ≈ {Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày
                       </span>
                     )}
                   </div>
@@ -1740,7 +1769,20 @@ export default function OwnerEquipmentsTab({
                 >
                   Hủy
                 </button>
-                <button type="submit" className="button button-primary" disabled={isSubmitting}>
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={isSubmitting || pricePerDay === "" || Number(pricePerDay) < 2000}
+                  title={
+                    pricePerDay === "" || Number(pricePerDay) < 2000
+                      ? "Giá thuê theo ngày tối thiểu phải từ 2.000 đ"
+                      : undefined
+                  }
+                  style={{
+                    opacity: pricePerDay === "" || Number(pricePerDay) < 2000 ? 0.6 : 1,
+                    cursor: pricePerDay === "" || Number(pricePerDay) < 2000 ? "not-allowed" : "pointer",
+                  }}
+                >
                   {isSubmitting ? "Đang lưu..." : editingEquipment ? "Cập nhật thiết bị" : "Tạo bài đăng ngay"}
                 </button>
               </div>

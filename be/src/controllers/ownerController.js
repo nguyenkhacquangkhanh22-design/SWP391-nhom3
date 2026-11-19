@@ -225,7 +225,7 @@ async function createEquipmentListing(req, res) {
 
   if (
     isNaN(pDay) ||
-    pDay < 1000 ||
+    pDay < 2000 ||
     pDay > 500000000 ||
     isNaN(pHour) ||
     pHour < 0 ||
