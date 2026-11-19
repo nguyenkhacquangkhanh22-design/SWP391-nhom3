@@ -405,4 +405,35 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A30: Handover & Return Inspection
+  // ==========================================
+  listHandoverRecords: (
+    token: string,
+    params?: { record_type?: string; review_status?: string; contract_id?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.record_type) query.set("record_type", params.record_type);
+    if (params?.review_status) query.set("review_status", params.review_status);
+    if (params?.contract_id) query.set("contract_id", params.contract_id);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminHandoverRecordsResponse>(
+      `/handover-records${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  reviewHandoverRecord: (
+    token: string,
+    id: string,
+    body: { status: "verified" | "needs_changes"; note?: string }
+  ) =>
+    adminRequest<{ message: string; record: import("../types/admin").AdminHandoverDetail }>(
+      `/handover-records/${id}/review`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

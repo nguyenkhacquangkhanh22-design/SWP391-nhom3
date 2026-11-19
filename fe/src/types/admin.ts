@@ -531,3 +531,75 @@ export interface AdminSettlementsResponse {
     totalOwnerPayout: number;
   };
 }
+
+// ==========================================
+// HANDOVER & RETURN RECORDS (UC_A30)
+// ==========================================
+export interface AdminHandoverCheckItem {
+  item: string;
+  checked: boolean;
+  notes?: string;
+}
+
+export interface AdminHandoverDetail {
+  _id: string;
+  contract_id?: {
+    _id: string;
+    contract_code?: string;
+  };
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    serial_number?: string;
+    condition?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  renter_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  record_type: "handover" | "return";
+  record_date: string;
+  accessories_checklist: AdminHandoverCheckItem[];
+  physical_condition: string;
+  working_status: string;
+  evidence_photos: string[];
+  notes?: string;
+  missing_items?: string[];
+  damage_detected?: string;
+  estimated_damage_cost?: number;
+  owner_confirmed: boolean;
+  renter_confirmed: boolean;
+  moderator_review?: {
+    status: "pending" | "verified" | "needs_changes";
+    note?: string;
+    moderator_id?: {
+      _id: string;
+      name: string;
+      email: string;
+    };
+    reviewed_at?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminHandoverRecordsResponse {
+  records: AdminHandoverDetail[];
+  stats: {
+    total: number;
+    handover: number;
+    return: number;
+    pendingReview: number;
+    verified: number;
+  };
+}

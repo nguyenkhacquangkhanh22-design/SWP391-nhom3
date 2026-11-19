@@ -12,6 +12,7 @@ import AdminContractTemplateTab from "../../components/admin/AdminContractTempla
 import AdminEquipmentStatusRequestTab from "../../components/admin/AdminEquipmentStatusRequestTab";
 import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
 import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAuditTab";
+import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -608,6 +609,8 @@ export default function AdminDashboard() {
                 ? "Quản Lý Gói Hội Viên & Quyền Lợi Chủ Máy (UC_A28)"
                 : activeTab === "settlements"
                 ? "Đối Soát Quyết Toán Hợp Đồng & Giải Phóng Tiền Cọc (UC_A29)"
+                : activeTab === "handover-records"
+                ? "Tra Cứu & Đối Soát Biên Bản Bàn Giao Thiết Bị (UC_A30)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2054,6 +2057,17 @@ export default function AdminDashboard() {
         {activeTab === "settlements" && token && (
           <div style={{ marginTop: "20px" }}>
             <AdminSettlementAuditTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Handover Records Tab (UC_A30) */}
+        {activeTab === "handover-records" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminHandoverTab
               token={token}
               onError={setError}
               onSuccess={setSuccess}

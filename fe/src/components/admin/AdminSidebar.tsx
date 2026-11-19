@@ -11,6 +11,7 @@ export type AdminTab =
   | "equipment-status"
   | "memberships"
   | "settlements"
+  | "handover-records"
   | "disputes"
   | "support"
   | "finance"
@@ -147,6 +148,13 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">💵</span>
             <span>Đối Soát Quyết Toán (UC_A29)</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "handover-records" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("handover-records")}
+          >
+            <span className="admin-nav-icon">📋</span>
+            <span>Biên Bản Bàn Giao (UC_A30)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "disputes" ? "is-active" : ""}`}
