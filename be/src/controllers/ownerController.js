@@ -214,22 +214,29 @@ async function createEquipmentListing(req, res) {
     throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục và giá thuê ngày");
   }
 
-  const pDay = Number(pricing.price_per_day);
-  const pHour = Number(pricing.price_per_hour || 0);
-  const pDeposit = Number(pricing.deposit_amount || 0);
-  const pWeekend = Number(pricing.weekend_rate || 0);
+  const pDay = Math.floor(Number(pricing.price_per_day));
+  const pHour = Math.floor(Number(pricing.price_per_hour || 0));
+  const pDeposit = Math.floor(Number(pricing.deposit_amount || 0));
+  const pWeekend = Math.floor(Number(pricing.weekend_rate || 0));
 
   if (
     isNaN(pDay) ||
-    pDay < 0 ||
+    pDay < 1000 ||
+    pDay > 500000000 ||
     isNaN(pHour) ||
     pHour < 0 ||
+    pHour > 50000000 ||
     isNaN(pDeposit) ||
     pDeposit < 0 ||
+    pDeposit > 500000000 ||
     isNaN(pWeekend) ||
-    pWeekend < 0
+    pWeekend < 0 ||
+    pWeekend > 500000000
   ) {
-    throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+    throw new AppError(
+      400,
+      "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+    );
   }
 
   const equipment = await Equipment.create({
@@ -319,21 +326,29 @@ async function updateEquipment(req, res) {
   if (condition) equipment.condition = condition;
 
   if (pricing) {
+    const pDay = pricing.price_per_day !== undefined ? Math.floor(Number(pricing.price_per_day)) : undefined;
+    const pHour = pricing.price_per_hour !== undefined ? Math.floor(Number(pricing.price_per_hour)) : undefined;
+    const pDeposit = pricing.deposit_amount !== undefined ? Math.floor(Number(pricing.deposit_amount)) : undefined;
+    const pWeekend = pricing.weekend_rate !== undefined ? Math.floor(Number(pricing.weekend_rate)) : undefined;
+
     if (
-      (pricing.price_per_day !== undefined && Number(pricing.price_per_day) < 0) ||
-      (pricing.price_per_hour !== undefined && Number(pricing.price_per_hour) < 0) ||
-      (pricing.deposit_amount !== undefined && Number(pricing.deposit_amount) < 0) ||
-      (pricing.weekend_rate !== undefined && Number(pricing.weekend_rate) < 0)
+      (pDay !== undefined && (isNaN(pDay) || pDay < 1000 || pDay > 500000000)) ||
+      (pHour !== undefined && (isNaN(pHour) || pHour < 0 || pHour > 50000000)) ||
+      (pDeposit !== undefined && (isNaN(pDeposit) || pDeposit < 0 || pDeposit > 500000000)) ||
+      (pWeekend !== undefined && (isNaN(pWeekend) || pWeekend < 0 || pWeekend > 500000000))
     ) {
-      throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+      throw new AppError(
+        400,
+        "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+      );
     }
-    if (pricing.price_per_day !== undefined) {
-      equipment.pricing.price_per_day = Number(pricing.price_per_day);
-      equipment.dailyRate = Number(pricing.price_per_day);
+    if (pDay !== undefined) {
+      equipment.pricing.price_per_day = pDay;
+      equipment.dailyRate = pDay;
     }
-    if (pricing.deposit_amount !== undefined) equipment.pricing.deposit_amount = 0;
-    if (pricing.price_per_hour !== undefined) equipment.pricing.price_per_hour = Number(pricing.price_per_hour);
-    if (pricing.weekend_rate !== undefined) equipment.pricing.weekend_rate = Number(pricing.weekend_rate);
+    if (pDeposit !== undefined) equipment.pricing.deposit_amount = 0;
+    if (pHour !== undefined) equipment.pricing.price_per_hour = pHour;
+    if (pWeekend !== undefined) equipment.pricing.weekend_rate = pWeekend;
   }
 
   if (!equipment.owner) {
