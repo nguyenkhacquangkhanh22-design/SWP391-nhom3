@@ -9,7 +9,6 @@ import AdminKycTab from "../../components/admin/AdminKycTab";
 import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
 import AdminContractTemplateTab from "../../components/admin/AdminContractTemplateTab";
-import AdminEquipmentStatusRequestTab from "../../components/admin/AdminEquipmentStatusRequestTab";
 import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
 import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAuditTab";
 import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
@@ -49,6 +48,20 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Auto-dismiss floating notifications
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(""), 4500);
+    return () => clearTimeout(timer);
+  }, [success]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(""), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<AdminTab>("users");
@@ -623,8 +636,6 @@ export default function AdminDashboard() {
                 ? "Quản lý Tài chính, Ví trung gian & Duyệt rút tiền (Admin Finance)"
                 : activeTab === "contract-templates"
                 ? "Mẫu Hợp Đồng Thuê Máy Ảnh Điện Tử (UC_A26)"
-                : activeTab === "equipment-status"
-                ? "Thẩm Định Yêu Cầu Bảo Dưỡng & Trạng Thái Máy Ảnh (UC_A27)"
                 : activeTab === "memberships"
                 ? "Quản Lý Gói Hội Viên & Quyền Lợi Chủ Máy (UC_A28)"
                 : activeTab === "settlements"
@@ -660,10 +671,10 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        {/* Feedback Messages */}
+        {/* Floating Toast Notification Popups */}
         <div className="admin-feedbacks">
-          <Feedback message={error} />
-          <Feedback message={success} type="success" />
+          <Feedback message={error} onClose={() => setError("")} />
+          <Feedback message={success} type="success" onClose={() => setSuccess("")} />
         </div>
 
         {/* System KPI Metrics Grid */}
@@ -2084,17 +2095,6 @@ export default function AdminDashboard() {
         {activeTab === "contract-templates" && token && (
           <div style={{ marginTop: "20px" }}>
             <AdminContractTemplateTab
-              token={token}
-              onError={setError}
-              onSuccess={setSuccess}
-            />
-          </div>
-        )}
-
-        {/* Equipment Status & Maintenance Tab (UC_A27) */}
-        {activeTab === "equipment-status" && token && (
-          <div style={{ marginTop: "20px" }}>
-            <AdminEquipmentStatusRequestTab
               token={token}
               onError={setError}
               onSuccess={setSuccess}
