@@ -20,7 +20,8 @@ export type AdminTab =
   | "support"
   | "finance"
   | "contract-templates"
-  | "audit-logs";
+  | "audit-logs"
+  | "profile";
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -277,10 +278,14 @@ export default function AdminSidebar({
             <span className="admin-nav-icon">💼</span>
             <span>Cổng Owner</span>
           </Link>
-          <Link to="/profile" className="admin-nav-item" onClick={onCloseMobile}>
+          <button
+            type="button"
+            className={`admin-nav-item ${activeTab === "profile" ? "active" : ""}`}
+            onClick={() => handleSelectTab("profile")}
+          >
             <span className="admin-nav-icon">👤</span>
             <span>Hồ sơ cá nhân</span>
-          </Link>
+          </button>
         </nav>
 
         <div className="admin-sidebar-footer">

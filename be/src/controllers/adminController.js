@@ -66,16 +66,41 @@ async function updateUserRole(req, res) {
   const { role } = req.body;
 
   if (!role || typeof role !== "string") {
-    throw new AppError(400, "Role is required and must be a string");
+    throw new AppError(400, "Vui lòng chỉ định quyền hợp lệ");
   }
 
   const user = await User.findById(userId);
   if (!user) {
-    throw new AppError(404, "User not found");
+    throw new AppError(404, "Không tìm thấy người dùng trong hệ thống");
+  }
+
+  const cleanRole = role.trim();
+  const oldRoleLower = (user.role || "").toLowerCase();
+  const newRoleLower = cleanRole.toLowerCase();
+
+  // 1. Chặn tự hạ quyền của chính tài khoản đang đăng nhập
+  if (user._id.toString() === req.user._id.toString() && newRoleLower !== "systemadmin") {
+    throw new AppError(
+      400,
+      "Không thể tự hạ quyền của chính tài khoản đang đăng nhập để tránh mất quyền quản trị hệ thống."
+    );
+  }
+
+  // 2. Chặn hạ quyền System Admin duy nhất còn lại trong hệ thống
+  if (oldRoleLower === "systemadmin" && newRoleLower !== "systemadmin") {
+    const adminCount = await User.countDocuments({
+      role: { $regex: /^systemadmin$/i },
+    });
+    if (adminCount <= 1) {
+      throw new AppError(
+        400,
+        "Không thể hạ quyền System Admin duy nhất còn lại trong hệ thống. Hệ thống bắt buộc phải duy trì tối thiểu 1 System Admin."
+      );
+    }
   }
 
   const oldRole = user.role;
-  user.role = role.trim();
+  user.role = cleanRole;
   await user.save();
 
   await recordAuditLog(req, {
@@ -87,7 +112,7 @@ async function updateUserRole(req, res) {
   });
 
   res.json({
-    message: "User role updated successfully",
+    message: `Đã cập nhật vai trò của ${user.name} thành "${user.role}" thành công.`,
     user: {
       _id: user._id,
       name: user.name,

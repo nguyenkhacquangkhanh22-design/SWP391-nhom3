@@ -17,6 +17,7 @@ import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
 import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
 import AdminMaintenanceLogTab from "../../components/admin/AdminMaintenanceLogTab";
 import LabMaintenanceKanban from "../../components/admin/LabMaintenanceKanban";
+import AdminProfileTab from "../../components/admin/AdminProfileTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -364,6 +365,19 @@ export default function AdminDashboard() {
   async function handleToggleRole(targetUser: AdminUserRow) {
     if (!token) return;
     const isCurrentAdmin = (targetUser.role || "").toLowerCase() === "systemadmin";
+    const isSelf = Boolean(user?.email && targetUser.email?.toLowerCase() === user.email.toLowerCase());
+    const totalAdmins = users.filter((u) => (u.role || "").toLowerCase() === "systemadmin").length;
+
+    if (isCurrentAdmin && isSelf) {
+      setError("Không thể tự hạ quyền của chính tài khoản đang đăng nhập để tránh mất quyền quản trị.");
+      return;
+    }
+
+    if (isCurrentAdmin && totalAdmins <= 1) {
+      setError("Không thể hạ quyền System Admin duy nhất còn lại trong hệ thống. Hệ thống phải duy trì tối thiểu 1 System Admin.");
+      return;
+    }
+
     const nextRole = isCurrentAdmin ? "user" : "Systemadmin";
 
     if (!confirm(`Bạn có chắc muốn đổi quyền của "${targetUser.name}" thành "${nextRole}"?`)) {
@@ -375,10 +389,10 @@ export default function AdminDashboard() {
     setSuccess("");
     try {
       await adminApi.updateUserRole(token, targetUser._id, nextRole);
-      setSuccess(`Đã cập nhật quyền của ${targetUser.email} thành "${nextRole}".`);
+      setSuccess(`Đã cập nhật quyền của ${targetUser.email} thành "${nextRole}" thành công.`);
       await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Cập nhật quyền thất bại.");
+    } catch (err: any) {
+      setError(err.response?.data?.message || (err instanceof Error ? err.message : "Cập nhật quyền thất bại."));
     } finally {
       setUpdatingId(null);
     }
@@ -623,6 +637,8 @@ export default function AdminDashboard() {
                 ? "Sổ Theo Dõi Bảo Trì & Số Shot Màn Trập Máy Ảnh (UC_A33)"
                 : activeTab === "lab-cleanroom"
                 ? "Trạm Điều Phối Bảo Dưỡng Phòng Sạch ISO 5 (UC_A34)"
+                : activeTab === "profile"
+                ? "Hồ sơ cá nhân & Quản trị tài khoản System Admin"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2127,6 +2143,9 @@ export default function AdminDashboard() {
             <LabMaintenanceKanban />
           </div>
         )}
+
+        {/* Admin Profile Tab (Hồ sơ cá nhân Admin) */}
+        {activeTab === "profile" && <AdminProfileTab />}
 
         {/* Equipment Detail Modal (UC_A11 & UC_A12) */}
         {selectedEquipment && (
