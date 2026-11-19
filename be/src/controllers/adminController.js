@@ -11,6 +11,7 @@ const ContractTemplate = require("../models/ContractTemplate");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const OwnerMembership = require("../models/OwnerMembership");
 const DamageTariff = require("../models/DamageTariff");
+const EquipmentMaintenanceLog = require("../models/EquipmentMaintenanceLog");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -2049,6 +2050,151 @@ async function updateDamageTariff(req, res) {
   res.json({ message: "Cập nhật biểu phí đền bù thành công.", tariff });
 }
 
+// ==========================================
+// UC_A33: Equipment Periodic Maintenance & Shutter Count Tracking
+// ==========================================
+async function listMaintenanceLogs(req, res) {
+  const { maintenance_type, status, search } = req.query;
+  const filter = {};
+
+  if (maintenance_type && ["sensor_cleaning", "shutter_replacement", "lens_calibration", "firmware_update", "periodic_inspection"].includes(maintenance_type)) {
+    filter.maintenance_type = maintenance_type;
+  }
+  if (status && ["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+    filter.status = status;
+  }
+
+  const [logs, totalScheduled, totalInProgress, totalCompleted, costAgg] = await Promise.all([
+    EquipmentMaintenanceLog.find(filter)
+      .populate("equipment_id", "title name images serial_number condition status")
+      .populate("owner_id", "name email phone")
+      .populate("created_by", "name email")
+      .sort({ scheduled_date: -1 })
+      .lean(),
+    EquipmentMaintenanceLog.countDocuments({ status: "scheduled" }),
+    EquipmentMaintenanceLog.countDocuments({ status: "in_progress" }),
+    EquipmentMaintenanceLog.countDocuments({ status: "completed" }),
+    EquipmentMaintenanceLog.aggregate([
+      { $match: { status: "completed" } },
+      { $group: { _id: null, totalCost: { $sum: "$cost" } } },
+    ]),
+  ]);
+
+  let filtered = logs;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = logs.filter((l) => {
+      const title = (l.equipment_id?.title || l.equipment_id?.name || "").toLowerCase();
+      const sn = (l.equipment_id?.serial_number || "").toLowerCase();
+      const owner = (l.owner_id?.name || "").toLowerCase();
+      const center = (l.service_center || "").toLowerCase();
+      return title.includes(q) || sn.includes(q) || owner.includes(q) || center.includes(q);
+    });
+  }
+
+  // Calculate shutter life warning count (> 75% max shutter)
+  const shutterAlertsCount = logs.filter((l) => {
+    if (!l.max_rated_shutter || !l.current_shutter_count) return false;
+    return (l.current_shutter_count / l.max_rated_shutter) >= 0.75;
+  }).length;
+
+  res.json({
+    logs: filtered,
+    stats: {
+      total: logs.length,
+      scheduled: totalScheduled,
+      inProgress: totalInProgress,
+      completed: totalCompleted,
+      shutterAlerts: shutterAlertsCount,
+      totalCost: costAgg[0]?.totalCost || 0,
+    },
+  });
+}
+
+async function createMaintenanceLog(req, res) {
+  const {
+    equipment_id,
+    maintenance_type,
+    current_shutter_count,
+    max_rated_shutter,
+    service_center,
+    cost,
+    scheduled_date,
+    next_due_date,
+    technician_notes,
+  } = req.body;
+
+  if (!equipment_id) {
+    throw new AppError(400, "Vui lòng chọn thiết bị bảo dưỡng.");
+  }
+
+  const equipment = await Equipment.findById(equipment_id);
+  if (!equipment) {
+    throw new AppError(404, "Không tìm thấy thiết bị.");
+  }
+
+  const log = new EquipmentMaintenanceLog({
+    equipment_id,
+    owner_id: equipment.owner_id,
+    maintenance_type: maintenance_type || "periodic_inspection",
+    current_shutter_count: Number(current_shutter_count) || 0,
+    max_rated_shutter: Number(max_rated_shutter) || 200000,
+    service_center: service_center ? service_center.trim() : "Trung tâm dịch vụ kỹ thuật SmartEquip",
+    cost: Number(cost) || 0,
+    scheduled_date: scheduled_date ? new Date(scheduled_date) : new Date(),
+    next_due_date: next_due_date ? new Date(next_due_date) : undefined,
+    technician_notes: technician_notes ? technician_notes.trim() : "",
+    status: "scheduled",
+    created_by: req.user._id,
+  });
+
+  await log.save();
+
+  await recordAuditLog(req, {
+    action: "MAINTENANCE_LOG_CREATED",
+    targetType: "EquipmentMaintenanceLog",
+    targetId: log._id,
+    details: {
+      equipment_id,
+      maintenance_type: log.maintenance_type,
+      current_shutter: log.current_shutter_count,
+    },
+  });
+
+  res.status(201).json({ message: "Tạo phiếu bảo dưỡng máy ảnh thành công.", log });
+}
+
+async function updateMaintenanceLogStatus(req, res) {
+  const { id } = req.params;
+  const { status, completed_date, cost, technician_notes } = req.body;
+
+  const log = await EquipmentMaintenanceLog.findById(id);
+  if (!log) {
+    throw new AppError(404, "Không tìm thấy phiếu bảo dưỡng.");
+  }
+
+  if (status && ["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+    log.status = status;
+    if (status === "completed") {
+      log.completed_date = completed_date ? new Date(completed_date) : new Date();
+    }
+  }
+
+  if (cost !== undefined) log.cost = Number(cost) || 0;
+  if (technician_notes) log.technician_notes = technician_notes.trim();
+
+  await log.save();
+
+  await recordAuditLog(req, {
+    action: "MAINTENANCE_LOG_STATUS_UPDATED",
+    targetType: "EquipmentMaintenanceLog",
+    targetId: log._id,
+    details: { status: log.status, cost: log.cost },
+  });
+
+  res.json({ message: "Cập nhật tiến độ bảo dưỡng thành công.", log });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -2082,4 +2228,7 @@ module.exports = {
   listDamageTariffs,
   createDamageTariff,
   updateDamageTariff,
+  listMaintenanceLogs,
+  createMaintenanceLog,
+  updateMaintenanceLogStatus,
 };

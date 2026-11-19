@@ -72,6 +72,11 @@ router.get("/damage-tariffs", asyncHandler(adminController.listDamageTariffs));
 router.post("/damage-tariffs", asyncHandler(adminController.createDamageTariff));
 router.put("/damage-tariffs/:id", asyncHandler(adminController.updateDamageTariff));
 
+// Equipment Maintenance & Shutter Count Tracking (UC_A33)
+router.get("/maintenance-logs", asyncHandler(adminController.listMaintenanceLogs));
+router.post("/maintenance-logs", asyncHandler(adminController.createMaintenanceLog));
+router.patch("/maintenance-logs/:id/status", asyncHandler(adminController.updateMaintenanceLogStatus));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
