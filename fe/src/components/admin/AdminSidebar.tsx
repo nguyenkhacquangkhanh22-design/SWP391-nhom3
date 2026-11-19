@@ -48,6 +48,21 @@ export default function AdminSidebar({
     onCloseMobile?.();
   };
 
+  const renderSectionHeader = (title: string) => (
+    <div
+      style={{
+        fontSize: "10px",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        color: "var(--color-text-muted, #94a3b8)",
+        padding: "12px 14px 4px",
+      }}
+    >
+      {title}
+    </div>
+  );
+
   return (
     <>
       {/* Backdrop overlay for mobile drawer */}
@@ -59,13 +74,12 @@ export default function AdminSidebar({
         />
       )}
 
-      <aside className={`admin-sidebar ${isOpenMobile ? "is-mobile-open" : ""}`}>
+      <aside className={`admin-sidebar ${isOpenMobile ? "is-mobile-open" : ""}`} style={{ overflowY: "auto" }}>
         <div className="admin-sidebar-header">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Brand compact />
             <span className="admin-badge-portal">SYSTEM ADMIN</span>
           </div>
-          {/* Close button on mobile */}
           <button
             type="button"
             className="admin-sidebar-close-btn"
@@ -87,13 +101,22 @@ export default function AdminSidebar({
           </div>
         </div>
 
-        <nav className="admin-nav">
+        <nav className="admin-nav" style={{ paddingBottom: "16px" }}>
+          {/* Section 1 */}
+          {renderSectionHeader("TỔNG QUAN & TÀI KHOẢN")}
+          <button
+            className={`admin-nav-item ${activeTab === "overview" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("overview")}
+          >
+            <span className="admin-nav-icon">📊</span>
+            <span>Chỉ số hệ thống (UC_A02)</span>
+          </button>
           <button
             className={`admin-nav-item ${activeTab === "users" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("users")}
           >
             <span className="admin-nav-icon">👥</span>
-            <span>Quản lý người dùng</span>
+            <span>Quản lý người dùng (A03-A05)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "owner-apps" ? "is-active" : ""}`}
@@ -116,6 +139,9 @@ export default function AdminSidebar({
               )}
             </span>
           </button>
+
+          {/* Section 2 */}
+          {renderSectionHeader("THIẾT BỊ & HỢP ĐỒNG")}
           <button
             className={`admin-nav-item ${activeTab === "equipments" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("equipments")}
@@ -138,6 +164,23 @@ export default function AdminSidebar({
             <span>Duyệt Bảo Dưỡng (UC_A27)</span>
           </button>
           <button
+            className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("contract-templates")}
+          >
+            <span className="admin-nav-icon">📜</span>
+            <span>Mẫu Hợp Đồng (UC_A26)</span>
+          </button>
+          <button
+            className={`admin-nav-item ${activeTab === "handover-records" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("handover-records")}
+          >
+            <span className="admin-nav-icon">📋</span>
+            <span>Biên Bản Bàn Giao (UC_A30)</span>
+          </button>
+
+          {/* Section 3 */}
+          {renderSectionHeader("TÀI CHÍNH, RỦI RO & VẬN HÀNH")}
+          <button
             className={`admin-nav-item ${activeTab === "memberships" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("memberships")}
           >
@@ -152,11 +195,11 @@ export default function AdminSidebar({
             <span>Đối Soát Quyết Toán (UC_A29)</span>
           </button>
           <button
-            className={`admin-nav-item ${activeTab === "handover-records" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("handover-records")}
+            className={`admin-nav-item ${activeTab === "damage-tariffs" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("damage-tariffs")}
           >
-            <span className="admin-nav-icon">📋</span>
-            <span>Biên Bản Bàn Giao (UC_A30)</span>
+            <span className="admin-nav-icon">🏷️</span>
+            <span>Khung Biểu Phí Đền Bù (UC_A32)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "risk-monitor" ? "is-active" : ""}`}
@@ -164,13 +207,6 @@ export default function AdminSidebar({
           >
             <span className="admin-nav-icon">🛡️</span>
             <span>Giám Sát Rủi Ro & Gian Lận (UC_A31)</span>
-          </button>
-          <button
-            className={`admin-nav-item ${activeTab === "damage-tariffs" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("damage-tariffs")}
-          >
-            <span className="admin-nav-icon">🏷️</span>
-            <span>Khung Biểu Phí Đền Bù (UC_A32)</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "disputes" ? "is-active" : ""}`}
@@ -187,6 +223,13 @@ export default function AdminSidebar({
             </span>
           </button>
           <button
+            className={`admin-nav-item ${activeTab === "finance" ? "is-active" : ""}`}
+            onClick={() => handleSelectTab("finance")}
+          >
+            <span className="admin-nav-icon">🏛️</span>
+            <span>Duyệt Ngân Hàng & Rút Tiền</span>
+          </button>
+          <button
             className={`admin-nav-item ${activeTab === "support" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("support")}
           >
@@ -201,33 +244,15 @@ export default function AdminSidebar({
             </span>
           </button>
           <button
-            className={`admin-nav-item ${activeTab === "finance" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("finance")}
-          >
-            <span className="admin-nav-icon">🏛️</span>
-            <span>Duyệt Ngân Hàng & Rút Tiền</span>
-          </button>
-          <button
-            className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("contract-templates")}
-          >
-            <span className="admin-nav-icon">📜</span>
-            <span>Mẫu Hợp Đồng (UC_A26)</span>
-          </button>
-          <button
             className={`admin-nav-item ${activeTab === "audit-logs" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("audit-logs")}
           >
             <span className="admin-nav-icon">🛡️</span>
             <span>Nhật ký hệ thống (UC_A21)</span>
           </button>
-          <button
-            className={`admin-nav-item ${activeTab === "overview" ? "is-active" : ""}`}
-            onClick={() => handleSelectTab("overview")}
-          >
-            <span className="admin-nav-icon">📊</span>
-            <span>Chỉ số hệ thống</span>
-          </button>
+
+          {/* External Portals */}
+          {renderSectionHeader("CHUYỂN CỔNG TRUY CẬP")}
           <Link to="/moderator" className="admin-nav-item" onClick={onCloseMobile}>
             <span className="admin-nav-icon">⚖️</span>
             <span>Điều phối Thuê & Hợp đồng</span>
