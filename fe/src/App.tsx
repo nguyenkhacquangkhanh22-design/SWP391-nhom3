@@ -21,7 +21,7 @@ import RegisterOwnerPage from "./pages/RegisterOwnerPage";
 import ModeratorPortal from "./pages/moderator/ModeratorPortal";
 import ModeratorRoute from "./routes/ModeratorRoute";
 import ProductionProjectPage from "./pages/production/ProductionProjectPage";
-import PreOwnedGearPage from "./pages/marketplace/PreOwnedGearPage";
+import EquipmentComparisonPage from "./pages/marketplace/EquipmentComparisonPage";
 
 function HomeRedirect() {
   const { user, isLoading } = useAuth();
@@ -55,10 +55,12 @@ function App() {
           <Route path="/equipment/:id" element={<EquipmentDetailPage />} />
           <Route path="/equipments" element={<EquipmentListPage />} />
           <Route path="/equipments/:id" element={<EquipmentDetailPage />} />
+          <Route path="/compare" element={<EquipmentComparisonPage />} />
+          <Route path="/equipment-comparison" element={<EquipmentComparisonPage />} />
           <Route path="/production-package" element={<ProductionProjectPage />} />
           <Route path="/production-packages" element={<ProductionProjectPage />} />
-          <Route path="/pre-owned" element={<PreOwnedGearPage />} />
-          <Route path="/trade-in" element={<PreOwnedGearPage />} />
+          <Route path="/pre-owned" element={<EquipmentComparisonPage />} />
+          <Route path="/trade-in" element={<EquipmentComparisonPage />} />
           <Route path="/register-owner" element={<RegisterOwnerPage />} />
 
           {/* Auth routes */}

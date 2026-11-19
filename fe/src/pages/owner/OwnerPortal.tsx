@@ -25,6 +25,7 @@ import OwnerDisputesTab from "./OwnerDisputesTab";
 import OwnerSupportTab from "./OwnerSupportTab";
 import OwnerMembershipTab from "./OwnerMembershipTab";
 import OwnerWallet from "../../components/owner/OwnerWallet";
+import OwnerEquipmentAnalyticsTab from "../../components/owner/OwnerEquipmentAnalyticsTab";
 
 export default function OwnerPortal() {
   const { user, token, signOut } = useAuth();
@@ -35,6 +36,7 @@ export default function OwnerPortal() {
     | "overview"
     | "wallet"
     | "equipments"
+    | "analytics"
     | "requests"
     | "contracts"
     | "handover"
@@ -583,6 +585,12 @@ export default function OwnerPortal() {
             📦 Thiết bị ({equipments.length})
           </button>
           <button
+            className={`owner-tab-btn ${activeTab === "analytics" ? "active" : ""}`}
+            onClick={() => handleTabChange("analytics")}
+          >
+            📈 Hiệu suất & Bảo dưỡng
+          </button>
+          <button
             className={`owner-tab-btn ${activeTab === "requests" ? "active" : ""}`}
             onClick={() => handleTabChange("requests")}
           >
@@ -760,6 +768,10 @@ export default function OwnerPortal() {
                 onError={setError}
                 onSuccess={setSuccess}
               />
+            )}
+
+            {activeTab === "analytics" && (
+              <OwnerEquipmentAnalyticsTab />
             )}
 
             {activeTab === "requests" && (

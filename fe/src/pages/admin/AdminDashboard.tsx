@@ -16,7 +16,7 @@ import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
 import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
 import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
 import AdminMaintenanceLogTab from "../../components/admin/AdminMaintenanceLogTab";
-import LabMaintenanceKanban from "../../components/admin/LabMaintenanceKanban";
+import OwnerEquipmentAnalyticsTab from "../../components/owner/OwnerEquipmentAnalyticsTab";
 import AdminProfileTab from "../../components/admin/AdminProfileTab";
 import Brand from "../../components/Brand";
 import { isPdfDocument, openDocumentDataUrl } from "../../components/ImageUploadField";
@@ -2170,10 +2170,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Cleanroom Lab Kanban Tab (UC_A34) */}
+        {/* Equipment Performance & Maintenance Analytics Tab */}
         {activeTab === "lab-cleanroom" && (
           <div style={{ marginTop: "20px" }}>
-            <LabMaintenanceKanban />
+            <OwnerEquipmentAnalyticsTab />
           </div>
         )}
 

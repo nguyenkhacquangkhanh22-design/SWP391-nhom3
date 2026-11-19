@@ -12,7 +12,8 @@ import {
   getReturnOption,
   formatEstimatedDeliveryDate,
 } from "../constants/deliveryMethods";
-import OpticalBenchmarkViewer from "../components/equipment/OpticalBenchmarkViewer";
+import EquipmentAddonsSelector from "../components/equipment/EquipmentAddonsSelector";
+import FlexibleCollateralSelector from "../components/equipment/FlexibleCollateralSelector";
 
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -588,12 +589,17 @@ export default function EquipmentDetailPage() {
               </div>
             </div>
 
-            {/* Optical Benchmark MTF Lab (UC_T21) */}
+            {/* Combo Phụ Kiện Thuê Kèm Đồng Bộ & Tùy Chọn Đặt Cọc Linh Hoạt (UC_T21 & UC_T22) */}
             {equipment && (
-              <OpticalBenchmarkViewer
-                equipmentId={equipment._id}
-                equipmentTitle={equipment.title}
-              />
+              <>
+                <EquipmentAddonsSelector
+                  baseEquipmentName={equipment.title || "Thiết bị chuyên nghiệp"}
+                  baseDailyRate={dailyRate || 350000}
+                />
+                <FlexibleCollateralSelector
+                  equipmentValue={(dailyRate || 350000) * 100}
+                />
+              </>
             )}
 
             {/* Reviews & Ratings Section (UC_R11 Display) */}

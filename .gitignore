@@ -13,3 +13,4 @@ docs/
 ACCOUNTS.md
 be/uploads/*
 !be/uploads/.gitkeep
+.vscode/

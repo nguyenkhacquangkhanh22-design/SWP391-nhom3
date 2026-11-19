@@ -177,8 +177,8 @@ export default function AdminSidebar({
             className={`admin-nav-item ${activeTab === "lab-cleanroom" ? "is-active" : ""}`}
             onClick={() => handleSelectTab("lab-cleanroom")}
           >
-            <span className="admin-nav-icon">🔬</span>
-            <span>Phòng Sạch Lab ISO 5 (UC_A34)</span>
+            <span className="admin-nav-icon">📊</span>
+            <span>Hiệu Suất & Bảo Dưỡng Máy</span>
           </button>
           <button
             className={`admin-nav-item ${activeTab === "contract-templates" ? "is-active" : ""}`}
