@@ -291,6 +291,17 @@ export const smartEquipApi = {
       token,
     ),
 
+  submitEmergencySOS: (
+    token: string,
+    rentalId: string,
+    data: { issue_type: string; description?: string; contact_phone?: string },
+  ) =>
+    request<{ success: boolean; message: string }>(
+      `/api/rentals/${rentalId}/emergency-sos`,
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
   // UC_R13: Hủy yêu cầu thuê
   cancelRental: (
     token: string,

@@ -210,7 +210,6 @@ class RentalService {
         discountRate = 0.05; // Giảm 5% nếu >= 3 ngày
       }
     }
-    }
 
     const dailyRate = equipment.dailyRate || (equipment.pricing ? equipment.pricing.price_per_day : 0) || 0;
     const depositAmount = 0; // Chính sách SmartEquip: Miễn 100% tiền cọc

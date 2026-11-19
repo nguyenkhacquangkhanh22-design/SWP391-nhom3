@@ -282,6 +282,62 @@ class RentalController {
       rental,
     });
   }
+
+  /**
+   * UC_R17_SOS: POST /api/rentals/:id/emergency-sos (Cứu hộ kỹ thuật khẩn cấp)
+   */
+  async submitEmergencySOS(req, res) {
+    const { issue_type, description, contact_phone } = req.body;
+    const rentalId = req.params.id;
+
+    const rental = await Rental.findById(rentalId).populate("equipment owner");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    if (rental.renter.toString() !== req.user._id.toString()) {
+      throw new AppError(403, "Bạn không có quyền gửi cảnh báo SOS cho đơn thuê này");
+    }
+
+    const ownerId = rental.owner?._id || rental.owner;
+    const issueLabels = {
+      overheat: "Nóng máy / Quá nhiệt cảm biến (Overheat)",
+      lens_jam: "Kẹt ngàm / Lỗi chống rung Lens",
+      card_error: "Lỗi ghi thẻ nhớ / Mất dữ liệu",
+      battery_drain: "Sụt nguồn / Chai pin đột ngột",
+      other: "Sự cố kỹ thuật hiện trường khác",
+    };
+
+    const label = issueLabels[issue_type] || issue_type || "Sự cố kỹ thuật";
+
+    const UserNotification = require("../models/UserNotification");
+    if (UserNotification) {
+      await UserNotification.create({
+        user_id: ownerId,
+        title: `🚨 SOS KHẨN CẤP: Thiết bị gặp sự cố tại phim trường #${rental.rentalCode}`,
+        message: `Khách thuê (${req.user.name} - SĐT: ${contact_phone || req.user.phone || "Chưa có"}) báo sự cố: "${label}". Mô tả: "${description || "Cần hỗ trợ gấp"}". Vui lòng liên hệ hỗ trợ ngay!`,
+        related_record_id: rental._id,
+      });
+    }
+
+    try {
+      const { getIO } = require("../config/socket");
+      getIO().emit("emergency:sos", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: ownerId,
+        renterName: req.user.name,
+        phone: contact_phone || req.user.phone,
+        issue: label,
+        description,
+      });
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      message: "Đã phát tín hiệu SOS khẩn cấp tới Chủ máy thành công. Chủ máy đã nhận được cảnh báo!",
+    });
+  }
 }
 
 module.exports = new RentalController();
