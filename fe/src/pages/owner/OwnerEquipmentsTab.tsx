@@ -306,8 +306,18 @@ export default function OwnerEquipmentsTab({
     const finalPricePerHour = pricePerHour === "" ? 0 : Number(pricePerHour);
     const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
 
-    if (finalPricePerDay < 0 || finalPricePerHour < 0 || finalDepositAmount < 0) {
-      onError("Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0).");
+    if (finalPricePerDay < 1000 || finalPricePerDay > 500000000) {
+      onError("Giá thuê theo ngày phải từ 1.000 đ đến 500.000.000 đ.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (finalPricePerHour < 0 || finalPricePerHour > 50000000) {
+      onError("Giá thuê theo giờ không hợp lệ (tối đa 50.000.000 đ).");
+      setIsSubmitting(false);
+      return;
+    }
+    if (finalDepositAmount < 0 || finalDepositAmount > 500000000) {
+      onError("Tiền đặt cọc không hợp lệ (tối đa 500.000.000 đ).");
       setIsSubmitting(false);
       return;
     }
@@ -1468,18 +1478,19 @@ export default function OwnerEquipmentsTab({
                   <div>
                     <label className="field-label">Giá thuê theo ngày (VND) *</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
-                      min={0}
+                      min={1000}
+                      max={500000000}
                       step={1}
                       value={pricePerDay}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setPricePerDay("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setPricePerDay(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setPricePerDay(Math.min(500000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
@@ -1487,50 +1498,67 @@ export default function OwnerEquipmentsTab({
                       }}
                       required
                     />
+                    {pricePerDay !== "" && !isNaN(Number(pricePerDay)) && (
+                      <span className="text-[11px] text-amber-400 font-mono mt-1 block">
+                        ≈ {Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="field-label">Giá thuê theo giờ (VND)</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
                       min={0}
+                      max={50000000}
                       step={1}
                       value={pricePerHour}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setPricePerHour("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setPricePerHour(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setPricePerHour(Math.min(50000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
                     />
+                    {pricePerHour !== "" && Number(pricePerHour) > 0 && (
+                      <span className="text-[11px] text-slate-400 font-mono mt-1 block">
+                        ≈ {Number(pricePerHour).toLocaleString("vi-VN")} đ/giờ
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="field-label">Tiền đặt cọc (VND - Không cần cọc: 0 đ)</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
                       min={0}
+                      max={500000000}
                       step={1}
                       value={depositAmount}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setDepositAmount("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setDepositAmount(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setDepositAmount(Math.min(500000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
                     />
+                    {depositAmount !== "" && Number(depositAmount) > 0 && (
+                      <span className="text-[11px] text-emerald-400 font-mono mt-1 block">
+                        ≈ {Number(depositAmount).toLocaleString("vi-VN")} đ
+                      </span>
+                    )}
                   </div>
                 </div>
 
