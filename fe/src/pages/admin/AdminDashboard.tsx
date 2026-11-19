@@ -13,6 +13,7 @@ import AdminEquipmentStatusRequestTab from "../../components/admin/AdminEquipmen
 import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
 import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAuditTab";
 import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
+import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -611,6 +612,8 @@ export default function AdminDashboard() {
                 ? "Đối Soát Quyết Toán Hợp Đồng & Giải Phóng Tiền Cọc (UC_A29)"
                 : activeTab === "handover-records"
                 ? "Tra Cứu & Đối Soát Biên Bản Bàn Giao Thiết Bị (UC_A30)"
+                : activeTab === "risk-monitor"
+                ? "Giám Sát Rủi Ro & Phòng Chống Gian Lận Thuê Máy (UC_A31)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2068,6 +2071,17 @@ export default function AdminDashboard() {
         {activeTab === "handover-records" && token && (
           <div style={{ marginTop: "20px" }}>
             <AdminHandoverTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Risk & Fraud Monitor Tab (UC_A31) */}
+        {activeTab === "risk-monitor" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminRiskMonitorTab
               token={token}
               onError={setError}
               onSuccess={setSuccess}

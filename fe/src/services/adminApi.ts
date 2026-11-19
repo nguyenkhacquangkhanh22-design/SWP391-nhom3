@@ -436,4 +436,25 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A31: Risk & Fraud Monitor
+  // ==========================================
+  getRiskMonitor: (token: string) =>
+    adminRequest<import("../types/admin").AdminRiskMonitorResponse>(
+      "/risk-monitor",
+      { method: "GET" },
+      token
+    ),
+
+  freezeRiskUser: (
+    token: string,
+    userId: string,
+    body: { action: "freeze" | "unfreeze"; reason?: string }
+  ) =>
+    adminRequest<{ message: string; user: User }>(
+      `/risk-monitor/${userId}/freeze`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

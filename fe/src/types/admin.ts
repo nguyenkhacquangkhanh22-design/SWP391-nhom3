@@ -603,3 +603,26 @@ export interface AdminHandoverRecordsResponse {
     verified: number;
   };
 }
+
+// ==========================================
+// RISK & FRAUD MONITOR (UC_A31)
+// ==========================================
+export interface AdminFlaggedUser {
+  user: User & { _id: string };
+  riskScore: number;
+  severity: "high" | "medium";
+  reasons: string[];
+  disputeCount: number;
+  damageIncidentCount: number;
+}
+
+export interface AdminRiskMonitorResponse {
+  flaggedUsers: AdminFlaggedUser[];
+  stats: {
+    totalFlagged: number;
+    highRiskCount: number;
+    mediumRiskCount: number;
+    activeDisputesCount: number;
+    safetyIndex: number;
+  };
+}
