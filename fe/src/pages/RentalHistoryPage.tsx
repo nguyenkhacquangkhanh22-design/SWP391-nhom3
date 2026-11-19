@@ -984,6 +984,11 @@ export default function RentalHistoryPage() {
                         >
                           {statusBadge.label}
                         </span>
+                        {(r as any).extension_request?.status === "PENDING" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 animate-pulse">
+                            ⏳ Chờ duyệt gia hạn (+{(r as any).extension_request?.extra_days} ngày)
+                          </span>
+                        )}
                       </div>
 
                       <h3 className="font-bold text-base text-white truncate">

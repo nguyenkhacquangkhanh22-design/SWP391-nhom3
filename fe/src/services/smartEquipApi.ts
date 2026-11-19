@@ -280,6 +280,17 @@ export const smartEquipApi = {
       token,
     ),
 
+  requestRentalExtension: (
+    token: string,
+    rentalId: string,
+    data: { new_end_date?: string; extraDays?: number; reason?: string },
+  ) =>
+    request<{ success: boolean; message: string; rental: Rental }>(
+      `/api/rentals/${rentalId}/extend-request`,
+      { method: "POST", body: JSON.stringify(data) },
+      token,
+    ),
+
   // UC_R13: Hủy yêu cầu thuê
   cancelRental: (
     token: string,
