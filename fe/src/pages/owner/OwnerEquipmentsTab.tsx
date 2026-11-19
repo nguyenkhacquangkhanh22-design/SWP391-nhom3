@@ -70,6 +70,9 @@ export default function OwnerEquipmentsTab({
   const [pricePerDay, setPricePerDay] = useState<number | string>(500000);
   const [pricePerHour, setPricePerHour] = useState<number | string>(50000);
   const [depositAmount, setDepositAmount] = useState<number | string>(0);
+  const [discount3Days, setDiscount3Days] = useState<number | string>(5);
+  const [discount7Days, setDiscount7Days] = useState<number | string>(15);
+  const [discount30Days, setDiscount30Days] = useState<number | string>(25);
   const [rentalTerms, setRentalTerms] = useState(
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   );
@@ -266,6 +269,9 @@ export default function OwnerEquipmentsTab({
     setPricePerDay(500000);
     setPricePerHour(50000);
     setDepositAmount(0);
+    setDiscount3Days(5);
+    setDiscount7Days(15);
+    setDiscount30Days(25);
     setRentalTerms("Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.");
     setCancellationPolicy("Miễn phí hủy trước 24 giờ.");
     setVisibility("published");
@@ -289,6 +295,13 @@ export default function OwnerEquipmentsTab({
     setPricePerDay(eq.pricing.price_per_day);
     setPricePerHour(eq.pricing.price_per_hour || 0);
     setDepositAmount(eq.pricing.deposit_amount);
+    const dTiers = eq.pricing.multi_day_discounts || [];
+    const t3 = dTiers.find((t) => t.min_days === 3);
+    const t7 = dTiers.find((t) => t.min_days === 7);
+    const t30 = dTiers.find((t) => t.min_days === 30);
+    setDiscount3Days(t3 ? t3.discount_percent : 5);
+    setDiscount7Days(t7 ? t7.discount_percent : 15);
+    setDiscount30Days(t30 ? t30.discount_percent : 25);
     setRentalTerms(eq.rental_terms || "");
     setCancellationPolicy(eq.cancellation_policy || "");
     setVisibility(eq.visibility);
@@ -342,6 +355,11 @@ export default function OwnerEquipmentsTab({
         price_per_day: finalPricePerDay,
         price_per_hour: finalPricePerHour,
         deposit_amount: finalDepositAmount,
+        multi_day_discounts: [
+          { min_days: 3, discount_percent: Math.min(100, Math.max(0, Number(discount3Days) || 0)) },
+          { min_days: 7, discount_percent: Math.min(100, Math.max(0, Number(discount7Days) || 0)) },
+          { min_days: 30, discount_percent: Math.min(100, Math.max(0, Number(discount30Days) || 0)) },
+        ],
       },
       rental_terms: rentalTerms,
       cancellation_policy: cancellationPolicy,
@@ -1637,6 +1655,54 @@ export default function OwnerEquipmentsTab({
                     value={cancellationPolicy}
                     onChange={(e) => setCancellationPolicy(e.target.value)}
                   />
+                </div>
+
+                {/* Multi-day progressive discounts (UC_O16) */}
+                <div style={{ marginTop: "14px", padding: "12px", background: "rgba(30, 41, 59, 0.5)", borderRadius: "8px", border: "1px dashed rgba(59, 130, 246, 0.4)" }}>
+                  <label className="field-label" style={{ color: "#60a5fa", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🎁</span> Ưu đãi giảm giá thuê dài ngày (Multi-day Discounts - UC_O16):
+                  </label>
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted)", margin: "2px 0 10px" }}>
+                    Tự động chiết khấu phần trăm (%) trên tiền thuê theo ngày khi khách thuê thời gian dài:
+                  </p>
+                  <div className="form-grid-3">
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 3 ngày (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount3Days}
+                        onChange={(e) => setDiscount3Days(e.target.value)}
+                        placeholder="5%"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 7 ngày (Tuần) (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount7Days}
+                        onChange={(e) => setDiscount7Days(e.target.value)}
+                        placeholder="15%"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 30 ngày (Tháng) (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount30Days}
+                        onChange={(e) => setDiscount30Days(e.target.value)}
+                        placeholder="25%"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
