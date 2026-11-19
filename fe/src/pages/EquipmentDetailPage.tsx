@@ -12,6 +12,7 @@ import {
   getReturnOption,
   formatEstimatedDeliveryDate,
 } from "../constants/deliveryMethods";
+import OpticalBenchmarkViewer from "../components/equipment/OpticalBenchmarkViewer";
 
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -544,6 +545,14 @@ export default function EquipmentDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Optical Benchmark MTF Lab (UC_T21) */}
+            {equipment && (
+              <OpticalBenchmarkViewer
+                equipmentId={equipment._id}
+                equipmentTitle={equipment.title}
+              />
+            )}
 
             {/* Reviews & Ratings Section (UC_R11 Display) */}
             <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-6 space-y-4">
