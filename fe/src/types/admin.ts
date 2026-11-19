@@ -9,6 +9,8 @@ export interface AdminStats {
   pendingDisputes?: number;
   pendingKyc?: number;
   openTickets?: number;
+  activeMaintenance?: number;
+  activeTemplates?: number;
 }
 
 export interface AdminOverviewResponse {

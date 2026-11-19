@@ -24,6 +24,8 @@ async function getOverview(req, res) {
     pendingDisputes,
     pendingKyc,
     openTickets,
+    activeMaintenance,
+    activeTemplates,
     recentUsers,
   ] = await Promise.all([
     User.countDocuments(),
@@ -35,6 +37,8 @@ async function getOverview(req, res) {
     Dispute.countDocuments({ status: { $in: ["pending_review", "investigating"] } }),
     User.countDocuments({ kycStatus: "pending" }),
     SupportTicket.countDocuments({ status: "open" }),
+    EquipmentMaintenanceLog.countDocuments({ status: { $in: ["scheduled", "in_progress"] } }),
+    ContractTemplate.countDocuments({ status: "published" }),
     User.find({}, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
       .sort({ createdAt: -1 })
       .lean(),
@@ -50,6 +54,8 @@ async function getOverview(req, res) {
       pendingDisputes,
       pendingKyc,
       openTickets,
+      activeMaintenance,
+      activeTemplates,
     },
     users: recentUsers,
   });

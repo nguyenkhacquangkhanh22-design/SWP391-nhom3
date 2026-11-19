@@ -33,6 +33,20 @@ export default function AdminStatsGrid({ stats }: AdminStatsGridProps) {
         </span>
         <span className="metric-sub">Chưa kích hoạt hoặc blocked</span>
       </div>
+      <div className="admin-metric-card">
+        <span className="metric-title">Máy đang bảo dưỡng (UC_A33)</span>
+        <span className="metric-value" style={{ color: "#ffab00" }}>
+          {stats?.activeMaintenance !== undefined ? stats.activeMaintenance : "--"}
+        </span>
+        <span className="metric-sub">Đang xử lý tại phòng kỹ thuật</span>
+      </div>
+      <div className="admin-metric-card">
+        <span className="metric-title">Mẫu hợp đồng áp dụng (UC_A26)</span>
+        <span className="metric-value" style={{ color: "#2ed573" }}>
+          {stats?.activeTemplates !== undefined ? stats.activeTemplates : "--"}
+        </span>
+        <span className="metric-sub">Bản ban hành chính thức</span>
+      </div>
     </section>
   );
 }
