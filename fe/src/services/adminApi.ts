@@ -457,4 +457,56 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A32: Standard Damage Tariffs
+  // ==========================================
+  listDamageTariffs: (
+    token: string,
+    params?: { category?: string; severity?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.severity) query.set("severity", params.severity);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminDamageTariffsResponse>(
+      `/damage-tariffs${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createDamageTariff: (
+    token: string,
+    body: {
+      category: string;
+      item_name: string;
+      severity?: string;
+      standard_fee: number;
+      fee_type?: string;
+      description?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; tariff: import("../types/admin").AdminDamageTariff }>(
+      "/damage-tariffs",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateDamageTariff: (
+    token: string,
+    id: string,
+    body: {
+      standard_fee?: number;
+      is_active?: boolean;
+      description?: string;
+      severity?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; tariff: import("../types/admin").AdminDamageTariff }>(
+      `/damage-tariffs/${id}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token
+    ),
 };

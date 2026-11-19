@@ -626,3 +626,33 @@ export interface AdminRiskMonitorResponse {
     safetyIndex: number;
   };
 }
+
+// ==========================================
+// DAMAGE TARIFFS (UC_A32)
+// ==========================================
+export interface AdminDamageTariff {
+  _id: string;
+  category: string;
+  item_name: string;
+  severity: "minor" | "moderate" | "severe" | "total_loss";
+  standard_fee: number;
+  fee_type: "fixed" | "percentage_of_value";
+  description: string;
+  is_active: boolean;
+  updated_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminDamageTariffsResponse {
+  tariffs: AdminDamageTariff[];
+  categories: string[];
+  stats: {
+    total: number;
+    active: number;
+  };
+}

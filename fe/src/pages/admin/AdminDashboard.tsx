@@ -14,6 +14,7 @@ import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
 import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAuditTab";
 import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
 import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
+import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -614,6 +615,8 @@ export default function AdminDashboard() {
                 ? "Tra Cứu & Đối Soát Biên Bản Bàn Giao Thiết Bị (UC_A30)"
                 : activeTab === "risk-monitor"
                 ? "Giám Sát Rủi Ro & Phòng Chống Gian Lận Thuê Máy (UC_A31)"
+                : activeTab === "damage-tariffs"
+                ? "Khung Biểu Phí Đền Bù & Khấu Hao Thiết Bị Chuẩn Hóa (UC_A32)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2082,6 +2085,17 @@ export default function AdminDashboard() {
         {activeTab === "risk-monitor" && token && (
           <div style={{ marginTop: "20px" }}>
             <AdminRiskMonitorTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Damage Tariff Tab (UC_A32) */}
+        {activeTab === "damage-tariffs" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminDamageTariffTab
               token={token}
               onError={setError}
               onSuccess={setSuccess}
