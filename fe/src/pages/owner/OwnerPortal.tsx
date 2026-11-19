@@ -83,7 +83,7 @@ export default function OwnerPortal() {
       if (res && Array.isArray(res.notifications)) {
         setNotifications(res.notifications);
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function OwnerPortal() {
       if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
       if (ctx.state === "suspended") {
-        ctx.resume().catch(() => {});
+        ctx.resume().catch(() => { });
       }
 
       const now = ctx.currentTime;
@@ -145,12 +145,24 @@ export default function OwnerPortal() {
       void loadAllData(false);
     };
 
+    const handleRentalReturned = (data: any) => {
+      const currentUserId = (user as any)?._id || (user as any)?.id;
+      if (data?.ownerId && currentUserId && String(data.ownerId) !== String(currentUserId)) {
+        return;
+      }
+      playNewOrderBell();
+      setSuccess(`📦 Khách thuê vừa gửi yêu cầu trả thiết bị #${data?.rentalCode || ""}! Vui lòng kiểm tra và nghiệm thu.`);
+      void fetchNotifications();
+      void loadAllData(false);
+    };
+
     socket.on("payment:approved", handleLivePayment);
     socket.on("payment:submitted", handleLivePayment);
     socket.on("payment:success_owner", handleLivePayment);
     socket.on("rental:created", handleNewRental);
     socket.on("notification:new_rental", handleNewRental);
     socket.on("rental:approved", handleLivePayment);
+    socket.on("rental:returned", handleRentalReturned);
 
     return () => {
       socket.off("payment:approved", handleLivePayment);
@@ -159,6 +171,7 @@ export default function OwnerPortal() {
       socket.off("rental:created", handleNewRental);
       socket.off("notification:new_rental", handleNewRental);
       socket.off("rental:approved", handleLivePayment);
+      socket.off("rental:returned", handleRentalReturned);
     };
   }, [token]);
 
@@ -182,7 +195,7 @@ export default function OwnerPortal() {
       setNotifications((prev) =>
         prev.map((n) => (n._id === id ? { ...n, read_at: new Date().toISOString() } : n))
       );
-    } catch {}
+    } catch { }
   };
 
   const handleMarkAllRead = async () => {
@@ -191,7 +204,7 @@ export default function OwnerPortal() {
     for (const n of unread) {
       try {
         await authApi.markNotificationRead(token, n._id);
-      } catch {}
+      } catch { }
     }
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
@@ -589,6 +602,15 @@ export default function OwnerPortal() {
             onClick={() => handleTabChange("handover")}
           >
             🤝 Bàn giao & Kiểm tra
+            {requests.filter((r) => ["returned", "return_requested"].includes(String(r.status || "").toLowerCase())).length > 0 && (
+              <span
+                className="badge-count"
+                style={{ background: "#9333ea", marginLeft: "6px" }}
+                title="Có đơn hoàn trả thiết bị cần đối chiếu & nghiệm thu"
+              >
+                {requests.filter((r) => ["returned", "return_requested"].includes(String(r.status || "").toLowerCase())).length} trả
+              </span>
+            )}
           </button>
           <button
             className={`owner-tab-btn ${activeTab === "settlement" ? "active" : ""}`}
@@ -751,6 +773,7 @@ export default function OwnerPortal() {
                   setRequestForContract(req);
                   setActiveTab("contracts");
                 }}
+                onSwitchToHandoverTab={() => handleTabChange("handover")}
               />
             )}
 
@@ -775,6 +798,7 @@ export default function OwnerPortal() {
                 onSuccess={setSuccess}
                 selectedContract={contractForHandover}
                 onRefreshContracts={() => void loadAllData(false)}
+                requests={requests}
               />
             )}
 

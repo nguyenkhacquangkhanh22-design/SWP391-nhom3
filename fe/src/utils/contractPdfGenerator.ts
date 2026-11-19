@@ -7,6 +7,9 @@ export interface BuildContractOptions {
   isSigned?: boolean;
   isOfficial?: boolean;
   hidePrintBar?: boolean;
+  ownerSignature?: string | null;
+  ownerSignerName?: string;
+  isOwnerSigned?: boolean;
 }
 
 /**
@@ -79,30 +82,54 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const rentalCode = rental.rentalCode;
 
+  // Lấy chữ ký đã lưu trong localStorage nếu có (giúp chữ ký vẽ tay bảo toàn tuyệt đối sau khi PayOS chuyển hướng)
+  let cachedSig: string | null = null;
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      cachedSig =
+        window.localStorage.getItem(`smartequip_sig_${contractCode}`) ||
+        window.localStorage.getItem(`smartequip_sig_${rentalCode}`) ||
+        (rental._id ? window.localStorage.getItem(`smartequip_sig_${rental._id}`) : null) ||
+        null;
+    } catch (storageErr) {
+      console.warn("Lỗi đọc cache chữ ký:", storageErr);
+    }
+  }
+
   const effectiveSignature =
     options.signatureUrl ||
-    rental.contract?.digitalSignature ||
-    rental.contract?.renterSignature ||
+    (cachedSig && cachedSig.startsWith("data:image") ? cachedSig : null) ||
+    (rental as any).renter_signature?.signature_image ||
+    (rental.contract as any)?.renter_signature?.signature_image ||
+    (rental.contract?.digitalSignature && rental.contract.digitalSignature.startsWith("data:image")
+      ? rental.contract.digitalSignature
+      : null) ||
+    ((rental as any).renter_signature?.signature_data &&
+    String((rental as any).renter_signature.signature_data).startsWith("data:image")
+      ? (rental as any).renter_signature.signature_data
+      : null) ||
+    (rental.contract?.renterSignature && rental.contract.renterSignature.startsWith("data:image")
+      ? rental.contract.renterSignature
+      : null) ||
     null;
 
-  // Xác định hợp đồng đã có chữ ký của khách hoặc đã được thanh toán/duyệt
+  // Chỉ xác định Người thuê (Bên B) đã ký khi thực sự có xác nhận ký hợp đồng hoặc ảnh chữ ký điện tử
   const hasSignature = Boolean(
     options.isSigned ||
       rental.contract?.termsAccepted ||
-      Boolean(effectiveSignature) ||
       Boolean(rental.contract?.signedAt) ||
+      Boolean((rental as any).renter_signature?.signed) ||
+      Boolean(effectiveSignature && effectiveSignature.startsWith("data:image")) ||
       String(rental.status).toUpperCase() === "CONTRACT_SIGNED"
   );
 
-  // Nếu hợp đồng đã ký hoặc đã duyệt/thanh toán -> HỢP ĐỒNG CHÍNH THỨC 100%
-  // Nếu chưa ký và đang xem bản dự thảo -> HỢP ĐỒNG MẪU
+  // Hợp đồng chính thức khi Người thuê đã ký hoặc đã thanh toán
   const isConfirmedPaid = Boolean(
     hasSignature ||
       rental.payment?.isPaid === true ||
       rental.payment?.paymentStatus === "paid" ||
       String(rental.status).toUpperCase() === "PAID" ||
       String(rental.status).toUpperCase() === "ACTIVE" ||
-      String(rental.status).toUpperCase() === "CONFIRMED" ||
       String(rental.status).toUpperCase() === "COMPLETED" ||
       options.isOfficial === true
   );
@@ -148,11 +175,50 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
   const deliveryOpt = getDeliveryOption(rental.deliveryMethod || "motorcycle");
   const returnOpt = getReturnOption(rental.returnMethod || "motorcycle");
 
-  const shippingFee = rental.shippingFee !== undefined ? rental.shippingFee : deliveryOpt.fee + returnOpt.fee;
-  const totalAmountToPay = rental.totalAmount || rental.rentalFee + shippingFee;
+  const dailyRateVal = Number(
+    rental.dailyRate ??
+    (rental as any).daily_rate ??
+    rental.equipment?.dailyRate ??
+    (rental.equipment as any)?.daily_rate ??
+    0
+  );
 
-  const startDateFormatted = new Date(rental.startDate).toLocaleDateString("vi-VN");
-  const endDateFormatted = new Date(rental.endDate).toLocaleDateString("vi-VN");
+  const totalDaysVal = Number(
+    rental.totalDays ??
+    (rental as any).total_days ??
+    (rental.startDate && rental.endDate
+      ? Math.max(1, Math.ceil((new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 1)
+  );
+
+  const rentalFeeVal = Number(
+    rental.rentalFee ??
+    (rental as any).rental_fee ??
+    (dailyRateVal * totalDaysVal)
+  );
+
+  const shippingFeeVal = Number(
+    rental.shippingFee !== undefined
+      ? rental.shippingFee
+      : ((rental as any).shipping_fee !== undefined
+        ? (rental as any).shipping_fee
+        : (deliveryOpt.fee + returnOpt.fee))
+  );
+
+  const totalAmountToPayVal = Number(
+    rental.totalAmount ??
+    (rental as any).total_amount ??
+    (rentalFeeVal + shippingFeeVal)
+  );
+
+  const parseSafeDate = (d?: string | Date) => {
+    if (!d) return "Chưa xác định";
+    const dateObj = new Date(d);
+    return isNaN(dateObj.getTime()) ? "Chưa xác định" : dateObj.toLocaleDateString("vi-VN");
+  };
+
+  const startDateFormatted = parseSafeDate(rental.startDate || (rental as any).start_date);
+  const endDateFormatted = parseSafeDate(rental.endDate || (rental as any).end_date);
 
   const isSigned = Boolean(hasSignature || isConfirmedPaid);
 
@@ -182,6 +248,49 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
       })
     : signedDateStr;
 
+  const isOwnerSigned = Boolean(
+    options.isOwnerSigned ||
+      options.ownerSignature ||
+      rental.contract?.ownerSigned ||
+      (rental as any).contract?.owner_signature?.signed ||
+      (rental as any).owner_signature?.signed ||
+      (rental.contract as any)?.ownerSignature ||
+      rental.contract?.contractNumber || // Hợp đồng đã có mã có nghĩa là Bên A đã khởi tạo/ký
+      rental.contract?.moderatorApproved ||
+      ["APPROVED", "CONTRACT_SIGNED", "PAID", "ACTIVE", "COMPLETED"].includes(String(rental.status).toUpperCase())
+  );
+
+  const ownerSignatureImg =
+    options.ownerSignature ||
+    (rental.contract as any)?.ownerSignature ||
+    (rental as any).owner_signature?.signature_image ||
+    (rental as any).contract?.owner_signature?.signature_image ||
+    "";
+
+  const ownerSignerName =
+    options.ownerSignerName ||
+    (rental.contract as any)?.ownerSignerName ||
+    (rental as any).owner_signature?.signer_name ||
+    ownerName;
+
+  const ownerSignedDateStr = (rental.contract as any)?.ownerSignedAt
+    ? new Date((rental.contract as any).ownerSignedAt).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : (rental as any).owner_signature?.signed_at
+    ? new Date((rental as any).owner_signature.signed_at).toLocaleDateString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : signedDateStr;
+
   const ownerBankInfo = (rental.owner as any)?.bankInfo;
   const bankNameDisplay = ownerBankInfo?.bankName || "MB Bank";
   const accNumDisplay = ownerBankInfo?.accountNumber || "111105056666";
@@ -192,8 +301,6 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         <strong>Điều khoản cam kết bổ sung do Chủ máy & Khách thuê thỏa thuận:</strong> ${rental.contract.contractTerms}
       </li>`
     : "";
-
-  const sealSvg = isConfirmedPaid ? getOfficialSealSvg() : getDraftSealSvg();
 
   const titleText = isConfirmedPaid
     ? "HỢP ĐỒNG THUÊ THIẾT BỊ ĐIỆN TỬ (BẢN CHÍNH THỨC)"
@@ -458,15 +565,15 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
           </td>
           <td style="text-align:center;">
             ${startDateFormatted} - ${endDateFormatted}<br>
-            <strong>(${rental.totalDays} ngày)</strong>
+            <strong>(${totalDaysVal} ngày)</strong>
           </td>
-          <td class="num">${rental.dailyRate.toLocaleString("vi-VN")} đ</td>
-          <td class="num"><strong>${rental.rentalFee.toLocaleString("vi-VN")} đ</strong></td>
+          <td class="num">${dailyRateVal.toLocaleString("vi-VN")} đ</td>
+          <td class="num"><strong>${rentalFeeVal.toLocaleString("vi-VN")} đ</strong></td>
           <td style="text-align:center;">
             <span class="highlight-badge">0 đ (Miễn cọc)</span>
           </td>
           <td class="num" style="color:#ea580c; font-weight:bold;">
-            ${rental.rentalFee.toLocaleString("vi-VN")} đ
+            ${rentalFeeVal.toLocaleString("vi-VN")} đ
           </td>
         </tr>
       </tbody>
@@ -499,11 +606,11 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         </tr>
         <tr style="background:#f8fafc; font-weight:bold;">
           <td colspan="3" style="text-align:right;">Tổng phí giao nhận 2 chiều:</td>
-          <td class="num" style="color:#0284c7;">${shippingFee.toLocaleString("vi-VN")} đ</td>
+          <td class="num" style="color:#0284c7;">${shippingFeeVal.toLocaleString("vi-VN")} đ</td>
         </tr>
         <tr style="background:#fff7ed; font-weight:bold; font-size:12pt;">
           <td colspan="3" style="text-align:right; color:#c2410c;">TỔNG GIÁ TRỊ THANH TOÁN (Tiền thuê + Phí giao nhận):</td>
-          <td class="num" style="color:#ea580c; font-size:13pt;">${totalAmountToPay.toLocaleString("vi-VN")} đ</td>
+          <td class="num" style="color:#ea580c; font-size:13pt;">${totalAmountToPayVal.toLocaleString("vi-VN")} đ</td>
         </tr>
       </tbody>
     </table>
@@ -533,23 +640,53 @@ export function buildContractHtml(rental: Rental, options: BuildContractOptions 
         <!-- Bên A -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN CHO THUÊ (BÊN A)</div>
-          <div class="note">(${isConfirmedPaid ? "Ký điện tử, đóng dấu chứng thực" : "Chờ xác nhận thanh toán"})</div>
-          <div class="sign-area">${sealSvg}</div>
-          <div class="sign-name">${ownerName}</div>
-          <div class="sign-date">${isConfirmedPaid ? "Đã chứng thực qua SmartEquip Hub" : "Bản mẫu SmartEquip"}</div>
+          <div class="note">(${isOwnerSigned ? "Chữ ký điện tử của Bên Cho Thuê" : "Chờ Chủ máy ký số"})</div>
+          <div class="sign-area" style="position:relative;">
+            ${
+              ownerSignatureImg && ownerSignatureImg.startsWith("data:image")
+                ? `<div style="text-align:center;">
+                     <img src="${ownerSignatureImg}" alt="Chữ ký Chủ máy" class="signature-img" />
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên A)</div>
+                   </div>`
+                : isOwnerSigned
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#0f766e; line-height:1.2;">${ownerSignerName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên A)</div>
+                   </div>`
+                : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
+            }
+            ${
+              isConfirmedPaid
+                ? `<div style="position:absolute; right:5px; top:-10px; opacity:0.85; pointer-events:none; transform:scale(0.85);">${getOfficialSealSvg()}</div>`
+                : ""
+            }
+          </div>
+          <div class="sign-name">${ownerSignerName}</div>
+          <div class="sign-date">${isOwnerSigned ? `Đã ký điện tử: ${ownerSignedDateStr}` : "Chờ ký"}</div>
         </div>
 
-        <!-- Bên B -->
+        <!-- Bên B: Hiển thị chữ ký điện tử đã vẽ hoặc chữ ký điện tử xác nhận của Người thuê kèm con dấu chứng thực điện tử -->
         <div class="sign-col">
           <div class="title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</div>
-          <div class="note">(Chữ ký tay điện tử của Người thuê)</div>
-          <div class="sign-area">
+          <div class="note">(${isSigned ? "Chữ ký điện tử của Bên Thuê" : "Chờ Người thuê ký số"})</div>
+          <div class="sign-area" style="position:relative;">
             ${
               effectiveSignature && effectiveSignature.startsWith("data:image")
-                ? `<img src="${effectiveSignature}" alt="Chữ ký tay của Người thuê" class="signature-img" />`
+                ? `<div style="text-align:center;">
+                     <img src="${effectiveSignature}" alt="Chữ ký điện tử của Người thuê" class="signature-img" />
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
+                   </div>`
                 : isSigned
-                ? `<div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#1e3a8a;">${renterName}</div>`
+                ? `<div style="text-align:center;">
+                     <div style="font-family:'Brush Script MT', cursive; font-size:24pt; color:#1d4ed8; line-height:1.2;">${renterName}</div>
+                     <div style="font-size:8.5pt; color:#059669; font-weight:bold; margin-top:2px;">✓ Đã ký số điện tử (Bên B)</div>
+                   </div>`
                 : `<div style="color:#94a3b8; font-style:italic; font-size:10.5pt;">(Chưa ký tên)</div>`
+            }
+            ${
+              (isSigned || isConfirmedPaid)
+                ? `<div style="position:absolute; right:5px; top:-10px; opacity:0.85; pointer-events:none; transform:scale(0.85);">${getOfficialSealSvg()}</div>`
+                : ""
             }
           </div>
           <div class="sign-name">${renterName}</div>

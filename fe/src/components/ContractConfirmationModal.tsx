@@ -38,17 +38,58 @@ export default function ContractConfirmationModal({
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
   const totalAmountToPay = rental.totalAmount || (rental.rentalFee + (rental.shippingFee || 0)); // KHÔNG CẦN TIỀN CỌC! (Tiền thuê + phí vận chuyển)
 
-  const handleGoToPayment = (e: React.FormEvent) => {
+  const [currentRentalState, setCurrentRentalState] = useState<Rental>(rental);
+
+  const handleGoToPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!termsAccepted) {
       setError("Vui lòng tích chọn đồng ý với các điều khoản của hợp đồng thuê.");
       return;
     }
     if (!handwrittenSignature) {
-      setError("Vui lòng vẽ chữ ký tay điện tử của bạn vào khung ký tên.");
+      setError("Vui lòng vẽ chữ ký điện tử của bạn vào khung ký tên.");
       return;
     }
     setError("");
+    setLoading(true);
+    const confirmedSigner = signerName.trim() || renterName;
+
+    // Lưu chữ ký vào localStorage để bảo toàn tuyệt đối sau khi PayOS chuyển hướng
+    if (handwrittenSignature) {
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(`smartequip_sig_${contractCode}`, handwrittenSignature);
+          window.localStorage.setItem(`smartequip_sig_${rental.rentalCode}`, handwrittenSignature);
+          if (rental._id) window.localStorage.setItem(`smartequip_sig_${rental._id}`, handwrittenSignature);
+        }
+      } catch (storageErr) {
+        console.warn("Cache localStorage chữ ký:", storageErr);
+      }
+    }
+
+    try {
+      const res = await smartEquipApi.confirmContract(token, rental._id, {
+        termsAccepted: true,
+        renterSignature: confirmedSigner,
+        digitalSignature: handwrittenSignature,
+      });
+      const updated = res.data || {
+        ...currentRentalState,
+        status: "CONTRACT_SIGNED",
+        contract: {
+          ...currentRentalState.contract,
+          termsAccepted: true,
+          renterSignature: confirmedSigner,
+          digitalSignature: handwrittenSignature,
+          signedAt: new Date().toISOString(),
+        },
+      };
+      setCurrentRentalState(updated);
+    } catch (signErr: any) {
+      console.warn("Lưu chữ ký điện tử:", signErr?.message);
+    } finally {
+      setLoading(false);
+    }
     setStep("payment");
   };
 
@@ -57,29 +98,47 @@ export default function ContractConfirmationModal({
     setLoading(true);
     setError("");
     try {
-      // 1. Luôn cập nhật và xác nhận chữ ký tay điện tử vào hợp đồng
-      if (handwrittenSignature || signerName.trim()) {
+      const sigToSave =
+        handwrittenSignature ||
+        rental.contract?.digitalSignature ||
+        (typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem(`smartequip_sig_${contractCode}`) ||
+            window.localStorage.getItem(`smartequip_sig_${rental.rentalCode}`) ||
+            (rental._id ? window.localStorage.getItem(`smartequip_sig_${rental._id}`) : null)
+          : "") ||
+        "";
+
+      if (sigToSave && typeof window !== "undefined" && window.localStorage) {
         try {
-          await smartEquipApi.confirmContract(token, rental._id, {
-            termsAccepted: true,
-            renterSignature: signerName.trim() || renterName,
-            digitalSignature: handwrittenSignature || rental.contract?.digitalSignature || "",
-          });
-        } catch (signErr: any) {
-          console.warn("Lưu chữ ký hợp đồng notice:", signErr?.message);
-        }
+          window.localStorage.setItem(`smartequip_sig_${contractCode}`, sigToSave);
+          window.localStorage.setItem(`smartequip_sig_${rental.rentalCode}`, sigToSave);
+          if (rental._id) window.localStorage.setItem(`smartequip_sig_${rental._id}`, sigToSave);
+        } catch (e) {}
       }
 
-      // 2. Gọi API POST /api/payments/create-payment-link (truyền vào rentalId, amount, description)
+      // 1. Luôn cập nhật và xác nhận chữ ký điện tử vào hợp đồng
+      const confirmedSigner = signerName.trim() || renterName;
+      try {
+        await smartEquipApi.confirmContract(token, rental._id, {
+          termsAccepted: true,
+          renterSignature: confirmedSigner,
+          digitalSignature: sigToSave,
+        });
+      } catch (signErr: any) {
+        console.warn("Lưu xác nhận ký hợp đồng notice:", signErr?.message);
+      }
+
+      // 2. Gọi API POST /api/payments/create-payment-link (truyền vào rentalId, amount, description, digitalSignature)
       const response = await axios.post("/api/payments/create-payment-link", {
         rentalId: rental._id,
         amount: totalAmountToPay,
         description: `TT don ${rental.rentalCode}`,
+        digitalSignature: sigToSave,
       });
 
       const { checkoutUrl } = response.data;
       if (checkoutUrl) {
-        if (onSuccess) onSuccess(rental);
+        if (onSuccess) onSuccess(currentRentalState);
         // Chuyển hướng người dùng sang cổng thanh toán PayOS
         window.location.href = checkoutUrl;
       } else {
@@ -110,7 +169,7 @@ export default function ContractConfirmationModal({
             <div>
               <h2 className="text-base font-bold text-white">
                 {step === "contract"
-                  ? "Ký Hợp Đồng Thuê Điện Tử Bằng Tay"
+                  ? "Xác Nhận Ký Hợp Đồng Thuê Điện Tử"
                   : "Thanh Toán Tự Động Qua Cổng PayOS (VietQR)"}
               </h2>
               <p className="text-xs text-orange-400 mt-0.5">
@@ -150,7 +209,7 @@ export default function ContractConfirmationModal({
             <span className="w-5 h-5 rounded-full bg-orange-500/30 flex items-center justify-center text-[10px] font-bold">
               1
             </span>
-            <span>Đọc điều khoản & Ký tay</span>
+            <span>Đọc điều khoản & Xác nhận ký số</span>
           </div>
 
           <div
@@ -263,16 +322,16 @@ export default function ContractConfirmationModal({
                     <strong className="text-slate-300">Bàn giao & Nghiệm thu:</strong> Hai bên kiểm tra ngoại quan máy và phụ kiện khi nhận hàng và khi trả hàng.
                   </li>
                   <li>
-                    <strong className="text-slate-300">Chữ ký tay điện tử:</strong> Chữ ký tay điện tử dưới đây có giá trị pháp lý ràng buộc nghĩa vụ thực hiện hợp đồng theo Luật Giao dịch điện tử.
+                    <strong className="text-slate-300">Giá trị pháp lý chữ ký điện tử:</strong> Hợp đồng có giá trị pháp lý ràng buộc nghĩa vụ thực hiện theo Luật Giao dịch điện tử số 20/2023/QH15.
                   </li>
                 </ol>
               </div>
             </div>
 
-            {/* Khung ký chữ ký tay điện tử */}
+            {/* Khung ký chữ ký điện tử của Người thuê */}
             <div className="bg-[#101726] p-4 rounded-xl border border-[#212d42] space-y-2.5">
               <label className="block text-xs font-bold text-slate-200">
-                ✍️ Chữ ký tay điện tử của Người thuê (Vẽ trực tiếp bằng tay hoặc chuột) *
+                ✍️ Chữ ký điện tử của Người thuê (Vẽ trực tiếp bằng tay hoặc chuột) *
               </label>
 
               <SignaturePad
@@ -283,20 +342,20 @@ export default function ContractConfirmationModal({
 
               <div className="pt-2">
                 <label className="block text-[11px] text-slate-400 mb-1">
-                  Họ và tên người ký (tùy chọn xác nhận thêm):
+                  Họ và tên người ký xác nhận:
                 </label>
                 <input
                   type="text"
                   placeholder={renterName}
                   value={signerName}
                   onChange={(e) => setSignerName(e.target.value)}
-                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500 font-semibold"
                 />
               </div>
             </div>
 
             {/* Checkbox chấp nhận điều khoản */}
-            <label className="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none p-2 rounded-lg bg-[#0e1524]">
+            <label className="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none p-2.5 rounded-lg bg-[#0e1524] border border-[#1e2a40]">
               <input
                 type="checkbox"
                 checked={termsAccepted}
@@ -304,7 +363,7 @@ export default function ContractConfirmationModal({
                 className="rounded accent-orange-500 w-4 h-4 mt-0.5 cursor-pointer"
               />
               <span>
-                Tôi đã đọc kỹ toàn bộ điều khoản hợp đồng thuê trên và cam kết chữ ký tay điện tử do chính tôi thực hiện.
+                Tôi đã đọc kỹ toàn bộ điều khoản hợp đồng thuê trên và cam kết chữ ký điện tử do chính tôi thực hiện.
               </span>
             </label>
 
@@ -331,9 +390,9 @@ export default function ContractConfirmationModal({
                 type="button"
                 onClick={handleGoToPayment}
                 disabled={!termsAccepted || !handwrittenSignature}
-                className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5"
+                className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
               >
-                <span>Tiếp tục: Thanh toán VietQR</span>
+                <span>Xác nhận ký & Sang thanh toán VietQR</span>
                 <span>➔</span>
               </button>
             </div>
@@ -407,14 +466,14 @@ export default function ContractConfirmationModal({
               <span>➔</span>
             </button>
 
-            {/* Xem trước chữ ký đã vẽ */}
+            {/* Xem trước chữ ký điện tử đã vẽ */}
             {handwrittenSignature && (
               <div className="p-2.5 rounded-xl bg-[#0c1322] border border-[#1e2a40] flex items-center justify-between text-xs">
-                <span className="text-slate-400">Chữ ký tay điện tử của bạn:</span>
+                <span className="text-slate-400">Chữ ký điện tử của bạn:</span>
                 <div className="bg-white p-1 rounded-lg border border-slate-300 shadow-sm flex items-center justify-center">
                   <img
                     src={handwrittenSignature}
-                    alt="Chữ ký đã vẽ"
+                    alt="Chữ ký điện tử đã vẽ"
                     className="h-8 max-w-[150px] object-contain block"
                   />
                 </div>
@@ -440,7 +499,7 @@ export default function ContractConfirmationModal({
       {/* Modal Xem & Tải Hợp Đồng PDF */}
       {showPdfModal && (
         <ContractPdfModal
-          rental={rental}
+          rental={currentRentalState}
           isOpen={showPdfModal}
           onClose={() => setShowPdfModal(false)}
           signatureUrl={handwrittenSignature}

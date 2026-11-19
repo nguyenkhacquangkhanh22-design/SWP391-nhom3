@@ -32,17 +32,33 @@ export default function ContractPdfModal({
   const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
 
   const isSignedOrOfficial = Boolean(
-    rental.contract?.renterSignature ||
-      rental.contract?.digitalSignature ||
-      rental.contract?.signedAt ||
+    Boolean(signatureUrl && signatureUrl.startsWith("data:image")) ||
       rental.contract?.termsAccepted ||
-      Boolean(signatureUrl) ||
+      Boolean(rental.contract?.signedAt) ||
+      Boolean((rental as any).renter_signature?.signed) ||
       String(rental.status).toUpperCase() === "CONTRACT_SIGNED" ||
       String(rental.status).toUpperCase() === "PAID" ||
       String(rental.status).toUpperCase() === "ACTIVE" ||
-      String(rental.status).toUpperCase() === "CONFIRMED" ||
       String(rental.status).toUpperCase() === "COMPLETED" ||
       rental.payment?.isPaid
+  );
+
+  const ownerSignature =
+    rental.contract?.ownerSignature ||
+    (rental as any).owner_signature?.signature_image ||
+    (rental as any).contract?.owner_signature?.signature_image ||
+    undefined;
+
+  const ownerSignerName =
+    rental.contract?.ownerSignerName ||
+    (rental as any).owner_signature?.signer_name ||
+    (typeof rental.owner === "object" ? rental.owner?.name : undefined);
+
+  const isOwnerSigned = Boolean(
+    rental.contract?.ownerSigned ||
+      (rental as any).owner_signature?.signed ||
+      (rental as any).contract?.owner_signature?.signed ||
+      rental.contract?.contractNumber
   );
 
   const contractHtml = useMemo(() => {
@@ -51,16 +67,22 @@ export default function ContractPdfModal({
       signerName,
       isSigned: isSignedOrOfficial,
       isOfficial: isSignedOrOfficial,
+      ownerSignature,
+      ownerSignerName,
+      isOwnerSigned,
       hidePrintBar: true, // Ẩn thanh công cụ lặp lại bên trong iframe
     });
-  }, [rental, signatureUrl, signerName, isSignedOrOfficial]);
+  }, [rental, signatureUrl, signerName, isSignedOrOfficial, ownerSignature, ownerSignerName, isOwnerSigned]);
 
   const handlePrintPdf = () => {
     openContractPdfPreview(rental, {
       signatureUrl,
       signerName,
-      isSigned: true,
+      isSigned: isSignedOrOfficial,
       isOfficial: isSignedOrOfficial,
+      ownerSignature,
+      ownerSignerName,
+      isOwnerSigned,
     });
   };
 
@@ -68,8 +90,11 @@ export default function ContractPdfModal({
     downloadContractHtml(rental, {
       signatureUrl,
       signerName,
-      isSigned: true,
+      isSigned: isSignedOrOfficial,
       isOfficial: isSignedOrOfficial,
+      ownerSignature,
+      ownerSignerName,
+      isOwnerSigned,
     });
   };
 
@@ -120,19 +145,19 @@ export default function ContractPdfModal({
               </button>
             )}
 
-            {/* Nút Khách thuê đồng ý ký HĐ khi xem hợp đồng */}
-            {!isOwner && !rental.contract?.agreedToSign && onAgreeToSign && (
+            {/* Nút Khách thuê: Phải đồng ý ký HĐ trước, sau đó mới hiện Ký hợp đồng & Thanh toán */}
+            {!isOwner && !rental.contract?.termsAccepted && onAgreeToSign && (
               <button
                 type="button"
                 onClick={() => {
                   onAgreeToSign(rental);
                   onClose();
                 }}
-                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95"
-                title="Xác nhận đồng ý điều khoản trong hợp đồng"
+                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95 animate-pulse"
+                title={rental.contract?.agreedToSign ? "Ký tên điện tử xác nhận hợp đồng & tiến hành thanh toán" : "Bấm xác nhận đồng ý điều khoản hợp đồng trước khi ký"}
               >
-                <span>🤝</span>
-                <span>Đồng ý ký hợp đồng</span>
+                <span>{rental.contract?.agreedToSign ? "✍️" : "🤝"}</span>
+                <span>{rental.contract?.agreedToSign ? "Ký hợp đồng & Thanh toán" : "Đồng ý ký hợp đồng"}</span>
               </button>
             )}
 

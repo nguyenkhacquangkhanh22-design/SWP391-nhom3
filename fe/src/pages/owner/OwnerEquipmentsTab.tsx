@@ -1551,13 +1551,25 @@ export default function OwnerEquipmentsTab({
                 </h4>
                 <div className="form-grid-3">
                   <div>
-                    <label className="field-label">Giá thuê theo ngày (VND) *</label>
+                    <label className="field-label">
+                      Giá thuê theo ngày (VND) *{" "}
+                      <span
+                        style={{
+                          fontSize: "0.75rem",
+                          color: pricePerDay !== "" && Number(pricePerDay) < 2000 ? "#f87171" : "#10b981",
+                          fontWeight: 600,
+                        }}
+                      >
+                        (Tối thiểu từ 2.000 đ)
+                      </span>
+                    </label>
                     <input
                       className="input-field font-mono"
                       type="number"
                       min={1000}
                       max={500000000}
                       step={1}
+                      placeholder="Ví dụ: 50000"
                       value={pricePerDay}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/^0+(?=\d)/, "");

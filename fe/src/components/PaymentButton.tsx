@@ -6,6 +6,8 @@ interface PaymentButtonProps {
   amount: number;
   description?: string;
   className?: string;
+  isExtension?: boolean;
+  label?: string;
   onSuccess?: () => void;
   onError?: (err: Error) => void;
 }
@@ -20,6 +22,8 @@ export default function PaymentButton({
   amount,
   description,
   className,
+  isExtension,
+  label,
   onSuccess,
   onError,
 }: PaymentButtonProps) {
@@ -39,6 +43,7 @@ export default function PaymentButton({
         rentalId,
         amount,
         description: description || `TT don ${rentalId.slice(-6)}`,
+        isExtension: Boolean(isExtension),
       });
 
       const { checkoutUrl } = response.data;
@@ -72,11 +77,11 @@ export default function PaymentButton({
         className ||
         "px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
       }
-      title="Thanh toán qua cổng PayOS VietQR tự động duyệt đơn"
+      title={isExtension ? "Thanh toán phụ phí gia hạn qua cổng PayOS VietQR" : "Thanh toán qua cổng PayOS VietQR tự động duyệt đơn"}
     >
       <span>{loading ? "⏳" : "💳"}</span>
       <span>
-        {loading ? "Đang tạo mã VietQR..." : "Thanh toán qua mã VietQR"}
+        {loading ? "Đang tạo mã VietQR..." : (label || "Thanh toán qua mã VietQR")}
       </span>
     </button>
   );

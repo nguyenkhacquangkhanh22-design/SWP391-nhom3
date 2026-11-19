@@ -433,6 +433,9 @@ class RentalService {
     rental.contract = rental.contract || {};
     rental.contract.agreedToSign = true;
     rental.contract.agreedAt = new Date();
+    if (rental.status === "PENDING" || rental.status === "pending") {
+      rental.status = "APPROVED";
+    }
     if (rental.contract.moderatorStatus === "approved") {
       rental.contract.moderatorStatus = "moderator_approved";
     }
@@ -512,21 +515,38 @@ class RentalService {
     );
 
     if (!hasAnySignature) {
-      throw new AppError(400, "Vui lòng vẽ chữ ký tay hoặc nhập họ tên để ký hợp đồng");
+      throw new AppError(400, "Vui lòng vẽ chữ ký điện tử hoặc nhập họ tên để ký hợp đồng");
     }
 
     const userIdStr = renterUser._id ? renterUser._id.toString() : String(renterUser.User_Id || renterUser.id || "");
     const renterIdStr = rental.renter?._id?.toString() || rental.renter?.toString() || String(rental.renter?.User_Id || "");
 
-    if (
-      userIdStr !== renterIdStr &&
-      String(renterUser.User_Id || "") !== String(rental.renter?.User_Id || "") &&
-      renterUser.role !== "admin"
-    ) {
+    const isRenterMatching =
+      userIdStr === renterIdStr ||
+      (renterUser.User_Id && String(renterUser.User_Id) === String(rental.renter?.User_Id)) ||
+      (renterUser.email && rental.renter?.email && String(renterUser.email).toLowerCase() === String(rental.renter.email).toLowerCase()) ||
+      ["admin", "rentalmoderator"].includes(String(renterUser.role).toLowerCase());
+
+    if (!isRenterMatching) {
       throw new AppError(403, "Bạn không có quyền ký hợp đồng này");
     }
 
-    if (rental.status === "CONTRACT_SIGNED" && rental.contract?.signedAt) {
+    const hasExistingDrawnSig = Boolean(
+      rental.contract?.digitalSignature &&
+      String(rental.contract.digitalSignature).startsWith("data:image")
+    );
+    const isNewSigProvided = Boolean(
+      digitalSignature &&
+      String(digitalSignature).trim() &&
+      String(digitalSignature).startsWith("data:image")
+    );
+
+    if (
+      rental.status === "CONTRACT_SIGNED" &&
+      rental.contract?.signedAt &&
+      hasExistingDrawnSig &&
+      !isNewSigProvided
+    ) {
       return await Rental.findById(rental._id)
         .populate("equipment", "title images dailyRate depositAmount category")
         .populate("owner", "name email phone trust_score bankInfo")
@@ -534,8 +554,18 @@ class RentalService {
     }
 
     const normStatus = String(rental.status).toUpperCase();
+    const isOwnerDraftedOrSigned = Boolean(
+      rental.contract?.ownerSigned ||
+      rental.contract?.contractNumber ||
+      rental.contract?.agreedToSign
+    );
+
     if (normStatus === "PENDING") {
-      throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng.");
+      if (isOwnerDraftedOrSigned) {
+        rental.status = "APPROVED";
+      } else {
+        throw new AppError(400, "Yêu cầu thuê cần được Chủ thiết bị (Owner) phê duyệt trước khi ký hợp đồng.");
+      }
     }
 
     const signableStatuses = [
@@ -569,29 +599,34 @@ class RentalService {
 
     const matchingContract = await RentalContract.findOne(contractQuery).sort({ createdAt: -1 });
     if (matchingContract) {
-      if (matchingContract.status === "draft" || matchingContract.status === "pending_approval") {
-        throw new AppError(
-          400,
-          "Owner chưa gửi hợp đồng cho bạn ký tên."
-        );
-      }
       if (matchingContract.status === "moderator_rejected") {
         throw new AppError(
           400,
           "Hợp đồng đang được Chủ máy (Owner) điều chỉnh. Vui lòng chờ cập nhật trước khi ký tên."
         );
       }
-      if (
-        !["pending_renter_signature", "moderator_approved", "signed"].includes(
-          matchingContract.status,
-        )
-      ) {
+      const allowedContractStatuses = [
+        "pending_renter_signature",
+        "moderator_approved",
+        "signed",
+        "active",
+        "approved",
+        "contract_created",
+        "draft",
+        "pending_approval",
+      ];
+      const ownerHasSignedOrSent = Boolean(
+        matchingContract.owner_signature?.signed ||
+        rental.contract?.ownerSigned ||
+        rental.contract?.contractNumber
+      );
+      if (!allowedContractStatuses.includes(matchingContract.status) && !ownerHasSignedOrSent) {
         throw new AppError(
           400,
           "Hợp đồng này chưa được Owner gửi cho bạn ký tên."
         );
       }
-    } else if (!rental.contract?.moderatorApproved) {
+    } else if (!rental.contract?.moderatorApproved && !rental.contract?.contractNumber && !rental.contract?.ownerSigned) {
       throw new AppError(
         400,
         "Hợp đồng thuê cần được Chủ thiết bị (Owner) lập và gửi cho bạn trước khi ký tên."
@@ -601,6 +636,7 @@ class RentalService {
     if (!rental.contract) {
       rental.contract = {};
     }
+    const signature = renterSignature || digitalSignature || renterUser.name || "Khách thuê";
     rental.contract.termsAccepted = true;
 
     // Lưu riêng họ tên người ký (renterSignature) và ảnh chữ ký tay base64 (digitalSignature)
@@ -627,39 +663,130 @@ class RentalService {
       rental.contract.moderatorStatus = "moderator_approved";
     }
 
+    rental.markModified("contract");
     await rental.save();
 
     // Đồng bộ chữ ký sang RentalContract & RentalRequest nếu có
     try {
       const RentalRequest = require("../models/RentalRequest");
       const RentalContract = require("../models/RentalContract");
-      const matchingReq = await RentalRequest.findOne({
-        $or: [
-          { request_code: rental.rentalCode },
-          { renter_id: rental.renter, equipment_id: rental.equipment, status: { $in: ["approved", "contract_created"] } },
-        ],
-      });
-      const contractQuery = matchingReq
-        ? { $or: [{ request_id: matchingReq._id }, { contract_code: rental.contract?.contractNumber }] }
-        : { contract_code: rental.contract?.contractNumber };
+      const contractCode = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+      const isDrawnSig = Boolean(
+        rental.contract.digitalSignature &&
+          String(rental.contract.digitalSignature).startsWith("data:image")
+      );
+      const signatureImg = isDrawnSig
+        ? rental.contract.digitalSignature
+        : (digitalSignature && String(digitalSignature).startsWith("data:image") ? digitalSignature : "");
 
-      await RentalContract.updateMany(contractQuery, {
-        $set: {
-          status: "signed",
-          "renter_signature.signed": true,
-          "renter_signature.signed_at": rental.contract.signedAt || new Date(),
-          "renter_signature.signature_data": rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
-          "renter_signature.signer_name": signature || renterUser.name,
+      await RentalContract.updateMany(
+        {
+          $or: [
+            { contract_code: contractCode },
+            { contract_code: rental.contract?.contractNumber },
+            { contract_code: `HD-${rental.rentalCode}` },
+            { contract_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment },
+          ],
         },
-      });
+        {
+          $set: {
+            status: "signed",
+            "renter_signature.signed": true,
+            "renter_signature.signed_at": rental.contract.signedAt || new Date(),
+            "renter_signature.signature_data": signatureImg || rental.contract.digitalSignature || `${signature} (RENTER_SIG_${renterUser._id}_${Date.now()})`,
+            "renter_signature.signature_image": signatureImg,
+            "renter_signature.signature_type": signatureImg ? "drawn" : "typed",
+            "renter_signature.signer_name": signature || renterUser.name,
+          },
+        }
+      );
+
+      await RentalRequest.updateMany(
+        {
+          $or: [
+            { request_code: rental.rentalCode },
+            { renter_id: rental.renter, equipment_id: rental.equipment },
+          ],
+        },
+        { $set: { status: "signed" } }
+      );
     } catch (syncErr) {
       console.warn("Đồng bộ chữ ký sang RentalContract:", syncErr.message);
     }
 
-    return await Rental.findById(rental._id)
+    const populatedRental = await Rental.findById(rental._id)
       .populate("equipment", "title images dailyRate depositAmount category")
       .populate("owner", "name email phone trust_score bankInfo")
       .populate("renter", "name email phone");
+
+    // 1. Tự động gửi tin nhắn Chat kèm Hợp đồng đã ký sang cho Owner để 2 bên đều có bản HĐ
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+      await ChatMessage.create({
+        rental_id: rental._id,
+        sender: renterUser._id,
+        receiver: rental.owner,
+        message: `✍️ Khách thuê (${renterUser.name}) đã ký tên vào Hợp đồng #${contractNumber}. Hợp đồng đã có đầy đủ chữ ký điện tử của hai bên. Bạn có thể mở bản PDF để xem và lưu lại bất kỳ lúc nào!`,
+        message_type: "contract",
+        contract_data: {
+          contract_number: contractNumber,
+          equipment_title: populatedRental?.equipment?.title || "Thiết bị thuê",
+          rental_id: rental._id,
+          total_amount: rental.totalAmount || rental.rentalFee || 0,
+          status: "CONTRACT_SIGNED",
+          is_signed: true,
+        },
+      });
+    } catch (chatErr) {
+      console.warn("Lỗi gửi tin nhắn hợp đồng đã ký sang Owner:", chatErr.message);
+    }
+
+    // 2. Gửi thông báo cho Chủ máy (Owner)
+    if (UserNotification && rental.owner) {
+      try {
+        const contractNumber = rental.contract?.contractNumber || `HD-${rental.rentalCode}`;
+        await UserNotification.create({
+          user_id: rental.owner,
+          title: `✍️ Khách thuê đã ký Hợp đồng #${contractNumber}!`,
+          message: `Khách hàng ${renterUser.name} đã ký tên điện tử vào Hợp đồng #${contractNumber}. Hợp đồng đã được cập nhật bản PDF vào khung chat để hai bên cùng lưu giữ!`,
+          related_record_id: rental._id,
+        });
+      } catch (notifErr) {
+        console.warn("Lỗi tạo thông báo ký HĐ cho Owner:", notifErr?.message);
+      }
+    }
+
+    // 3. Bắn Socket.IO realtime
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      if (io) {
+        const ownerIdStr = String(rental.owner?._id || rental.owner || "");
+        io.emit("contract:signed", {
+          rentalId: rental._id.toString(),
+          rentalCode: rental.rentalCode,
+          contractNumber: rental.contract?.contractNumber || `HD-${rental.rentalCode}`,
+          ownerId: ownerIdStr,
+          renterId: String(renterUser._id),
+          renterName: renterUser.name,
+          title: "✍️ Khách thuê đã ký hợp đồng!",
+          message: `Khách ${renterUser.name} đã ký Hợp đồng #${rental.contract?.contractNumber || rental.rentalCode}.`,
+          link: "/owner",
+        });
+        io.emit("chat:message", {
+          rental_id: rental._id.toString(),
+          sender: String(renterUser._id),
+          receiver: ownerIdStr,
+          message_type: "contract",
+        });
+      }
+    } catch (socketErr) {
+      console.warn("Socket emit error on confirmContract:", socketErr?.message);
+    }
+
+    return populatedRental;
   }
 
   /**
@@ -876,11 +1003,66 @@ class RentalService {
 
     await rental.save();
 
+    const populatedRental = await Rental.findById(rental._id)
+      .populate("equipment", "title images dailyRate depositAmount category")
+      .populate("owner", "name email phone");
+
+    // 1. Tạo thông báo cho Chủ máy (Owner)
+    if (UserNotification && populatedRental?.owner) {
+      try {
+        const ownerId = populatedRental.owner._id || populatedRental.owner;
+        const equipTitle = populatedRental.equipment?.title || "Thiết bị";
+        const schedTimeStr = returnTime ? new Date(returnTime).toLocaleString("vi-VN") : "Sớm nhất";
+        await UserNotification.create({
+          user_id: ownerId,
+          title: "📦 Khách thuê báo trả thiết bị!",
+          message: `Khách hàng ${renterUser.name} đã gửi yêu cầu trả thiết bị "${equipTitle}" (Đơn #${rental.rentalCode}). Hẹn trả: ${schedTimeStr} tại: ${returnLocation || rental.deliveryAddress || "Địa chỉ theo hợp đồng"}. Tình trạng: ${rental.returnInfo.returnCondition}`,
+          related_record_id: rental._id,
+        });
+      } catch (notifErr) {
+        console.warn("Lỗi tạo thông báo báo trả thiết bị cho Owner:", notifErr?.message);
+      }
+    }
+
+    // 2. Phát Socket.IO realtime cho Owner & Hệ thống
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      const ownerIdStr = String(populatedRental.owner?._id || populatedRental.owner || "");
+      const toastData = {
+        type: "rental_returned",
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: ownerIdStr,
+        renterName: renterUser.name || "Khách thuê",
+        renterId: String(renterUser._id),
+        equipmentTitle: populatedRental.equipment?.title || "Thiết bị",
+        returnInfo: rental.returnInfo,
+        title: "📦 Khách thuê báo trả thiết bị!",
+        message: `Khách ${renterUser.name} vừa gửi yêu cầu trả "${populatedRental.equipment?.title || "Thiết bị"}" (Đơn #${rental.rentalCode}). Vui lòng kiểm tra và nhận lại thiết bị!`,
+        link: "/owner",
+        createdAt: new Date(),
+      };
+      io.emit("rental:returned", toastData);
+      io.emit("notification:new_rental", toastData);
+    } catch (socketErr) {
+      console.warn("Socket emit error on requestReturn:", socketErr?.message);
+    }
+
+    // 3. Đồng bộ trạng thái sang RentalRequest nếu có
+    try {
+      const RentalRequest = require("../models/RentalRequest");
+      await RentalRequest.updateMany(
+        { request_code: rental.rentalCode },
+        { $set: { status: "returned" } }
+      );
+    } catch (rrErr) {
+      console.warn("Lỗi đồng bộ RentalRequest on requestReturn:", rrErr?.message);
+    }
+
     return {
       message: "Yêu cầu hoàn trả thiết bị đã được gửi thành công. Chủ thiết bị sẽ tiến hành nghiệm thu.",
-      rental: await Rental.findById(rental._id)
-        .populate("equipment", "title images dailyRate depositAmount category")
-        .populate("owner", "name email phone"),
+      rental: populatedRental,
     };
   }
 
@@ -1204,6 +1386,10 @@ class RentalService {
               moderatorApproved: modApproved,
               moderatorStatus: modStatus,
               ownerSigned: ownerSigned,
+              ownerSignature: ct?.owner_signature?.signature_image || ct?.owner_signature?.signature_data || "",
+              ownerSignerName: ct?.owner_signature?.signer_name || "",
+              ownerSignedAt: ct?.owner_signature?.signed_at || null,
+              ownerCertificateCode: ct?.owner_signature?.certificate_code || "",
             },
           });
         } else {
@@ -1220,6 +1406,14 @@ class RentalService {
           if (ct && existingRental.contract.moderatorStatus !== modStatus) {
             existingRental.contract.moderatorStatus = modStatus;
             existingRental.contract.moderatorApproved = modApproved;
+            needsSave = true;
+          }
+          if (ct && ct.owner_signature?.signed && !existingRental.contract.ownerSigned) {
+            existingRental.contract.ownerSigned = true;
+            existingRental.contract.ownerSignature = ct.owner_signature?.signature_image || ct.owner_signature?.signature_data || "";
+            existingRental.contract.ownerSignerName = ct.owner_signature?.signer_name || "";
+            existingRental.contract.ownerSignedAt = ct.owner_signature?.signed_at || null;
+            existingRental.contract.ownerCertificateCode = ct.owner_signature?.certificate_code || "";
             needsSave = true;
           }
           if (needsSave) {
@@ -1303,6 +1497,29 @@ class RentalService {
           r.contract.moderatorStatus = contract.status === "approved" ? "moderator_approved" : contract.status;
           r.contract.moderatorApproved = contract.status === "moderator_approved" || contract.status === "signed";
           r.contract.ownerSigned = Boolean(contract.owner_signature?.signed);
+          r.contract.ownerSignature = contract.owner_signature?.signature_image || contract.owner_signature?.signature_data || "";
+          r.contract.ownerSignerName = contract.owner_signature?.signer_name || "";
+          r.contract.ownerSignedAt = contract.owner_signature?.signed_at || null;
+          r.contract.ownerCertificateCode = contract.owner_signature?.certificate_code || "";
+          if (contract.renter_signature?.signed) {
+            r.contract.termsAccepted = true;
+            const validImage =
+              (r.contract.digitalSignature && r.contract.digitalSignature.startsWith("data:image") ? r.contract.digitalSignature : "") ||
+              (contract.renter_signature?.signature_image && contract.renter_signature.signature_image.startsWith("data:image") ? contract.renter_signature.signature_image : "") ||
+              (contract.renter_signature?.signature_data && contract.renter_signature.signature_data.startsWith("data:image") ? contract.renter_signature.signature_data : "");
+
+            r.contract.digitalSignature = validImage || r.contract.digitalSignature || "";
+            r.contract.renterSignature = r.contract.renterSignature || contract.renter_signature?.signer_name || "";
+            r.contract.signedAt = r.contract.signedAt || contract.renter_signature?.signed_at || null;
+            if (validImage && !r.renter_signature) {
+              r.renter_signature = {
+                signed: true,
+                signed_at: r.contract.signedAt,
+                signature_image: validImage,
+                signer_name: r.contract.renterSignature,
+              };
+            }
+          }
         }
       }
     } catch (enrichErr) {
@@ -1557,6 +1774,13 @@ class RentalService {
       );
     }
 
+    if (rental.extensionRequest?.status === "PENDING_OWNER") {
+      throw new AppError(400, "Đang có yêu cầu gia hạn chờ Chủ máy phê duyệt. Vui lòng đợi phản hồi từ Chủ máy.");
+    }
+    if (rental.extensionRequest?.status === "APPROVED") {
+      throw new AppError(400, "Chủ máy đã chấp thuận yêu cầu gia hạn trước đó. Vui lòng chuyển khoản thanh toán phụ phí để hoàn tất.");
+    }
+
     // Tính ngày kết thúc mới
     const currentEndDate = new Date(rental.endDate);
     const newEndDate = new Date(currentEndDate);
@@ -1582,42 +1806,35 @@ class RentalService {
     const dailyRate = rental.dailyRate || rental.equipment?.dailyRate || 0;
     const extraFee = dailyRate * extraDays;
 
-    rental.endDate = newEndDate;
-    rental.totalDays = (rental.totalDays || 0) + extraDays;
-    rental.rentalFee = (rental.rentalFee || 0) + extraFee;
-    rental.totalAmount = (rental.totalAmount || 0) + extraFee;
-
-    if (!Array.isArray(rental.extensions)) {
-      rental.extensions = [];
-    }
-
-    rental.extensions.push({
-      extendedAt: new Date(),
+    // Lưu thông tin yêu cầu gia hạn chờ Owner phê duyệt
+    rental.extensionRequest = {
+      status: "PENDING_OWNER",
       extraDays,
       extraFee,
-      previousEndDate: currentEndDate,
-      newEndDate: newEndDate,
+      currentEndDate,
+      newEndDate,
       note,
-    });
+      requestedAt: new Date(),
+    };
 
     await rental.save();
 
-    // Thông báo cho Renter & Owner
+    // Thông báo cho Owner & Renter
     const ownerId = rental.owner?._id || rental.owner;
     try {
       const UserNotification = require("../models/UserNotification");
       if (UserNotification) {
         await UserNotification.create({
           user_id: ownerId,
-          title: `⏳ Khách đã gia hạn đơn thuê #${rental.rentalCode}`,
-          message: `Khách thuê (${renterUser.name}) đã gia hạn thuê thiết bị "${rental.equipment?.title || "thiết bị"}" thêm ${extraDays} ngày (đến ngày ${newEndDate.toLocaleDateString("vi-VN")}). Phụ phí: ${extraFee.toLocaleString("vi-VN")} đ.`,
+          title: `⏳ Yêu cầu gia hạn đơn thuê #${rental.rentalCode}`,
+          message: `Khách thuê (${renterUser.name}) gửi yêu cầu gia hạn thuê thiết bị "${rental.equipment?.title || "thiết bị"}" thêm ${extraDays} ngày (đến ngày ${newEndDate.toLocaleDateString("vi-VN")}). Phụ phí: ${extraFee.toLocaleString("vi-VN")} đ. Vui lòng xem xét phê duyệt.`,
           related_record_id: rental._id,
         });
 
         await UserNotification.create({
           user_id: renterUser._id,
-          title: `✅ Gia hạn thuê thành công #${rental.rentalCode}`,
-          message: `Bạn đã gia hạn đơn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới là: ${rental.returnTime || "17:00"} ngày ${newEndDate.toLocaleDateString("vi-VN")}.`,
+          title: `⏳ Đã gửi yêu cầu gia hạn #${rental.rentalCode}`,
+          message: `Yêu cầu gia hạn thêm ${extraDays} ngày đã được gửi tới Chủ máy. Vui lòng chờ Chủ máy phê duyệt trước khi chuyển khoản thanh toán phụ phí.`,
           related_record_id: rental._id,
         });
       }
@@ -1626,9 +1843,11 @@ class RentalService {
     try {
       const { getIO } = require("../config/socket");
       const io = getIO();
-      io.emit("rental:extended", {
+      io.emit("rental:extension_requested", {
         rentalId: rental._id,
         rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
         extraDays,
         extraFee,
         newEndDate,
@@ -1637,7 +1856,134 @@ class RentalService {
 
     return {
       success: true,
-      message: `Gia hạn thuê thành công thêm ${extraDays} ngày! Hạn trả máy mới: ${newEndDate.toLocaleDateString("vi-VN")}.`,
+      message: `Đã gửi yêu cầu gia hạn thêm ${extraDays} ngày tới Chủ máy! Vui lòng chờ Chủ máy phê duyệt để tiến hành thanh toán phụ phí.`,
+      rental,
+    };
+  }
+
+  /**
+   * Owner phê duyệt yêu cầu gia hạn thuê
+   */
+  async approveExtension(rentalId, ownerUser) {
+    const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const ownerId = rental.owner?._id ? String(rental.owner._id) : String(rental.owner);
+    const currentUserId = String(ownerUser._id || ownerUser.id);
+    if (ownerId !== currentUserId && ownerUser.role !== "admin") {
+      throw new AppError(403, "Bạn không có quyền phê duyệt gia hạn cho đơn thuê này");
+    }
+
+    if (rental.extensionRequest?.status !== "PENDING_OWNER") {
+      throw new AppError(400, "Đơn thuê không có yêu cầu gia hạn nào đang chờ duyệt");
+    }
+
+    // Kiểm tra lại tính khả dụng
+    const equipmentId = rental.equipment?._id || rental.equipment;
+    const availCheck = await this.checkAvailability(
+      equipmentId,
+      new Date(rental.extensionRequest.currentEndDate || rental.endDate),
+      new Date(rental.extensionRequest.newEndDate),
+      rental._id
+    );
+    if (!availCheck.available) {
+      throw new AppError(400, "Thiết bị đã bị trùng lịch với khách khác, không thể duyệt gia hạn.");
+    }
+
+    rental.extensionRequest.status = "APPROVED";
+    rental.extensionRequest.approvedAt = new Date();
+    await rental.save();
+
+    const renterId = rental.renter?._id || rental.renter;
+    const extraFee = rental.extensionRequest.extraFee;
+    const extraDays = rental.extensionRequest.extraDays;
+
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: renterId,
+          title: `✅ Chủ máy đã đồng ý gia hạn #${rental.rentalCode}`,
+          message: `Chủ máy đã chấp thuận gia hạn thêm ${extraDays} ngày. Vui lòng quét mã VietQR PayOS chuyển khoản phụ phí ${extraFee.toLocaleString("vi-VN")} đ để hoàn tất gia hạn đơn thuê.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (nErr) {}
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      io.emit("rental:extension_approved", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
+        extraDays,
+        extraFee,
+      });
+    } catch (sErr) {}
+
+    return {
+      success: true,
+      message: `Đã phê duyệt gia hạn thêm ${extraDays} ngày! Người thuê sẽ thanh toán phụ phí để hoàn tất.`,
+      rental,
+    };
+  }
+
+  /**
+   * Owner từ chối yêu cầu gia hạn thuê
+   */
+  async rejectExtension(rentalId, ownerUser, reason = "") {
+    const rental = await Rental.findById(rentalId).populate("equipment owner renter");
+    if (!rental) {
+      throw new AppError(404, "Không tìm thấy đơn thuê");
+    }
+
+    const ownerId = rental.owner?._id ? String(rental.owner._id) : String(rental.owner);
+    const currentUserId = String(ownerUser._id || ownerUser.id);
+    if (ownerId !== currentUserId && ownerUser.role !== "admin") {
+      throw new AppError(403, "Bạn không có quyền từ chối gia hạn cho đơn thuê này");
+    }
+
+    if (rental.extensionRequest?.status !== "PENDING_OWNER") {
+      throw new AppError(400, "Đơn thuê không có yêu cầu gia hạn nào đang chờ duyệt");
+    }
+
+    rental.extensionRequest.status = "REJECTED";
+    rental.extensionRequest.rejectedAt = new Date();
+    rental.extensionRequest.rejectionReason = (reason || "Chủ máy không thể gia hạn vào thời gian này.").trim();
+    await rental.save();
+
+    const renterId = rental.renter?._id || rental.renter;
+    try {
+      const UserNotification = require("../models/UserNotification");
+      if (UserNotification) {
+        await UserNotification.create({
+          user_id: renterId,
+          title: `✕ Yêu cầu gia hạn bị từ chối #${rental.rentalCode}`,
+          message: `Chủ máy đã từ chối yêu cầu gia hạn: "${rental.extensionRequest.rejectionReason}". Vui lòng hoàn trả thiết bị đúng hạn ban đầu.`,
+          related_record_id: rental._id,
+        });
+      }
+    } catch (nErr) {}
+
+    try {
+      const { getIO } = require("../config/socket");
+      const io = getIO();
+      io.emit("rental:extension_rejected", {
+        rentalId: rental._id,
+        rentalCode: rental.rentalCode,
+        ownerId: String(ownerId),
+        renterId: String(renterId),
+        reason: rental.extensionRequest.rejectionReason,
+      });
+    } catch (sErr) {}
+
+    return {
+      success: true,
+      message: "Đã từ chối yêu cầu gia hạn đơn thuê.",
       rental,
     };
   }

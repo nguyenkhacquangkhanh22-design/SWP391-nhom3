@@ -80,8 +80,14 @@ export default function OwnerEditContractModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
+
+    if (dailyRate < 2000) {
+      setError("Thiết lập đơn giá cho thuê theo ngày phải từ 2.000 VNĐ trở lên.");
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const payload = {
@@ -215,19 +221,28 @@ export default function OwnerEditContractModal({
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Đơn giá / ngày (đ):</label>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Đơn giá / ngày (đ) <span className="text-xs font-normal text-emerald-400">(&ge; 2.000 đ)</span>:
+                </label>
                 <input
                   type="number"
-                  min="0"
-                  step="1"
+                  min="2000"
+                  step="any"
                   value={dailyRate}
                   onChange={(e) => setDailyRate(Math.max(0, Number(e.target.value)))}
                   onKeyDown={(e) => {
                     if (e.key === "-" || e.key === "e") e.preventDefault();
                   }}
-                  className="w-full bg-[#0d1524] border border-[#2a3c5a] rounded-lg px-3 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400"
+                  className={`w-full bg-[#0d1524] border ${
+                    dailyRate < 2000 ? "border-rose-500 focus:border-rose-500" : "border-[#2a3c5a] focus:border-amber-400"
+                  } rounded-lg px-3 py-1.5 text-white font-mono focus:outline-none`}
                   required
                 />
+                {dailyRate < 2000 && (
+                  <span className="text-rose-400 text-[11px] mt-1 block">
+                    ⚠️ Giá thuê phải từ 2.000 đ trở lên
+                  </span>
+                )}
               </div>
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Số ngày thuê:</label>

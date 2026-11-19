@@ -20,6 +20,7 @@ export default function SignaturePad({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+  const hasStrokeRef = useRef(false);
 
   const getCanvasContext = useCallback(() => {
     const canvas = canvasRef.current;
@@ -94,6 +95,7 @@ export default function SignaturePad({
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
     setIsDrawing(true);
+    hasStrokeRef.current = true;
   };
 
   const draw = (
@@ -109,6 +111,7 @@ export default function SignaturePad({
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
 
+    hasStrokeRef.current = true;
     if (!hasSignature) {
       setHasSignature(true);
     }
@@ -119,7 +122,8 @@ export default function SignaturePad({
     if (!isDrawing) return;
     setIsDrawing(false);
     const canvas = canvasRef.current;
-    if (canvas && hasSignature) {
+    if (canvas && (hasStrokeRef.current || hasSignature)) {
+      setHasSignature(true);
       const dataUrl = canvas.toDataURL("image/png");
       onChange(dataUrl);
     }
@@ -127,6 +131,7 @@ export default function SignaturePad({
 
   const handleClear = () => {
     initCanvas();
+    hasStrokeRef.current = false;
     setHasSignature(false);
     setIsDrawing(false);
     onChange(null);

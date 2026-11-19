@@ -2923,8 +2923,8 @@ textarea.input-field {
 
 .marketplace-hero-gradient-text {
   background: linear-gradient(135deg, #ffffff 25%, #f97316 75%, #fb923c 100%);
-  background-clip: text;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -3335,8 +3335,8 @@ textarea.input-field {
   margin: 0 0 10px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  line-clamp: 2;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
   transition: color 0.2s ease;
 }

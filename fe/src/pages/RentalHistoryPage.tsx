@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../app/AuthProvider";
-import { useToast } from "../context/ToastContext";
 import { getSocket } from "../services/socket";
 import Navbar from "../components/Navbar";
+import SignaturePad from "../components/SignaturePad";
 import ContractConfirmationModal from "../components/ContractConfirmationModal";
-import VietQRPaymentModal from "../components/VietQRPaymentModal";
-import PaymentQRModal from "../components/PaymentQRModal";
 import ContractPdfModal from "../components/ContractPdfModal";
 import RentalChatModal from "../components/RentalChatModal";
 import PaymentButton from "../components/PaymentButton";
@@ -43,15 +41,13 @@ const TABS: TabItem[] = [
 
 export default function RentalHistoryPage() {
   const { user, token, isLoading } = useAuth();
-  const { showToast } = useToast();
   const [rentals, setRentals] = useState<Rental[]>([]);
-  const [marketplaceContracts, setMarketplaceContracts] = useState<RentalContract[]>([]);
   const [complaints, setComplaints] = useState<SupportTicket[]>([]);
   const [signingMarketplaceContract, setSigningMarketplaceContract] = useState<RentalContract | null>(null);
   const [marketplaceSignature, setMarketplaceSignature] = useState("");
+  const [marketplaceSignaturePad, setMarketplaceSignaturePad] = useState<string | null>(null);
   const [marketplaceTermsAccepted, setMarketplaceTermsAccepted] = useState(false);
   const [isSigningMarketplaceContract, setIsSigningMarketplaceContract] = useState(false);
-  const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null);
   const [confirmingReceiptContract, setConfirmingReceiptContract] = useState<RentalContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,9 +78,6 @@ export default function RentalHistoryPage() {
   const [signingRental, setSigningRental] = useState<Rental | null>(null);
   const [viewingContractRental, setViewingContractRental] = useState<Rental | null>(null);
   const [chatRental, setChatRental] = useState<Rental | null>(null);
-
-  // Modal thanh toán QR (UC_R09)
-  const [payingRental, setPayingRental] = useState<Rental | null>(null);
 
   // Modal trả thiết bị (UC_R10: hẹn giờ, địa điểm, tình trạng)
   const [returningRentalId, setReturningRentalId] = useState<string | null>(null);
@@ -121,9 +114,6 @@ export default function RentalHistoryPage() {
   const [extraDays, setExtraDays] = useState(1);
   const [extensionNote, setExtensionNote] = useState("");
   const [isExtending, setIsExtending] = useState(false);
-
-  // State thanh toán (UC_R09)
-  const [payingRentalId, setPayingRentalId] = useState<string | null>(null);
 
   // Modal Handover Check-in (Lưu ảnh ngoại quan ban đầu khi nhận máy)
   const [checkinRental, setCheckinRental] = useState<Rental | null>(null);
@@ -164,15 +154,11 @@ export default function RentalHistoryPage() {
 
     Promise.all([
       smartEquipApi.getRentalHistory(token),
-      ownerApi.getMyRentals(token).catch(() => ({ contracts: [] as RentalContract[] })),
       smartEquipApi.getMyComplaints(token).catch(() => ({ complaints: [] as SupportTicket[] })),
     ])
-      .then(([historyRes, marketplaceRes, complaintData]) => {
+      .then(([historyRes, complaintData]) => {
         const list = historyRes.data || [];
         setRentals(list);
-        if (marketplaceRes?.contracts) {
-          setMarketplaceContracts(marketplaceRes.contracts);
-        }
         setComplaints(complaintData.complaints || []);
 
         // Tự động đối soát và đồng bộ đơn hàng với cổng PayOS nếu có đơn đang ở trạng thái đã ký
@@ -267,38 +253,9 @@ export default function RentalHistoryPage() {
     return true;
   });
 
-  // Xử lý Thanh toán VietQR MB Bank (UC_R09 - Không cần tiền cọc)
-  const handlePayConfirm = async (receiptImage?: string) => {
-    if (!payingRental) return;
-    setPayingRentalId(payingRental._id);
-    setError("");
-    setNotice("");
-    try {
-      const res = await smartEquipApi.payRental(token, payingRental._id, {
-        paymentMethod: "bank_transfer",
-        receiptImage,
-      });
-      setNotice(res.message || "Thanh toán chuyển khoản VietQR MB Bank thành công! Đơn thuê đã sẵn sàng bàn giao.");
-      showToast({
-        type: "payment_submitted",
-        title: "💳 ĐÃ GỬI BIÊN LAI CHUYỂN KHOẢN!",
-        message: `Đã gửi biên lai chuyển khoản đơn #${payingRental.rentalCode}. Đang chờ Chủ máy kiểm tra và xác nhận thanh toán.`,
-        link: "/rentals/history",
-        rentalCode: payingRental.rentalCode,
-      });
-      setPayingRental(null);
-      fetchHistory();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể xác nhận thanh toán");
-    } finally {
-      setPayingRentalId(null);
-    }
-  };
-
   // Confirm receipt before the owner can request the moderator to release payment.
   const executeConfirmReceipt = async (contract: RentalContract) => {
     setConfirmingReceiptContract(null);
-    setConfirmingReceiptId(contract._id);
     setError("");
     setNotice("");
     try {
@@ -307,8 +264,6 @@ export default function RentalHistoryPage() {
       fetchHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể xác nhận đã nhận thiết bị");
-    } finally {
-      setConfirmingReceiptId(null);
     }
   };
 
@@ -325,12 +280,16 @@ export default function RentalHistoryPage() {
         signingMarketplaceContract._id,
         {
           signature_note: marketplaceSignature.trim(),
+          signature_image: marketplaceSignaturePad || undefined,
+          signature_data: marketplaceSignaturePad || marketplaceSignature.trim(),
+          signer_name: marketplaceSignature.trim(),
           terms_accepted: marketplaceTermsAccepted,
-        },
+        } as any,
       );
       setNotice(result.message);
       setSigningMarketplaceContract(null);
       setMarketplaceSignature("");
+      setMarketplaceSignaturePad(null);
       setMarketplaceTermsAccepted(false);
       fetchHistory();
     } catch (err) {
@@ -501,7 +460,7 @@ export default function RentalHistoryPage() {
         extraDays,
         note: extensionNote.trim(),
       });
-      setNotice(res.message || `Gia hạn thuê thành công thêm ${extraDays} ngày!`);
+      setNotice(res.message || `Đã gửi yêu cầu gia hạn thêm ${extraDays} ngày tới Chủ máy! Vui lòng chờ Chủ máy duyệt để thanh toán phụ phí.`);
       setExtendingRental(null);
       setExtraDays(1);
       setExtensionNote("");
@@ -685,78 +644,7 @@ export default function RentalHistoryPage() {
           </div>
         )}
 
-        {marketplaceContracts.length > 0 && (
-          <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
-            <h2 className="mb-4 text-lg font-bold text-white">Đơn thuê marketplace & xác nhận nhận hàng</h2>
-            <div className="space-y-3">
-              {marketplaceContracts.map((contract) => {
-                const handover = contract.handover_records?.find((record) => record.record_type === "handover");
-                const isReceived = Boolean(handover?.renter_confirmed);
-                const hasComplaint = complaints.some((complaint) =>
-                  typeof complaint.contract_id === "object"
-                    ? complaint.contract_id?._id === contract._id
-                    : complaint.contract_id === contract._id,
-                );
-                return (
-                  <div key={contract._id} className="flex flex-col gap-3 rounded-xl border border-[#273650] bg-[#0f1624] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-semibold text-white">{contract.equipment_id?.title || contract.title}</p>
-                      <p className="text-xs text-slate-400">
-                        Hợp đồng {contract.contract_code} · Owner {typeof contract.owner_id === "object" ? contract.owner_id?.name : "—"} · {
-                          contract.status === "pending_renter_signature" || contract.status === "moderator_approved"
-                            ? "Chờ bạn ký"
-                            : contract.status === "signed"
-                            ? "Đã ký"
-                            : contract.status
-                        }
-                      </p>
-                    </div>
-                    {contract.status === "completed" ? (
-                      hasComplaint ? (
-                        <span className="text-xs text-amber-300">Đã gửi khiếu nại</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setComplaintTarget({ type: "contract", id: contract._id })}
-                          className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"
-                        >
-                          Gửi khiếu nại
-                        </button>
-                      )
-                    ) : isReceived ? (
-                      <span className="text-sm font-semibold text-emerald-400">✓ Đã xác nhận nhận hàng</span>
-                    ) : contract.status === "active" && handover ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingReceiptContract(contract)}
-                        disabled={confirmingReceiptId === contract._id}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-60"
-                      >
-                        {confirmingReceiptId === contract._id ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}
-                      </button>
-                    ) : contract.status === "pending_approval" ? (
-                      <span className="text-xs text-sky-400">Quản lý web đang kiểm tra HĐ</span>
-                    ) : ["pending_renter_signature", "moderator_approved"].includes(contract.status) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSigningMarketplaceContract(contract);
-                          setMarketplaceTermsAccepted(false);
-                          setMarketplaceSignature("");
-                        }}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500"
-                      >
-                        Ký hợp đồng
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500">Chờ Owner bàn giao thiết bị</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+
 
         {complaints.length > 0 && (
           <section className="mb-8 rounded-2xl border border-[#223049] bg-[#141d2d] p-5">
@@ -821,6 +709,17 @@ export default function RentalHistoryPage() {
               <div className="mb-4 flex-1 overflow-y-auto whitespace-pre-wrap rounded-xl border border-[#263550] bg-[#0f1624] p-4 text-sm text-slate-300">
                 {signingMarketplaceContract.terms_content}
               </div>
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-bold text-slate-200">
+                  ✍️ Vẽ chữ ký điện tử của Bạn (Vẽ bằng chuột hoặc chạm tay):
+                </label>
+                <SignaturePad
+                  width={560}
+                  height={130}
+                  onChange={(dataUrl) => setMarketplaceSignaturePad(dataUrl)}
+                />
+              </div>
+
               <label className="mb-3 flex items-start gap-2 text-sm text-slate-300">
                 <input
                   type="checkbox"
@@ -830,13 +729,14 @@ export default function RentalHistoryPage() {
                 />
                 Tôi đã đọc và đồng ý với toàn bộ điều khoản của hợp đồng.
               </label>
-              <label className="mb-4 grid gap-2 text-sm text-slate-300">
-                Chữ ký điện tử / Họ và tên
+              <label className="mb-4 grid gap-1.5 text-xs text-slate-300">
+                Họ và tên người ký xác nhận:
                 <input
-                  className="input-field"
+                  className="w-full bg-[#172236] border border-[#293954] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500 font-semibold"
                   value={marketplaceSignature}
                   onChange={(event) => setMarketplaceSignature(event.target.value)}
                   required
+                  placeholder={user?.name || "Họ và tên"}
                   autoComplete="name"
                 />
               </label>
@@ -933,7 +833,7 @@ export default function RentalHistoryPage() {
                 r.contract?.signedAt ||
                 upperStatus === "CONTRACT_SIGNED"
               );
-              // Chỉ hiển thị Ký hợp đồng & Thanh toán khi đã được duyệt VÀ người thuê đã đồng ý ký HĐ trong chat!
+              // Phải đồng ý ký HĐ trong chat trước, sau đó mới hiện Ký hợp đồng & Thanh toán
               const canSign = isApproved && hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted;
               const canPay = (upperStatus === "CONTRACT_SIGNED" || upperStatus === "PAYMENT_REJECTED") && !isWaitingPaymentApproval && !isPaymentVerifying;
               const canReturn =
@@ -974,13 +874,18 @@ export default function RentalHistoryPage() {
                 !isReturned &&
                 !isCompleted;
 
+              const hasPendingExtension = r.extensionRequest?.status === "PENDING_OWNER";
+              const hasApprovedExtension = r.extensionRequest?.status === "APPROVED";
+
               const canExtend =
                 (upperStatus === "PAID" ||
                   upperStatus === "ACTIVE" ||
                   upperStatus === "CONFIRMED" ||
                   upperStatus === "IN_PROGRESS") &&
                 !isReturned &&
-                !isCompleted;
+                !isCompleted &&
+                !hasPendingExtension &&
+                !hasApprovedExtension;
 
               return (
                 <div
@@ -1463,16 +1368,8 @@ export default function RentalHistoryPage() {
                       </div>
                     )}
 
-                    {/* Nút ký hợp đồng khi đã được duyệt VÀ đã đồng ý trong chat */}
-                    {canSign ? (
-                      <button
-                        onClick={() => setSigningRental(r)}
-                        className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
-                      >
-                        <span>✍️</span>
-                        <span>Ký hợp đồng & Thanh toán</span>
-                      </button>
-                    ) : isApproved && !hasAgreedToSign ? (
+                    {/* Chưa đồng ý ký HĐ trong chat: Vào chat để trao đổi & bấm Đồng ý ký HĐ */}
+                    {isApproved && !hasAgreedToSign && !isPaidConfirmed && !r.contract?.termsAccepted && (
                       <button
                         onClick={() => setChatRental(r)}
                         className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-blue-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
@@ -1481,28 +1378,27 @@ export default function RentalHistoryPage() {
                         <span>💬</span>
                         <span>Vào chat Đồng ý ký HĐ</span>
                       </button>
-                    ) : null}
+                    )}
 
-{/* Nút thanh toán (UC_R09) - PayOS VietQR tự động & Quét QR thủ công */}
+                    {/* Nút ký hợp đồng khi đã được duyệt VÀ ĐÃ ĐỒNG Ý KÝ */}
+                    {canSign && (
+                      <button
+                        onClick={() => setSigningRental(r)}
+                        className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 text-center flex items-center justify-center gap-1.5 animate-pulse"
+                      >
+                        <span>✍️</span>
+                        <span>Ký hợp đồng & Thanh toán</span>
+                      </button>
+                    )}
+
+                    {/* Nút thanh toán tự động qua cổng PayOS VietQR */}
                     {canPay && (
-                      <div className="space-y-1.5">
-                        <PaymentButton
-                          rentalId={r._id}
-                          amount={r.totalAmount || r.rentalFee}
-                          description={`TT don ${r.rentalCode}`}
-                        />
-                        <button
-                          onClick={() => setPayingRental(r)}
-                          className="w-full px-3 py-2 bg-[#172236] hover:bg-[#202f48] border border-[#27364f] text-slate-300 font-medium rounded-xl text-xs transition-all flex items-center justify-center gap-1"
-                        >
-                          <span>💳</span>
-                          <span>
-                            {upperStatus === "PAYMENT_REJECTED"
-                              ? "Quét QR và Gửi lại bill"
-                              : "Quét QR chuyển khoản"}
-                          </span>
-                        </button>
-                      </div>
+                      <PaymentButton
+                        rentalId={r._id}
+                        amount={r.totalAmount || r.rentalFee}
+                        description={`TT don ${r.rentalCode}`}
+                        className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      />
                     )}
 
                     {/* Trạng thái chờ Owner duyệt chuyển khoản */}
@@ -1664,6 +1560,55 @@ export default function RentalHistoryPage() {
                       <span>Nhắn tin với Chủ máy</span>
                     </button>
 
+                    {/* Trạng thái gia hạn thuê */}
+                    {r.extensionRequest?.status === "PENDING_OWNER" && (
+                      <div className="p-3 bg-purple-950/40 border border-purple-500/40 rounded-xl text-xs space-y-1">
+                        <div className="font-bold text-purple-300 flex items-center gap-1.5">
+                          <span className="animate-spin text-sm">⏳</span>
+                          <span>Đang chờ Chủ máy duyệt gia hạn (+{r.extensionRequest.extraDays} ngày)</span>
+                        </div>
+                        <div className="text-[11px] text-purple-200/80">
+                          Hạn trả mới: <strong className="text-white">{new Date(r.extensionRequest.newEndDate).toLocaleDateString("vi-VN")}</strong> • Phụ phí: <strong className="text-orange-400">{(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {r.extensionRequest?.status === "APPROVED" && (
+                      <div className="p-3.5 bg-gradient-to-r from-emerald-950/70 to-purple-950/70 border border-emerald-500/50 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-emerald-300 flex items-center gap-1.5">
+                            <span>✅</span> Chủ máy đã duyệt gia hạn (+{r.extensionRequest.extraDays} ngày)
+                          </span>
+                          <span className="text-xs font-black text-orange-400">
+                            {(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Hạn trả mới: <strong className="text-emerald-400">{new Date(r.extensionRequest.newEndDate).toLocaleDateString("vi-VN")}</strong>. Vui lòng quét mã VietQR PayOS để thanh toán phụ phí gia hạn.
+                        </p>
+                        <PaymentButton
+                          rentalId={r._id}
+                          amount={r.extensionRequest.extraFee}
+                          description={`GH don ${r.rentalCode}`}
+                          isExtension={true}
+                          label={`Thanh toán phụ phí gia hạn (${(r.extensionRequest.extraFee || 0).toLocaleString("vi-VN")} đ)`}
+                          className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                        />
+                      </div>
+                    )}
+
+                    {r.extensionRequest?.status === "REJECTED" && (
+                      <div className="p-3 bg-rose-950/40 border border-rose-500/40 rounded-xl text-xs space-y-1">
+                        <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                          <span>✕</span>
+                          <span>Chủ máy đã từ chối yêu cầu gia hạn (+{r.extensionRequest.extraDays} ngày)</span>
+                        </div>
+                        <div className="text-[11px] text-rose-200/80">
+                          Lý do: {r.extensionRequest.rejectionReason || "Chủ máy không thể gia hạn vào thời gian này"}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Nút gia hạn thuê (UC_R10_EXT) */}
                     {canExtend && (
                       <button
@@ -1705,22 +1650,6 @@ export default function RentalHistoryPage() {
         )}
       </main>
 
-      {/* Modal Thanh toán VietQR MB Bank */}
-      {payingRental && (
-        <VietQRPaymentModal
-          isOpen={!!payingRental}
-          rentalId={payingRental._id}
-          onClose={() => setPayingRental(null)}
-          onConfirmPayment={(receiptImg) => handlePayConfirm(receiptImg)}
-          amount={payingRental.totalAmount || payingRental.rentalFee}
-          rentalCode={payingRental.rentalCode}
-          contractCode={payingRental.contract?.contractNumber}
-          equipmentTitle={payingRental.equipment?.title}
-          loading={payingRentalId === payingRental._id}
-          owner={payingRental.owner}
-        />
-      )}
-
       {/* Modal Ký hợp đồng điện tử (UC_R08) */}
       {signingRental && (
         <ContractConfirmationModal
@@ -1728,30 +1657,11 @@ export default function RentalHistoryPage() {
           token={token}
           isOpen={Boolean(signingRental)}
           onClose={() => setSigningRental(null)}
-          onSuccess={(updatedRental) => {
+          onSuccess={() => {
             setSigningRental(null);
-setNotice(
+            setNotice(
               "Đã ký hợp đồng điện tử thành công! Vui lòng hoàn tất thanh toán phí thuê thiết bị."
             );
-            fetchHistory();
-            if (updatedRental) {
-              setPayingRental(updatedRental);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Quét QR Thanh toán (UC_R09) */}
-      {payingRental && (
-        <PaymentQRModal
-          rental={payingRental}
-          token={token}
-          isOpen={Boolean(payingRental)}
-          defaultSenderName={user?.name || ""}
-          onClose={() => setPayingRental(null)}
-          onSuccess={(message) => {
-            setPayingRental(null);
-            setNotice(message);
             fetchHistory();
           }}
         />
@@ -2736,6 +2646,9 @@ setNotice(
                         +{extraFee.toLocaleString("vi-VN")} đ
                       </strong>
                     </div>
+                    <div className="p-3 bg-blue-950/50 border border-blue-500/40 rounded-xl text-[11px] text-blue-200 leading-relaxed">
+                      ℹ️ <strong>Quy trình gia hạn 2 bước:</strong> Yêu cầu gia hạn sẽ được gửi đến Chủ máy. Sau khi Chủ máy phê duyệt đồng ý, bạn sẽ chuyển khoản thanh toán phụ phí gia hạn qua mã <strong>VietQR PayOS</strong> để hoàn tất.
+                    </div>
                   </div>
                 );
               })()}
@@ -2771,10 +2684,10 @@ setNotice(
                   {isExtending ? (
                     <>
                       <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      <span>Đang gia hạn...</span>
+                      <span>Đang gửi yêu cầu...</span>
                     </>
                   ) : (
-                    <span>Xác nhận gia hạn (+{extraDays} ngày)</span>
+                    <span>Gửi yêu cầu gia hạn tới Chủ máy (+{extraDays} ngày)</span>
                   )}
                 </button>
               </div>

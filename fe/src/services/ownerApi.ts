@@ -282,6 +282,20 @@ export const ownerApi = {
       token
     ),
 
+  approveRentalExtension: (token: string, rentalId: string) =>
+    request<{ success: boolean; message: string; data: any }>(
+      `/api/rentals/${rentalId}/extension/approve`,
+      { method: "POST" },
+      token
+    ),
+
+  rejectRentalExtension: (token: string, rentalId: string, reason?: string) =>
+    request<{ success: boolean; message: string; data: any }>(
+      `/api/rentals/${rentalId}/extension/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      token
+    ),
+
   confirmOwnerRentalPayment: (
     token: string,
     rentalId: string,
@@ -291,6 +305,17 @@ export const ownerApi = {
     request<{ success: boolean; message: string; rental: any }>(
       `/api/owner/rentals/${rentalId}/confirm-payment`,
       { method: "PATCH", body: JSON.stringify({ action, note }) },
+      token
+    ),
+
+  confirmOwnerRentalReturn: (
+    token: string,
+    rentalId: string,
+    data?: { condition_note?: string; notes?: string }
+  ) =>
+    request<{ success: boolean; message: string; rental: any }>(
+      `/api/owner/rentals/${rentalId}/confirm-return`,
+      { method: "POST", body: JSON.stringify(data || {}) },
       token
     ),
 

@@ -109,6 +109,10 @@ export interface RentalContract {
   moderatorApproved?: boolean;
   moderatorStatus?: "none" | "draft" | "pending_renter_signature" | "pending_approval" | "moderator_rejected" | "moderator_approved" | "signed" | string;
   ownerSigned?: boolean;
+  ownerSignature?: string;
+  ownerSignerName?: string;
+  ownerSignedAt?: string;
+  ownerCertificateCode?: string;
 }
 
 export interface EquipmentReview {
@@ -234,6 +238,8 @@ export interface Rental {
     | "cancelled"
     | "disputed";
   contract: RentalContract;
+  owner_signature?: any;
+  renter_signature?: any;
   payment: RentalPayment;
   returnInfo?: RentalReturnRequest;
   returnRequest?: RentalReturnRequest;
@@ -249,6 +255,20 @@ export interface Rental {
   dispute?: RentalDispute;
   cancellation?: RentalCancellation;
   extensions?: RentalExtension[];
+  extensionRequest?: {
+    status: "NONE" | "PENDING_OWNER" | "APPROVED" | "REJECTED" | "PAID";
+    extraDays: number;
+    extraFee: number;
+    currentEndDate?: string;
+    newEndDate: string;
+    note?: string;
+    requestedAt?: string;
+    approvedAt?: string;
+    rejectedAt?: string;
+    rejectionReason?: string;
+    payosOrderCode?: number;
+    paidAt?: string;
+  };
   hasInsurance?: boolean;
   insuranceFee?: number;
   handoverCheckin?: {

@@ -49,32 +49,46 @@ export default function RentalChatModal({
     setCurrentRental(rental);
   }, [rental]);
 
-  // Kiểm tra vai trò Owner
-  const ownerId = typeof currentRental.owner === "object"
-    ? (currentRental.owner as any)?._id || (currentRental.owner as any)?.User_Id || (currentRental.owner as any)?.id
-    : currentRental.owner;
+  // Lấy ID chính xác của các bên trong đơn thuê này
+  const currentUserIdStr = String(
+    currentUserId ||
+    (auth.user as any)?._id ||
+    (auth.user as any)?.User_Id ||
+    (auth.user as any)?.id ||
+    ""
+  );
 
-  const isOwnerCurrent =
-    (currentUserId && String(currentUserId) === String(ownerId)) ||
-    String(auth.user?.role).toLowerCase() === "owner";
+  const ownerIdStr = String(
+    (typeof currentRental.owner === "object"
+      ? (currentRental.owner as any)?._id || (currentRental.owner as any)?.User_Id || (currentRental.owner as any)?.id
+      : currentRental.owner) || ""
+  );
+
+  const renterIdStr = String(
+    (typeof currentRental.renter === "object"
+      ? (currentRental.renter as any)?._id || (currentRental.renter as any)?.User_Id || (currentRental.renter as any)?.id
+      : currentRental.renter) || ""
+  );
+
+  // Người dùng là Chủ thiết bị khi và chỉ khi ID của họ trùng với ownerId của thiết bị đơn này
+  // (Không phụ thuộc vào auth.user.role vì một tài khoản có role owner vẫn có thể thuê đồ của người khác!)
+  const isOwnerCurrent = Boolean(
+    currentUserIdStr && ownerIdStr
+      ? currentUserIdStr === ownerIdStr
+      : renterIdStr
+      ? currentUserIdStr !== renterIdStr
+      : false
+  );
 
   const partnerUser = propPartnerUser || (isOwnerCurrent
     ? {
-        _id: String(
-          (typeof currentRental.renter === "object"
-            ? (currentRental.renter as any)?._id || (currentRental.renter as any)?.User_Id || (currentRental.renter as any)?.id
-            : currentRental.renter) || ""
-        ),
+        _id: renterIdStr,
         name: typeof currentRental.renter === "object" ? (currentRental.renter as any)?.name || "Khách thuê" : "Khách thuê",
         avatarUrl: typeof currentRental.renter === "object" ? (currentRental.renter as any)?.avatarUrl : undefined,
         role: "renter",
       }
     : {
-        _id: String(
-          (typeof currentRental.owner === "object"
-            ? (currentRental.owner as any)?._id || (currentRental.owner as any)?.User_Id || (currentRental.owner as any)?.id
-            : currentRental.owner) || ""
-        ),
+        _id: ownerIdStr,
         name: typeof currentRental.owner === "object" ? (currentRental.owner as any)?.name || "Chủ máy" : "Chủ máy",
         avatarUrl: typeof currentRental.owner === "object" ? (currentRental.owner as any)?.avatarUrl : undefined,
         role: "owner",
@@ -97,7 +111,12 @@ export default function RentalChatModal({
 
   const isApproved =
     String(currentRental.status).toUpperCase() === "APPROVED" ||
-    String(currentRental.status).toLowerCase() === "approved";
+    String(currentRental.status).toLowerCase() === "approved" ||
+    String(currentRental.status).toUpperCase() === "CONTRACT_PENDING" ||
+    String(currentRental.status).toUpperCase() === "CONTRACT_SIGNED" ||
+    Boolean(currentRental.contract?.contractNumber) ||
+    Boolean(currentRental.contract?.ownerSigned) ||
+    messages.some((m) => m.message_type === "contract");
 
   // Lắng nghe realtime qua Socket.IO: tin nhắn mới và trạng thái thỏa thuận
   useEffect(() => {
@@ -199,7 +218,33 @@ export default function RentalChatModal({
         rentalId: currentRental._id,
         otherUserId: partnerUser._id,
       });
-      setMessages(res.data || []);
+      const fetchedMessages = res.data || [];
+      setMessages(fetchedMessages);
+      // Đồng bộ chữ ký điện tử mới nhất từ rental_id được populate trong tin nhắn
+      for (let i = fetchedMessages.length - 1; i >= 0; i--) {
+        const populatedRental = fetchedMessages[i]?.rental_id;
+        if (populatedRental && typeof populatedRental === "object" && populatedRental.contract) {
+          setCurrentRental((prev) => ({
+            ...prev,
+            status: populatedRental.status || prev.status,
+            totalAmount: populatedRental.totalAmount || prev.totalAmount,
+            contract: {
+              ...prev.contract,
+              ...populatedRental.contract,
+              digitalSignature: populatedRental.contract.digitalSignature || prev.contract?.digitalSignature,
+              renterSignature: populatedRental.contract.renterSignature || prev.contract?.renterSignature,
+              signedAt: populatedRental.contract.signedAt || prev.contract?.signedAt,
+              termsAccepted: Boolean(populatedRental.contract.termsAccepted || prev.contract?.termsAccepted),
+              agreedToSign: Boolean(populatedRental.contract.agreedToSign || prev.contract?.agreedToSign),
+              ownerSigned: Boolean(populatedRental.contract.ownerSigned || prev.contract?.ownerSigned),
+              ownerSignature: populatedRental.contract.ownerSignature || prev.contract?.ownerSignature,
+              ownerSignerName: populatedRental.contract.ownerSignerName || prev.contract?.ownerSignerName,
+              ownerSignedAt: populatedRental.contract.ownerSignedAt || prev.contract?.ownerSignedAt,
+            },
+          }));
+          break;
+        }
+      }
       // Mark as read
       if (partnerUser._id) {
         smartEquipApi.markChatAsRead(token, {
@@ -492,7 +537,13 @@ export default function RentalChatModal({
           ) : (
             messages.map((msg) => {
               const senderId = typeof msg.sender === "object" ? msg.sender?._id : msg.sender;
-              const isMine = String(senderId) === String(currentUserId);
+              const isMine = String(senderId) === currentUserIdStr;
+
+              const senderDisplayName = isMine
+                ? "Bạn"
+                : (typeof msg.sender === "object" && (msg.sender as any)?.name)
+                ? (msg.sender as any).name
+                : partnerUser.name;
 
               return (
                 <div
@@ -500,7 +551,7 @@ export default function RentalChatModal({
                   className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
                 >
                   <div className="text-[10px] text-slate-400 mb-1 px-1">
-                    {isMine ? "Bạn" : partnerUser.name} •{" "}
+                    {senderDisplayName} •{" "}
                     {new Date(msg.createdAt).toLocaleTimeString("vi-VN", {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -527,7 +578,7 @@ export default function RentalChatModal({
                           {msg.contract_data.status === "PAID" || msg.contract_data.status === "ACTIVE"
                             ? "✓ Đã nhận tiền"
                             : msg.contract_data.is_signed
-                            ? "✓ Đã ký tay điện tử"
+                            ? "✓ Đã ký số điện tử"
                             : "Chờ ký / Dự thảo"}
                         </span>
                       </div>
@@ -552,49 +603,108 @@ export default function RentalChatModal({
                         <button
                           type="button"
                           onClick={() => {
+                            let rentalToView = { ...currentRental };
+                            const populatedContract =
+                              typeof msg.rental_id === "object" && msg.rental_id !== null
+                                ? msg.rental_id.contract
+                                : undefined;
+                            if (msg.contract_data) {
+                              const isRenterSigned = Boolean(
+                                msg.contract_data.is_signed ||
+                                  msg.contract_data.status === "CONTRACT_SIGNED" ||
+                                  msg.contract_data.status === "PAID" ||
+                                  populatedContract?.termsAccepted ||
+                                  rentalToView.contract?.termsAccepted ||
+                                  populatedContract?.signedAt ||
+                                  rentalToView.contract?.signedAt ||
+                                  (populatedContract?.digitalSignature && populatedContract.digitalSignature.startsWith("data:image")) ||
+                                  (rentalToView.contract?.digitalSignature && rentalToView.contract.digitalSignature.startsWith("data:image"))
+                              );
+                              const isPaid = msg.contract_data.status === "PAID" || rentalToView.payment?.isPaid;
+                              rentalToView = {
+                                ...rentalToView,
+                                totalAmount: msg.contract_data.total_amount || rentalToView.totalAmount,
+                                status: isPaid ? "PAID" : isRenterSigned ? "CONTRACT_SIGNED" : rentalToView.status,
+                                payment: {
+                                  ...rentalToView.payment,
+                                  isPaid: Boolean(isPaid),
+                                  paymentStatus: isPaid ? "paid" : (rentalToView.payment?.paymentStatus || "unpaid"),
+                                },
+                                contract: {
+                                  ...rentalToView.contract,
+                                  ...populatedContract,
+                                  contractNumber: msg.contract_data.contract_number || populatedContract?.contractNumber || rentalToView.contract?.contractNumber,
+                                  ownerSigned: true,
+                                  ownerSignature: populatedContract?.ownerSignature || rentalToView.contract?.ownerSignature || (rentalToView as any).owner_signature?.signature_image || (rentalToView as any).contract?.owner_signature?.signature_image || "",
+                                  ownerSignerName: populatedContract?.ownerSignerName || rentalToView.contract?.ownerSignerName || (rentalToView as any).owner_signature?.signer_name || (typeof rentalToView.owner === "object" ? rentalToView.owner?.name : "Chủ máy"),
+                                  ownerSignedAt: populatedContract?.ownerSignedAt || rentalToView.contract?.ownerSignedAt || (rentalToView as any).owner_signature?.signed_at || undefined,
+                                  termsAccepted: isRenterSigned,
+                                  renterSignature: isRenterSigned
+                                    ? (populatedContract?.renterSignature || rentalToView.contract?.renterSignature || (typeof rentalToView.renter === "object" ? rentalToView.renter?.name : "Khách thuê"))
+                                    : undefined,
+                                  digitalSignature: isRenterSigned
+                                    ? (populatedContract?.digitalSignature || (populatedContract as any)?.renter_signature?.signature_image || rentalToView.contract?.digitalSignature || (rentalToView as any).renter_signature?.signature_image || undefined)
+                                    : undefined,
+                                  signedAt: isRenterSigned
+                                    ? (populatedContract?.signedAt || rentalToView.contract?.signedAt || new Date().toISOString())
+                                    : undefined,
+                                },
+                              };
+                              setCurrentRental(rentalToView);
+                            }
                             if (onViewContract) {
-                              onViewContract(currentRental);
+                              onViewContract(rentalToView);
                             }
                             setShowPdfModal(true);
                           }}
                           className="flex-1 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
                         >
                           <span>📄</span>
-                          <span>Xem hợp đồng</span>
+                          <span>Xem file PDF hợp đồng</span>
                         </button>
 
-                        {/* Nút Đồng ý ký hợp đồng cho Renter ngay trên thẻ HĐ */}
-                        {!isOwnerCurrent && isApproved && !currentRental.contract?.termsAccepted && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (currentRental.contract?.agreedToSign) {
+                        {/* Nút cho Renter: Phải bấm Đồng ý ký HĐ trước, sau đó mới hiện Ký hợp đồng & Thanh toán */}
+                        {!isOwnerCurrent && !currentRental.contract?.termsAccepted && (
+                          !currentRental.contract?.agreedToSign ? (
+                            <button
+                              type="button"
+                              onClick={handleAgreeToSign}
+                              disabled={agreeing}
+                              className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
+                              title="Bấm để xác nhận đồng ý điều khoản trong hợp đồng trước khi ký"
+                            >
+                              <span>🤝</span>
+                              <span>{agreeing ? "Đang lưu..." : "Đồng ý ký hợp đồng"}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (msg.contract_data && !currentRental.contract?.contractNumber) {
+                                  setCurrentRental((prev) => ({
+                                    ...prev,
+                                    totalAmount: msg.contract_data?.total_amount || prev.totalAmount,
+                                    contract: {
+                                      ...prev.contract,
+                                      contractNumber: msg.contract_data?.contract_number || prev.contract?.contractNumber,
+                                      ownerSigned: true,
+                                    },
+                                  }));
+                                }
                                 if (onAgreeToSign) {
                                   onAgreeToSign(currentRental);
                                 } else {
                                   setShowSignModal(true);
                                 }
-                              } else {
-                                handleAgreeToSign();
-                              }
-                            }}
-                            disabled={agreeing}
-                            className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
-                            title={
-                              currentRental.contract?.agreedToSign
-                                ? "Mở popup ký hợp đồng và thanh toán"
-                                : "Xác nhận đồng ý điều khoản trong đoạn chat để mở quyền Ký hợp đồng & Thanh toán"
-                            }
-                          >
-                            <span>✍️</span>
-                            <span>
-                              {agreeing
-                                ? "Đang lưu..."
-                                : currentRental.contract?.agreedToSign
-                                ? "Ký hợp đồng & Thanh toán"
-                                : "Đồng ý ký hợp đồng"}
-                            </span>
-                          </button>
+                              }}
+                              disabled={agreeing}
+                              className="flex-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 animate-pulse"
+                              title="Xác nhận ký hợp đồng điện tử và thanh toán"
+                            >
+                              <span>✍️</span>
+                              <span>Ký hợp đồng & Thanh toán</span>
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
