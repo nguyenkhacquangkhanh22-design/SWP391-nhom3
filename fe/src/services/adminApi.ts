@@ -342,4 +342,38 @@ export const adminApi = {
       { method: "PATCH", body: JSON.stringify(body) },
       token
     ),
+
+  // ==========================================
+  // UC_A28: Owner Membership Subscriptions
+  // ==========================================
+  listMemberships: (
+    token: string,
+    params?: { status?: string; plan?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.plan) query.set("plan", params.plan);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminMembershipsResponse>(
+      `/memberships${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  grantOwnerMembership: (
+    token: string,
+    body: {
+      owner_id: string;
+      plan?: string;
+      duration_months?: number;
+      note?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; membership: import("../types/admin").AdminMembership }>(
+      "/memberships/grant",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
 };

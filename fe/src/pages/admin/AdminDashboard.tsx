@@ -10,6 +10,7 @@ import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
 import AdminContractTemplateTab from "../../components/admin/AdminContractTemplateTab";
 import AdminEquipmentStatusRequestTab from "../../components/admin/AdminEquipmentStatusRequestTab";
+import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
 import Brand from "../../components/Brand";
 import { adminApi } from "../../services/adminApi";
 import { ownerApi } from "../../services/ownerApi";
@@ -602,6 +603,8 @@ export default function AdminDashboard() {
                 ? "Mẫu Hợp Đồng Thuê Máy Ảnh Điện Tử (UC_A26)"
                 : activeTab === "equipment-status"
                 ? "Thẩm Định Yêu Cầu Bảo Dưỡng & Trạng Thái Máy Ảnh (UC_A27)"
+                : activeTab === "memberships"
+                ? "Quản Lý Gói Hội Viên & Quyền Lợi Chủ Máy (UC_A28)"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2026,6 +2029,18 @@ export default function AdminDashboard() {
           <div style={{ marginTop: "20px" }}>
             <AdminEquipmentStatusRequestTab
               token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Owner Membership Tab (UC_A28) */}
+        {activeTab === "memberships" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminMembershipTab
+              token={token}
+              users={users}
               onError={setError}
               onSuccess={setSuccess}
             />

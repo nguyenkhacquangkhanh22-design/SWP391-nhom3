@@ -428,3 +428,40 @@ export interface AdminEquipmentStatusRequestsResponse {
     rejected: number;
   };
 }
+
+// ==========================================
+// OWNER MEMBERSHIPS (UC_A28)
+// ==========================================
+export interface AdminMembership {
+  _id: string;
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    role?: string;
+  };
+  plan: "trial_7d" | "month_1" | "month_2" | "month_3";
+  duration_months: number;
+  amount: number;
+  order_code?: number;
+  payment_reference?: string;
+  status: "pending_payment" | "active" | "extended" | "expired" | "failed";
+  is_trial: boolean;
+  started_at?: string;
+  expires_at?: string;
+  paid_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMembershipsResponse {
+  memberships: AdminMembership[];
+  stats: {
+    total: number;
+    active: number;
+    expired: number;
+    pending: number;
+    totalRevenue: number;
+  };
+}
