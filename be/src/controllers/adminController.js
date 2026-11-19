@@ -1767,6 +1767,126 @@ async function reviewHandoverRecord(req, res) {
   });
 }
 
+// ==========================================
+// UC_A31: Risk & Fraud Anomaly Detection Monitor
+// ==========================================
+async function getRiskMonitor(req, res) {
+  const [users, openDisputes, pendingSettlements] = await Promise.all([
+    User.find({}, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
+      .sort({ createdAt: -1 })
+      .lean(),
+    Dispute.find({ status: { $in: ["pending_review", "investigating"] } })
+      .populate("renter_id", "name email phone")
+      .populate("owner_id", "name email")
+      .lean(),
+    Settlement.find({ damage_deduction: { $gt: 0 } })
+      .populate("renter_id", "name email")
+      .lean(),
+  ]);
+
+  // Aggregate user risk scores based on disputes, damage deductions, and KYC status
+  const flaggedUsers = [];
+  let highRiskCount = 0;
+  let mediumRiskCount = 0;
+
+  for (const u of users) {
+    let riskScore = 0;
+    const reasons = [];
+
+    // Check open disputes
+    const userDisputes = openDisputes.filter(
+      (d) => String(d.renter_id?._id || d.renter_id) === String(u._id)
+    );
+    if (userDisputes.length > 0) {
+      riskScore += userDisputes.length * 40;
+      reasons.push(`Đang dính ${userDisputes.length} vụ khiếu nại tranh chấp hư hại`);
+    }
+
+    // Check history of damage deductions
+    const userDamages = pendingSettlements.filter(
+      (s) => String(s.renter_id?._id || s.renter_id) === String(u._id)
+    );
+    if (userDamages.length > 0) {
+      riskScore += userDamages.length * 25;
+      reasons.push(`Từng bị khấu trừ tiền cọc do làm hỏng thiết bị (${userDamages.length} lần)`);
+    }
+
+    // Unverified KYC with account suspended or flagged
+    if (u.status === "suspended") {
+      riskScore += 50;
+      reasons.push("Tài khoản đang bị đóng băng / tạm khóa");
+    } else if (u.kycStatus !== "verified") {
+      riskScore += 15;
+      reasons.push("Chưa hoàn tất định danh công dân KYC");
+    }
+
+    if (riskScore >= 20) {
+      const severity = riskScore >= 50 ? "high" : "medium";
+      if (severity === "high") highRiskCount++;
+      else mediumRiskCount++;
+
+      flaggedUsers.push({
+        user: u,
+        riskScore,
+        severity,
+        reasons,
+        disputeCount: userDisputes.length,
+        damageIncidentCount: userDamages.length,
+      });
+    }
+  }
+
+  // Sort by highest risk score
+  flaggedUsers.sort((a, b) => b.riskScore - a.riskScore);
+
+  res.json({
+    flaggedUsers,
+    stats: {
+      totalFlagged: flaggedUsers.length,
+      highRiskCount,
+      mediumRiskCount,
+      activeDisputesCount: openDisputes.length,
+      safetyIndex: Math.max(10, 100 - (highRiskCount * 5 + mediumRiskCount * 2)),
+    },
+  });
+}
+
+async function freezeRiskUser(req, res) {
+  const { userId } = req.params;
+  const { action, reason } = req.body; // action: "freeze" | "unfreeze"
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new AppError(404, "Không tìm thấy người dùng.");
+  }
+
+  if (action === "freeze") {
+    user.status = "suspended";
+    await user.save();
+
+    await recordAuditLog(req, {
+      action: "USER_RISK_FROZEN",
+      targetType: "User",
+      targetId: user._id,
+      details: { reason: reason || "Đóng băng tài khoản phòng ngừa rủi ro gian lận thiết bị" },
+    });
+
+    res.json({ message: `Đã đóng băng tài khoản ${user.name} thành công.`, user });
+  } else {
+    user.status = "active";
+    await user.save();
+
+    await recordAuditLog(req, {
+      action: "USER_RISK_UNFROZEN",
+      targetType: "User",
+      targetId: user._id,
+      details: { reason: reason || "Mở khóa tài khoản sau khi xác minh an toàn" },
+    });
+
+    res.json({ message: `Đã mở khóa tài khoản ${user.name} thành công.`, user });
+  }
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1795,4 +1915,6 @@ module.exports = {
   approveSettlement,
   listHandoverRecords,
   reviewHandoverRecord,
+  getRiskMonitor,
+  freezeRiskUser,
 };
