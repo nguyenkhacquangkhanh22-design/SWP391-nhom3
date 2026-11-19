@@ -646,6 +646,24 @@ export default function EquipmentDetailPage() {
                     <span>✓</span> Miễn phí cọc
                   </span>
                 </div>
+
+                {/* Tồn kho & Số lượng có sẵn */}
+                <div className="mt-3 flex items-center justify-between text-xs bg-[#0f172a] px-3 py-2 rounded-xl border border-[#1e293b]">
+                  <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                    <span>📦</span> Tình trạng thiết bị:
+                  </span>
+                  {(equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)) > 0 ? (
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      Còn sẵn {equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)} / {equipment?.quantity || 1} chiếc
+                    </span>
+                  ) : (
+                    <span className="text-rose-400 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-rose-400" />
+                      Tạm hết thiết bị
+                    </span>
+                  )}
+                </div>
               </div>
 
               {formError && (
@@ -1028,11 +1046,16 @@ export default function EquipmentDetailPage() {
                   <div className="space-y-2">
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || (equipment?.available_quantity !== undefined && equipment.available_quantity <= 0)}
                       className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
                     >
                       {submitting ? (
                         "Đang gửi yêu cầu thuê..."
+                      ) : (equipment?.available_quantity !== undefined && equipment.available_quantity <= 0) ? (
+                        <>
+                          <span>⚠️</span>
+                          <span>Thiết bị tạm thời hết hàng</span>
+                        </>
                       ) : (
                         <>
                           <span>📋</span>
