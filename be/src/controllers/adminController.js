@@ -9,6 +9,7 @@ const HandoverRecord = require("../models/HandoverRecord");
 const AuditLog = require("../models/AuditLog");
 const ContractTemplate = require("../models/ContractTemplate");
 const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
+const OwnerMembership = require("../models/OwnerMembership");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -1384,6 +1385,148 @@ async function reviewEquipmentStatusRequest(req, res) {
   });
 }
 
+// ==========================================
+// UC_A28: Owner Membership & Subscription Management
+// ==========================================
+async function listMemberships(req, res) {
+  const { status, plan, search } = req.query;
+  const filter = {};
+
+  if (status && ["pending_payment", "active", "extended", "expired", "failed"].includes(status)) {
+    filter.status = status;
+  }
+  if (plan && ["trial_7d", "month_1", "month_2", "month_3"].includes(plan)) {
+    filter.plan = plan;
+  }
+
+  const [memberships, totalActive, totalExpired, totalPending, revenueAgg] = await Promise.all([
+    OwnerMembership.find(filter)
+      .populate("owner_id", "name email phone role")
+      .sort({ createdAt: -1 })
+      .lean(),
+    OwnerMembership.countDocuments({ status: "active" }),
+    OwnerMembership.countDocuments({ status: "expired" }),
+    OwnerMembership.countDocuments({ status: "pending_payment" }),
+    OwnerMembership.aggregate([
+      { $match: { status: { $in: ["active", "extended", "expired"] }, is_trial: false } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+  ]);
+
+  let filtered = memberships;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = memberships.filter((m) => {
+      const name = (m.owner_id?.name || "").toLowerCase();
+      const email = (m.owner_id?.email || "").toLowerCase();
+      const ref = (m.payment_reference || "").toLowerCase();
+      return name.includes(q) || email.includes(q) || ref.includes(q);
+    });
+  }
+
+  const totalRevenue = revenueAgg[0]?.totalAmount || 0;
+
+  res.json({
+    memberships: filtered,
+    stats: {
+      total: memberships.length,
+      active: totalActive,
+      expired: totalExpired,
+      pending: totalPending,
+      totalRevenue,
+    },
+  });
+}
+
+async function grantOwnerMembership(req, res) {
+  const { owner_id, plan, duration_months, note } = req.body;
+
+  if (!owner_id) {
+    throw new AppError(400, "Vui lòng chọn Chủ máy (Owner).");
+  }
+
+  const owner = await User.findById(owner_id);
+  if (!owner) {
+    throw new AppError(404, "Không tìm thấy người dùng.");
+  }
+
+  const months = Number(duration_months) || 1;
+  const planKey = ["trial_7d", "month_1", "month_2", "month_3"].includes(plan) ? plan : `month_${months}`;
+
+  // Find existing active membership
+  const now = new Date();
+  const existingActive = await OwnerMembership.findOne({
+    owner_id,
+    status: { $in: ["active", "extended"] },
+    expires_at: { $gt: now },
+  });
+
+  let membership;
+  if (existingActive) {
+    // Extend expiry
+    const newExpires = new Date(existingActive.expires_at);
+    newExpires.setMonth(newExpires.getMonth() + months);
+    existingActive.expires_at = newExpires;
+    existingActive.status = "extended";
+    existingActive.payment_reference = note || "Đặc cách gia hạn bởi Quản trị viên";
+    await existingActive.save();
+    membership = existingActive;
+  } else {
+    // Create new active membership
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + months);
+
+    membership = new OwnerMembership({
+      owner_id,
+      plan: planKey,
+      duration_months: months,
+      amount: 0,
+      payment_reference: note || "Cấp gói đặc cách bởi Quản trị viên",
+      status: "active",
+      is_trial: planKey === "trial_7d",
+      started_at: now,
+      expires_at: expiresAt,
+      paid_at: now,
+    });
+    await membership.save();
+  }
+
+  // Auto unhide equipment if owner has active membership
+  try {
+    await Equipment.updateMany(
+      { owner_id, hidden_reason: /hết hạn gói hội viên/i },
+      { $set: { visibility: "published", hidden_reason: "" } }
+    );
+  } catch (err) {
+    // Non-fatal
+  }
+
+  // Create notification
+  try {
+    await UserNotification.create({
+      user_id: owner_id,
+      title: "Gói Hội Viên Chủ Máy Đã Được Kích Hoạt",
+      message: `Quản trị viên đã kích hoạt/gia hạn gói hội viên (${months} tháng) cho bạn. Hạn sử dụng đến ngày ${new Date(membership.expires_at).toLocaleDateString("vi-VN")}.`,
+      type: "membership_granted",
+      read: false,
+    });
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: "OWNER_MEMBERSHIP_MANUAL_GRANT",
+    targetType: "OwnerMembership",
+    targetId: membership._id,
+    details: { owner_id, months, expires_at: membership.expires_at, note },
+  });
+
+  res.status(201).json({
+    message: "Kích hoạt/Gia hạn gói hội viên thành công.",
+    membership,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1406,4 +1549,6 @@ module.exports = {
   updateContractTemplateStatus,
   listEquipmentStatusRequests,
   reviewEquipmentStatusRequest,
+  listMemberships,
+  grantOwnerMembership,
 };
