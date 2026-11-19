@@ -8,6 +8,16 @@ import AdminDisputesTab from "../../components/admin/AdminDisputesTab";
 import AdminKycTab from "../../components/admin/AdminKycTab";
 import AdminAuditLogsTab from "../../components/admin/AdminAuditLogsTab";
 import AdminFinanceManager from "../../components/admin/AdminFinanceManager";
+import AdminContractTemplateTab from "../../components/admin/AdminContractTemplateTab";
+import AdminEquipmentStatusRequestTab from "../../components/admin/AdminEquipmentStatusRequestTab";
+import AdminMembershipTab from "../../components/admin/AdminMembershipTab";
+import AdminSettlementAuditTab from "../../components/admin/AdminSettlementAuditTab";
+import AdminHandoverTab from "../../components/admin/AdminHandoverTab";
+import AdminRiskMonitorTab from "../../components/admin/AdminRiskMonitorTab";
+import AdminDamageTariffTab from "../../components/admin/AdminDamageTariffTab";
+import AdminMaintenanceLogTab from "../../components/admin/AdminMaintenanceLogTab";
+import LabMaintenanceKanban from "../../components/admin/LabMaintenanceKanban";
+import AdminProfileTab from "../../components/admin/AdminProfileTab";
 import Brand from "../../components/Brand";
 import { isPdfDocument, openDocumentDataUrl } from "../../components/ImageUploadField";
 import { adminApi } from "../../services/adminApi";
@@ -357,6 +367,19 @@ export default function AdminDashboard() {
   async function handleToggleRole(targetUser: AdminUserRow) {
     if (!token) return;
     const isCurrentAdmin = (targetUser.role || "").toLowerCase() === "systemadmin";
+    const isSelf = Boolean(user?.email && targetUser.email?.toLowerCase() === user.email.toLowerCase());
+    const totalAdmins = users.filter((u) => (u.role || "").toLowerCase() === "systemadmin").length;
+
+    if (isCurrentAdmin && isSelf) {
+      setError("Không thể tự hạ quyền của chính tài khoản đang đăng nhập để tránh mất quyền quản trị.");
+      return;
+    }
+
+    if (isCurrentAdmin && totalAdmins <= 1) {
+      setError("Không thể hạ quyền System Admin duy nhất còn lại trong hệ thống. Hệ thống phải duy trì tối thiểu 1 System Admin.");
+      return;
+    }
+
     const nextRole = isCurrentAdmin ? "user" : "Systemadmin";
 
     if (!confirm(`Bạn có chắc muốn đổi quyền của "${targetUser.name}" thành "${nextRole}"?`)) {
@@ -368,10 +391,10 @@ export default function AdminDashboard() {
     setSuccess("");
     try {
       await adminApi.updateUserRole(token, targetUser._id, nextRole);
-      setSuccess(`Đã cập nhật quyền của ${targetUser.email} thành "${nextRole}".`);
+      setSuccess(`Đã cập nhật quyền của ${targetUser.email} thành "${nextRole}" thành công.`);
       await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Cập nhật quyền thất bại.");
+    } catch (err: any) {
+      setError(err.response?.data?.message || (err instanceof Error ? err.message : "Cập nhật quyền thất bại."));
     } finally {
       setUpdatingId(null);
     }
@@ -598,6 +621,26 @@ export default function AdminDashboard() {
                 ? "Nhật ký hoạt động hệ thống (UC_A21)"
                 : activeTab === "finance"
                 ? "Quản lý Tài chính, Ví trung gian & Duyệt rút tiền (Admin Finance)"
+                : activeTab === "contract-templates"
+                ? "Mẫu Hợp Đồng Thuê Máy Ảnh Điện Tử (UC_A26)"
+                : activeTab === "equipment-status"
+                ? "Thẩm Định Yêu Cầu Bảo Dưỡng & Trạng Thái Máy Ảnh (UC_A27)"
+                : activeTab === "memberships"
+                ? "Quản Lý Gói Hội Viên & Quyền Lợi Chủ Máy (UC_A28)"
+                : activeTab === "settlements"
+                ? "Đối Soát Quyết Toán Hợp Đồng & Giải Phóng Tiền Cọc (UC_A29)"
+                : activeTab === "handover-records"
+                ? "Tra Cứu & Đối Soát Biên Bản Bàn Giao Thiết Bị (UC_A30)"
+                : activeTab === "risk-monitor"
+                ? "Giám Sát Rủi Ro & Phòng Chống Gian Lận Thuê Máy (UC_A31)"
+                : activeTab === "damage-tariffs"
+                ? "Khung Biểu Phí Đền Bù & Khấu Hao Thiết Bị Chuẩn Hóa (UC_A32)"
+                : activeTab === "maintenance-logs"
+                ? "Sổ Theo Dõi Bảo Trì & Số Shot Màn Trập Máy Ảnh (UC_A33)"
+                : activeTab === "lab-cleanroom"
+                ? "Trạm Điều Phối Bảo Dưỡng Phòng Sạch ISO 5 (UC_A34)"
+                : activeTab === "profile"
+                ? "Hồ sơ cá nhân & Quản trị tài khoản System Admin"
                 : "Chỉ số toàn hệ thống (UC_A02)"}
             </h1>
           </div>
@@ -2036,6 +2079,106 @@ export default function AdminDashboard() {
             <AdminFinanceManager />
           </div>
         )}
+
+        {/* Digital Contract Templates Tab (UC_A26) */}
+        {activeTab === "contract-templates" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminContractTemplateTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Equipment Status & Maintenance Tab (UC_A27) */}
+        {activeTab === "equipment-status" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminEquipmentStatusRequestTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Owner Membership Tab (UC_A28) */}
+        {activeTab === "memberships" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminMembershipTab
+              token={token}
+              users={users}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Settlement Audit Tab (UC_A29) */}
+        {activeTab === "settlements" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminSettlementAuditTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Handover Records Tab (UC_A30) */}
+        {activeTab === "handover-records" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminHandoverTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Risk & Fraud Monitor Tab (UC_A31) */}
+        {activeTab === "risk-monitor" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminRiskMonitorTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Damage Tariff Tab (UC_A32) */}
+        {activeTab === "damage-tariffs" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminDamageTariffTab
+              token={token}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Maintenance & Shutter Logs Tab (UC_A33) */}
+        {activeTab === "maintenance-logs" && token && (
+          <div style={{ marginTop: "20px" }}>
+            <AdminMaintenanceLogTab
+              token={token}
+              equipments={equipments}
+              onError={setError}
+              onSuccess={setSuccess}
+            />
+          </div>
+        )}
+
+        {/* Cleanroom Lab Kanban Tab (UC_A34) */}
+        {activeTab === "lab-cleanroom" && (
+          <div style={{ marginTop: "20px" }}>
+            <LabMaintenanceKanban />
+          </div>
+        )}
+
+        {/* Admin Profile Tab (Hồ sơ cá nhân Admin) */}
+        {activeTab === "profile" && <AdminProfileTab />}
 
         {/* Equipment Detail Modal (UC_A11 & UC_A12) */}
         {selectedEquipment && (

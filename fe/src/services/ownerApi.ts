@@ -193,6 +193,47 @@ export const ownerApi = {
       token
     ),
 
+  getBlackouts: (token: string, equipmentId: string) =>
+    request<{ blackouts: Array<{ _id: string; start_date: string; end_date: string; reason: string; note?: string }> }>(
+      `/api/owner/equipments/${equipmentId}/blackouts`,
+      { method: "GET" },
+      token
+    ),
+
+  createBlackout: (token: string, equipmentId: string, data: { start_date: string; end_date: string; reason: string; note?: string }) =>
+    request<{ message: string; blackout: any }>(
+      `/api/owner/equipments/${equipmentId}/blackouts`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteBlackout: (token: string, equipmentId: string, blackoutId: string) =>
+    request<{ message: string }>(
+      `/api/owner/equipments/${equipmentId}/blackouts/${blackoutId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  getRentalChecklist: (token: string, rentalId: string) =>
+    request<{ checklist: any }>(`/api/owner/rentals/${rentalId}/checklist`, { method: "GET" }, token),
+
+  saveRentalChecklist: (token: string, rentalId: string, data: { items: any[]; notes?: string; is_return?: boolean }) =>
+    request<{ message: string; checklist: any }>(
+      `/api/owner/rentals/${rentalId}/checklist`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  getRentalInspection: (token: string, rentalId: string) =>
+    request<{ inspection: any }>(`/api/owner/rentals/${rentalId}/inspection`, { method: "GET" }, token),
+
+  submitReturnInspection: (token: string, rentalId: string, data: any) =>
+    request<{ message: string; inspection: any }>(
+      `/api/owner/rentals/${rentalId}/inspection`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
   submitStatusRequest: (
     token: string,
     id: string,

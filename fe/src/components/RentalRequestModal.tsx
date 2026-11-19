@@ -66,6 +66,12 @@ export default function RentalRequestModal({
       return;
     }
 
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (startDate < todayStr) {
+      setError("Ngày bắt đầu thuê không được ở trong quá khứ.");
+      return;
+    }
+
     if (totalDays <= 0) {
       setError("Ngày kết thúc phải sau ngày bắt đầu ít nhất 1 ngày.");
       return;
@@ -78,10 +84,16 @@ export default function RentalRequestModal({
 
     setLoading(true);
     try {
+      const now = new Date();
+      const nextHour = Math.min(23, now.getHours() + 1);
+      const effectiveDeliveryTime =
+        startDate === todayStr ? `${String(nextHour).padStart(2, "0")}:00` : "09:00";
+
       const res = await smartEquipApi.createRentalRequest(token, {
         equipmentId: equipment._id,
         startDate,
         endDate,
+        deliveryTime: effectiveDeliveryTime,
         deliveryAddress: deliveryAddress.trim(),
         renterNote: renterNote.trim(),
       });

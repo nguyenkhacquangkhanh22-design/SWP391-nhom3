@@ -32,12 +32,19 @@ router.get("/equipments/:id", asyncHandler(ownerController.getEquipmentDetail));
 router.put("/equipments/:id", requireMembershipToPublish, asyncHandler(ownerController.updateEquipment));
 router.patch("/equipments/:id/visibility", requireMembershipToPublish, asyncHandler(ownerController.toggleEquipmentVisibility));
 router.post("/equipments/:id/schedule", asyncHandler(ownerController.scheduleEquipmentAvailability));
+router.get("/equipments/:id/blackouts", asyncHandler(ownerController.getEquipmentBlackouts));
+router.post("/equipments/:id/blackouts", asyncHandler(ownerController.createEquipmentBlackout));
+router.delete("/equipments/:id/blackouts/:blackoutId", asyncHandler(ownerController.deleteEquipmentBlackout));
 router.post("/equipments/:id/status-request", asyncHandler(ownerController.submitEquipmentStatusUpdateRequest));
 
 // 3. Rental Requests & Direct Rental Management
 router.get("/rental-requests", asyncHandler(ownerController.getRentalRequests));
 router.patch("/rental-requests/:id/respond", asyncHandler(ownerController.respondRentalRequest));
 router.get("/rentals", asyncHandler(ownerController.getOwnerRentals));
+router.get("/rentals/:id/checklist", asyncHandler(ownerController.getRentalChecklist));
+router.post("/rentals/:id/checklist", asyncHandler(ownerController.saveRentalChecklist));
+router.get("/rentals/:id/inspection", asyncHandler(ownerController.getRentalInspectionLog));
+router.post("/rentals/:id/inspection", asyncHandler(ownerController.submitReturnInspection));
 router.patch("/rentals/:id/respond", asyncHandler(ownerController.respondOwnerRental));
 router.patch("/rentals/:id/confirm-payment", asyncHandler(ownerController.confirmOwnerRentalPayment));
 router.patch("/rentals/:id/contract", asyncHandler(ownerController.updateOwnerRentalContractTerms));

@@ -9,6 +9,9 @@ const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
 const Dispute = require("../models/Dispute");
 const SupportTicket = require("../models/SupportTicket");
 const ContractTemplate = require("../models/ContractTemplate");
+const EquipmentBlackout = require("../models/EquipmentBlackout");
+const RentalChecklist = require("../models/RentalChecklist");
+const EquipmentInspectionLog = require("../models/EquipmentInspectionLog");
 const { getIO } = require("../config/socket");
 const User = require("../models/User");
 const UserNotification = require("../models/UserNotification");
@@ -201,6 +204,7 @@ async function createEquipmentListing(req, res) {
     pricing,
     rental_terms,
     cancellation_policy,
+    quantity,
   } = req.body;
 
   if (
@@ -214,22 +218,29 @@ async function createEquipmentListing(req, res) {
     throw new AppError(400, "Vui lòng điền đầy đủ tên thiết bị, danh mục và giá thuê ngày");
   }
 
-  const pDay = Number(pricing.price_per_day);
-  const pHour = Number(pricing.price_per_hour || 0);
-  const pDeposit = Number(pricing.deposit_amount || 0);
-  const pWeekend = Number(pricing.weekend_rate || 0);
+  const pDay = Math.floor(Number(pricing.price_per_day));
+  const pHour = Math.floor(Number(pricing.price_per_hour || 0));
+  const pDeposit = Math.floor(Number(pricing.deposit_amount || 0));
+  const pWeekend = Math.floor(Number(pricing.weekend_rate || 0));
 
   if (
     isNaN(pDay) ||
-    pDay < 0 ||
+    pDay < 1000 ||
+    pDay > 500000000 ||
     isNaN(pHour) ||
     pHour < 0 ||
+    pHour > 50000000 ||
     isNaN(pDeposit) ||
     pDeposit < 0 ||
+    pDeposit > 500000000 ||
     isNaN(pWeekend) ||
-    pWeekend < 0
+    pWeekend < 0 ||
+    pWeekend > 500000000
   ) {
-    throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+    throw new AppError(
+      400,
+      "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+    );
   }
 
   const equipment = await Equipment.create({
@@ -249,11 +260,20 @@ async function createEquipmentListing(req, res) {
     condition: condition || "Tốt (95%)",
     dailyRate: Number(pricing.price_per_day) || 0,
     depositAmount: 0,
+    quantity: Math.max(1, Number(quantity) || 1),
+    available_quantity: Math.max(1, Number(quantity) || 1),
     pricing: {
       price_per_hour: Number(pricing.price_per_hour) || 0,
       price_per_day: Number(pricing.price_per_day) || 0,
       deposit_amount: 0,
       weekend_rate: Number(pricing.weekend_rate) || 0,
+      multi_day_discounts: Array.isArray(pricing.multi_day_discounts)
+        ? pricing.multi_day_discounts.filter((d) => Number(d.min_days) > 0 && Number(d.discount_percent) >= 0)
+        : [
+            { min_days: 3, discount_percent: 5 },
+            { min_days: 7, discount_percent: 15 },
+            { min_days: 30, discount_percent: 25 },
+          ],
     },
     rental_terms: rental_terms || "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.",
     cancellation_policy: cancellation_policy || "Miễn phí hủy trước 24 giờ.",
@@ -305,6 +325,7 @@ async function updateEquipment(req, res) {
     rental_terms,
     cancellation_policy,
     visibility,
+    quantity,
   } = req.body;
 
   if (title) equipment.title = title.trim();
@@ -317,23 +338,42 @@ async function updateEquipment(req, res) {
   if (Array.isArray(images)) equipment.images = images;
   if (Array.isArray(accessories)) equipment.accessories = accessories;
   if (condition) equipment.condition = condition;
+  if (quantity !== undefined) {
+    const newQty = Math.max(1, Number(quantity) || 1);
+    const diff = newQty - (equipment.quantity || 1);
+    equipment.quantity = newQty;
+    equipment.available_quantity = Math.max(0, (equipment.available_quantity !== undefined ? equipment.available_quantity : 1) + diff);
+  }
 
   if (pricing) {
+    const pDay = pricing.price_per_day !== undefined ? Math.floor(Number(pricing.price_per_day)) : undefined;
+    const pHour = pricing.price_per_hour !== undefined ? Math.floor(Number(pricing.price_per_hour)) : undefined;
+    const pDeposit = pricing.deposit_amount !== undefined ? Math.floor(Number(pricing.deposit_amount)) : undefined;
+    const pWeekend = pricing.weekend_rate !== undefined ? Math.floor(Number(pricing.weekend_rate)) : undefined;
+
     if (
-      (pricing.price_per_day !== undefined && Number(pricing.price_per_day) < 0) ||
-      (pricing.price_per_hour !== undefined && Number(pricing.price_per_hour) < 0) ||
-      (pricing.deposit_amount !== undefined && Number(pricing.deposit_amount) < 0) ||
-      (pricing.weekend_rate !== undefined && Number(pricing.weekend_rate) < 0)
+      (pDay !== undefined && (isNaN(pDay) || pDay < 1000 || pDay > 500000000)) ||
+      (pHour !== undefined && (isNaN(pHour) || pHour < 0 || pHour > 50000000)) ||
+      (pDeposit !== undefined && (isNaN(pDeposit) || pDeposit < 0 || pDeposit > 500000000)) ||
+      (pWeekend !== undefined && (isNaN(pWeekend) || pWeekend < 0 || pWeekend > 500000000))
     ) {
-      throw new AppError(400, "Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0)");
+      throw new AppError(
+        400,
+        "Giá thuê ngày phải từ 1.000 đ đến 500.000.000 đ. Giá thuê giờ tối đa 50.000.000 đ và tiền cọc không được là số âm (tối đa 500.000.000 đ)."
+      );
     }
-    if (pricing.price_per_day !== undefined) {
-      equipment.pricing.price_per_day = Number(pricing.price_per_day);
-      equipment.dailyRate = Number(pricing.price_per_day);
+    if (pDay !== undefined) {
+      equipment.pricing.price_per_day = pDay;
+      equipment.dailyRate = pDay;
     }
-    if (pricing.deposit_amount !== undefined) equipment.pricing.deposit_amount = 0;
-    if (pricing.price_per_hour !== undefined) equipment.pricing.price_per_hour = Number(pricing.price_per_hour);
-    if (pricing.weekend_rate !== undefined) equipment.pricing.weekend_rate = Number(pricing.weekend_rate);
+    if (pDeposit !== undefined) equipment.pricing.deposit_amount = 0;
+    if (pHour !== undefined) equipment.pricing.price_per_hour = pHour;
+    if (pWeekend !== undefined) equipment.pricing.weekend_rate = pWeekend;
+    if (Array.isArray(pricing.multi_day_discounts)) {
+      equipment.pricing.multi_day_discounts = pricing.multi_day_discounts.filter(
+        (d) => Number(d.min_days) > 0 && Number(d.discount_percent) >= 0
+      );
+    }
   }
 
   if (!equipment.owner) {
@@ -3077,6 +3117,217 @@ async function reviewRenter(req, res) {
   });
 }
 
+// UC_O15: Quản lý ngày bận / chặn lịch của Owner
+async function getEquipmentBlackouts(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  const blackouts = await EquipmentBlackout.find({
+    equipment_id: id,
+    owner_id: ownerId,
+  }).sort({ start_date: 1 });
+
+  res.json({
+    message: "Lấy danh sách ngày bận thành công",
+    blackouts,
+  });
+}
+
+async function createEquipmentBlackout(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const { start_date, end_date, reason, note } = req.body;
+
+  if (!start_date || !end_date) {
+    throw new AppError(400, "Vui lòng chọn ngày bắt đầu và kết thúc chặn lịch");
+  }
+
+  const start = new Date(start_date);
+  const end = new Date(end_date);
+  if (end < start) {
+    throw new AppError(400, "Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
+  }
+
+  const blackout = await EquipmentBlackout.create({
+    equipment_id: id,
+    owner_id: ownerId,
+    start_date: start,
+    end_date: end,
+    reason: reason || "Lịch bận chụp riêng của Chủ máy",
+    note: note || "",
+  });
+
+  res.status(201).json({
+    message: "Đã thêm ngày bận chặn lịch thiết bị thành công",
+    blackout,
+  });
+}
+
+async function deleteEquipmentBlackout(req, res) {
+  const { id, blackoutId } = req.params;
+  const ownerId = req.user._id;
+
+  const blackout = await EquipmentBlackout.findOneAndDelete({
+    _id: blackoutId,
+    equipment_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!blackout) {
+    throw new AppError(404, "Không tìm thấy lịch chặn bận cần xóa");
+  }
+
+  res.json({
+    message: "Đã mở khóa lịch thiết bị thành công",
+  });
+}
+
+// UC_O17: Quản lý Checklist Phụ kiện Bàn giao & Thu hồi
+async function getRentalChecklist(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  let checklist = await RentalChecklist.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!checklist) {
+    const rental = await Rental.findById(id).populate("equipment");
+    const defaultItems = [];
+    if (rental && rental.equipment && Array.isArray(rental.equipment.accessories) && rental.equipment.accessories.length > 0) {
+      rental.equipment.accessories.forEach((acc) => {
+        defaultItems.push({
+          name: acc,
+          quantity: 1,
+          handover_checked: true,
+          return_checked: false,
+          condition_note: "Nguyên vẹn",
+        });
+      });
+    } else {
+      defaultItems.push(
+        { name: "Nắp đậy body / lens cap trước & sau", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Nguyên vẹn" },
+        { name: "Pin Lithium chính hãng", quantity: 2, handover_checked: true, return_checked: false, condition_note: "Sạc đầy 100%" },
+        { name: "Dock sạc đôi & cáp Type-C", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Hoạt động tốt" },
+        { name: "Dây đeo máy chống mỏi", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Nguyên vẹn" },
+        { name: "Túi đựng chống sốc", quantity: 1, handover_checked: true, return_checked: false, condition_note: "Sạch sẽ" }
+      );
+    }
+
+    checklist = await RentalChecklist.create({
+      rental_id: id,
+      owner_id: ownerId,
+      equipment_id: rental?.equipment?._id || null,
+      items: defaultItems,
+      handover_confirmed_at: new Date(),
+    });
+  }
+
+  res.json({
+    message: "Lấy checklist phụ kiện thành công",
+    checklist,
+  });
+}
+
+async function saveRentalChecklist(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const { items, notes, is_return } = req.body;
+
+  let checklist = await RentalChecklist.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  });
+
+  if (!checklist) {
+    checklist = new RentalChecklist({
+      rental_id: id,
+      owner_id: ownerId,
+      items: items || [],
+      notes: notes || "",
+    });
+  } else {
+    if (Array.isArray(items)) {
+      checklist.items = items;
+    }
+    if (notes !== undefined) {
+      checklist.notes = notes;
+    }
+  }
+
+  if (is_return) {
+    checklist.return_confirmed_at = new Date();
+  } else if (!checklist.handover_confirmed_at) {
+    checklist.handover_confirmed_at = new Date();
+  }
+
+  await checklist.save();
+
+  res.json({
+    message: is_return ? "Đã lưu biên bản đối chiếu phụ kiện thu hồi" : "Đã lưu checklist phụ kiện bàn giao",
+    checklist,
+  });
+}
+
+// UC_O18: Đánh giá Nhanh Thiệt hại & Sơ đồ Vết xước Ngoại quan khi Thu hồi
+async function getRentalInspectionLog(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+
+  const inspection = await EquipmentInspectionLog.findOne({
+    rental_id: id,
+    owner_id: ownerId,
+  }).sort({ createdAt: -1 });
+
+  res.json({
+    message: "Lấy biên bản kiểm tra ngoại quan thành công",
+    inspection,
+  });
+}
+
+async function submitReturnInspection(req, res) {
+  const { id } = req.params;
+  const ownerId = req.user._id;
+  const {
+    overall_condition,
+    sensor_clean,
+    lens_clean,
+    shutter_working,
+    scratches,
+    photo_evidences,
+    deposit_action,
+    deduction_amount,
+    inspection_notes,
+  } = req.body;
+
+  const rental = await Rental.findById(id);
+  if (!rental) {
+    throw new AppError(404, "Không tìm thấy hợp đồng thuê");
+  }
+
+  const inspection = await EquipmentInspectionLog.create({
+    rental_id: id,
+    owner_id: ownerId,
+    equipment_id: rental.equipment,
+    inspection_type: "return",
+    overall_condition: overall_condition || "flawless",
+    sensor_clean: sensor_clean !== false,
+    lens_clean: lens_clean !== false,
+    shutter_working: shutter_working !== false,
+    scratches: Array.isArray(scratches) ? scratches : [],
+    photo_evidences: Array.isArray(photo_evidences) ? photo_evidences : [],
+    deposit_action: deposit_action || "full_refund",
+    deduction_amount: Number(deduction_amount) || 0,
+    inspection_notes: inspection_notes || "",
+  });
+
+  res.status(201).json({
+    message: "Đã lưu biên bản đánh giá ngoại quan thiết bị thu hồi thành công",
+    inspection,
+  });
+}
+
 module.exports = {
   uploadEquipmentPhoto,
   uploadEquipmentPhotos,
@@ -3087,6 +3338,13 @@ module.exports = {
   updateEquipment,
   toggleEquipmentVisibility,
   scheduleEquipmentAvailability,
+  getEquipmentBlackouts,
+  createEquipmentBlackout,
+  deleteEquipmentBlackout,
+  getRentalChecklist,
+  saveRentalChecklist,
+  getRentalInspectionLog,
+  submitReturnInspection,
   submitEquipmentStatusUpdateRequest,
   getRentalRequests,
   respondRentalRequest,

@@ -12,6 +12,7 @@ import {
   getReturnOption,
   formatEstimatedDeliveryDate,
 } from "../constants/deliveryMethods";
+import OpticalBenchmarkViewer from "../components/equipment/OpticalBenchmarkViewer";
 
 export default function EquipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -123,13 +124,32 @@ export default function EquipmentDetailPage() {
   }, [isLightboxOpen, imagesList.length]);
 
   // Delivery & Return state (Yêu cầu 3)
-  const [deliveryTime, setDeliveryTime] = useState("09:00");
-  const [returnTime, setReturnTime] = useState("17:00");
+  const [deliveryTime, setDeliveryTime] = useState(() => {
+    const now = new Date();
+    const nextH = Math.min(23, now.getHours() + 1);
+    return `${String(nextH).padStart(2, "0")}:00`;
+  });
+  const [returnTime, setReturnTime] = useState("18:00");
   const [deliveryMethod, setDeliveryMethod] = useState("motorcycle");
   const [returnMethod, setReturnMethod] = useState("motorcycle");
   const [hasInsurance, setHasInsurance] = useState(false);
   const [quickVerifying, setQuickVerifying] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Tự động điều chỉnh giờ nhận máy nếu chọn ngày hôm nay để tránh giờ trong quá khứ
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (startDate === todayStr) {
+      const now = new Date();
+      const [h, m] = deliveryTime.split(":").map(Number);
+      const checkDt = new Date();
+      checkDt.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+      if (checkDt < now) {
+        const nextHour = Math.min(23, now.getHours() + 1);
+        setDeliveryTime(`${String(nextHour).padStart(2, "0")}:00`);
+      }
+    }
+  }, [startDate]);
 
   const isKycVerified = user?.kycStatus === "verified";
 
@@ -156,6 +176,19 @@ export default function EquipmentDetailPage() {
         errors.deliveryAddress = "Vui lòng nhập địa chỉ cụ thể (Số nhà, đường, phường/quận) để shipper giao nhận máy.";
       } else if (deliveryAddress.trim().length < 5) {
         errors.deliveryAddress = "Địa chỉ quá ngắn, vui lòng nhập đầy đủ để shipper giao máy tận nơi.";
+      }
+    }
+
+    if (startDate && startDate === todayStr && deliveryTime) {
+      const now = new Date();
+      const [h, m] = deliveryTime.split(":").map(Number);
+      const deliveryDateTime = new Date();
+      deliveryDateTime.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+
+      if (deliveryDateTime < now) {
+        const curH = String(now.getHours()).padStart(2, "0");
+        const curM = String(now.getMinutes()).padStart(2, "0");
+        errors.deliveryTime = `Giờ nhận máy của ngày hôm nay (${deliveryTime}) không được bé hơn giờ hiện tại (${curH}:${curM}).`;
       }
     }
 
@@ -555,6 +588,14 @@ export default function EquipmentDetailPage() {
               </div>
             </div>
 
+            {/* Optical Benchmark MTF Lab (UC_T21) */}
+            {equipment && (
+              <OpticalBenchmarkViewer
+                equipmentId={equipment._id}
+                equipmentTitle={equipment.title}
+              />
+            )}
+
             {/* Reviews & Ratings Section (UC_R11 Display) */}
             <div className="bg-[#141d2d] border border-[#223049] rounded-2xl p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-[#212c42]">
@@ -669,6 +710,24 @@ export default function EquipmentDetailPage() {
                     <span>✓</span> Miễn phí cọc
                   </span>
                 </div>
+
+                {/* Tồn kho & Số lượng có sẵn */}
+                <div className="mt-3 flex items-center justify-between text-xs bg-[#0f172a] px-3 py-2 rounded-xl border border-[#1e293b]">
+                  <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                    <span>📦</span> Tình trạng thiết bị:
+                  </span>
+                  {(equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)) > 0 ? (
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      Còn sẵn {equipment?.available_quantity !== undefined ? equipment.available_quantity : (equipment?.quantity || 1)} / {equipment?.quantity || 1} chiếc
+                    </span>
+                  ) : (
+                    <span className="text-rose-400 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-rose-400" />
+                      Tạm hết thiết bị
+                    </span>
+                  )}
+                </div>
               </div>
 
               {formError && (
@@ -774,9 +833,18 @@ export default function EquipmentDetailPage() {
                       type="time"
                       value={deliveryTime}
                       onChange={(e) => setDeliveryTime(e.target.value)}
-                      className="w-full bg-[#1a2538] border border-[#283754] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
+                      className={`w-full bg-[#1a2538] border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none transition-all ${
+                        fieldErrors.deliveryTime
+                          ? "border-rose-500 bg-rose-950/20 focus:border-rose-500"
+                          : "border-[#283754] focus:border-orange-500"
+                      }`}
                       required
                     />
+                    {fieldErrors.deliveryTime && (
+                      <p className="text-rose-400 text-[11px] mt-1 flex items-center gap-1 font-medium animate-fadeIn">
+                        <span>⚠️</span> {fieldErrors.deliveryTime}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -1051,11 +1119,16 @@ export default function EquipmentDetailPage() {
                   <div className="space-y-2">
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || (equipment?.available_quantity !== undefined && equipment.available_quantity <= 0)}
                       className="w-full py-3.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2"
                     >
                       {submitting ? (
                         "Đang gửi yêu cầu thuê..."
+                      ) : (equipment?.available_quantity !== undefined && equipment.available_quantity <= 0) ? (
+                        <>
+                          <span>⚠️</span>
+                          <span>Thiết bị tạm thời hết hàng</span>
+                        </>
                       ) : (
                         <>
                           <span>📋</span>

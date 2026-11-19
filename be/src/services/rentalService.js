@@ -11,6 +11,7 @@ const { buildContractHtmlServer } = require("../utils/contractHtmlBuilder");
 const crypto = require("crypto");
 const Rental = require("../models/Rental");
 const Equipment = require("../models/Equipment");
+const EquipmentBlackout = require("../models/EquipmentBlackout");
 const SupportTicket = require("../models/SupportTicket");
 const UserNotification = require("../models/UserNotification");
 const AppError = require("../utils/AppError");
@@ -78,6 +79,25 @@ class RentalService {
       conflictQuery._id = { $ne: excludeRentalId };
     }
 
+    // Kiểm tra lịch chặn bận đột xuất của Chủ máy (UC_O15)
+    const blackoutConflict = await EquipmentBlackout.findOne({
+      equipment_id: equipmentId,
+      $or: [
+        { start_date: { $lte: startRange }, end_date: { $gte: startRange } },
+        { start_date: { $lte: endRange }, end_date: { $gte: endRange } },
+        { start_date: { $gte: startRange }, end_date: { $lte: endRange } },
+      ],
+    });
+
+    if (blackoutConflict) {
+      return {
+        available: false,
+        conflictRental: `Chủ máy bận (${blackoutConflict.reason || "Lịch cá nhân"})`,
+        startDate: start,
+        endDate: end,
+      };
+    }
+
     const conflict = await Rental.findOne(conflictQuery);
     return {
       available: !conflict,
@@ -128,6 +148,36 @@ class RentalService {
       throw new AppError(400, `Thiết bị hiện không khả dụng để thuê (${equipment.status})`);
     }
 
+    if (equipment.available_quantity !== undefined && equipment.available_quantity <= 0) {
+      throw new AppError(400, "Thiết bị hiện đã tạm hết hàng trong kho, không thể tạo yêu cầu thuê");
+    }
+
+    // Kiểm tra ngày và giờ bắt đầu thuê không được ở trong quá khứ
+    if (startDate) {
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      const startDayStr = String(startDate).slice(0, 10);
+
+      if (startDayStr < todayStr) {
+        throw new AppError(400, "Ngày bắt đầu thuê không được ở trong quá khứ");
+      }
+
+      const startDateTime = new Date(startDate);
+      const [delHours, delMins] = String(deliveryTime || "09:00").split(":").map(Number);
+      startDateTime.setHours(isNaN(delHours) ? 9 : delHours, isNaN(delMins) ? 0 : delMins, 0, 0);
+
+      const isToday = startDayStr === todayStr;
+
+      if (isToday && startDateTime.getTime() < now.getTime() - 2 * 60 * 1000) {
+        const curH = String(now.getHours()).padStart(2, "0");
+        const curM = String(now.getMinutes()).padStart(2, "0");
+        throw new AppError(
+          400,
+          `Giờ nhận máy của ngày hôm nay (${deliveryTime}) không được bé hơn giờ hiện tại (${curH}:${curM}).`
+        );
+      }
+    }
+
     if (equipment.owner && equipment.owner.toString() === renterUser._id.toString()) {
       throw new AppError(400, "Bạn không thể thuê thiết bị của chính mình");
     }
@@ -146,12 +196,23 @@ class RentalService {
     const diffTime = Math.abs(end - start);
     const totalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-    // Áp dụng giảm giá thuê dài ngày
+    // Áp dụng giảm giá thuê dài ngày (Ưu tiên cấu hình Owner - UC_O16)
     let discountRate = 0;
-    if (totalDays >= 30) {
-      discountRate = 0.20; // Giảm 20% nếu >= 30 ngày
-    } else if (totalDays >= 7) {
-      discountRate = 0.10; // Giảm 10% nếu >= 7 ngày
+    const customTiers = equipment.pricing?.multi_day_discounts;
+    if (Array.isArray(customTiers) && customTiers.length > 0) {
+      const sortedTiers = [...customTiers].sort((a, b) => b.min_days - a.min_days);
+      const matched = sortedTiers.find((t) => totalDays >= t.min_days);
+      if (matched) {
+        discountRate = Number(matched.discount_percent) / 100;
+      }
+    } else {
+      if (totalDays >= 30) {
+        discountRate = 0.20; // Giảm 20% nếu >= 30 ngày
+      } else if (totalDays >= 7) {
+        discountRate = 0.10; // Giảm 10% nếu >= 7 ngày
+      } else if (totalDays >= 3) {
+        discountRate = 0.05; // Giảm 5% nếu >= 3 ngày
+      }
     }
 
     const dailyRate = equipment.dailyRate || (equipment.pricing ? equipment.pricing.price_per_day : 0) || 0;
@@ -827,7 +888,7 @@ class RentalService {
    * UC_R10_CHECKIN: Xác nhận nhận máy & Lưu ảnh ngoại quan ban đầu (Handover Check-in)
    */
   async submitHandoverCheckin(rentalId, user, checkinData = {}) {
-    const { images = [], note = "" } = checkinData;
+    const { images = [], note = "", angles = [] } = checkinData;
 
     const rental = await Rental.findById(rentalId).populate("equipment owner");
     if (!rental) {
@@ -843,6 +904,7 @@ class RentalService {
     rental.handoverCheckin = {
       receivedAt: new Date(),
       images: Array.isArray(images) ? images : [],
+      inspection_angles: Array.isArray(angles) ? angles : [],
       note: String(note || "").trim(),
       confirmedByRenter: true,
     };

@@ -5,6 +5,7 @@ export interface BankAccount {
   bankName: string;
   accountNumber: string;
   accountHolderName: string;
+  qrCodeUrl?: string;
   status: BankAccountStatus;
   createdAt?: string;
 }
@@ -28,6 +29,7 @@ export interface WithdrawalRequest {
     bankName: string;
     accountNumber: string;
     accountHolderName: string;
+    qrCodeUrl?: string;
     bankAccountId?: string;
   };
   status: WithdrawalStatus;

@@ -25,6 +25,8 @@ export interface Equipment {
   modelNumber?: string;
   dailyRate: number;
   depositAmount: number;
+  quantity?: number;
+  available_quantity?: number;
   status: "AVAILABLE" | "APPROVED" | "RENTED" | "MAINTENANCE" | "UNAVAILABLE";
   images: string[];
   specifications?: Record<string, string>;

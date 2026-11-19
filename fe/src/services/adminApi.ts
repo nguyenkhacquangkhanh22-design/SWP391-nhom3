@@ -250,4 +250,318 @@ export const adminApi = {
       token
     );
   },
+
+  // ==========================================
+  // UC_A26: Digital Contract Templates
+  // ==========================================
+  listContractTemplates: (
+    token: string,
+    params?: { status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminContractTemplatesResponse>(
+      `/contract-templates${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createContractTemplate: (
+    token: string,
+    body: {
+      template_code: string;
+      name: string;
+      version?: number;
+      terms_content: string;
+      fields?: Array<{ key: string; label: string; required: boolean }>;
+      status?: "draft" | "published";
+    }
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      "/contract-templates",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateContractTemplate: (
+    token: string,
+    id: string,
+    body: {
+      name?: string;
+      terms_content?: string;
+      fields?: Array<{ key: string; label: string; required: boolean }>;
+      status?: "draft" | "published" | "retired";
+    }
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      `/contract-templates/${id}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateContractTemplateStatus: (
+    token: string,
+    id: string,
+    status: "draft" | "published" | "retired"
+  ) =>
+    adminRequest<{ message: string; template: import("../types/admin").AdminContractTemplate }>(
+      `/contract-templates/${id}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A27: Equipment Status & Maintenance
+  // ==========================================
+  listEquipmentStatusRequests: (
+    token: string,
+    params?: { status?: string; target_status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.target_status) query.set("target_status", params.target_status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminEquipmentStatusRequestsResponse>(
+      `/equipment-status-requests${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  reviewEquipmentStatusRequest: (
+    token: string,
+    id: string,
+    body: { status: "approved" | "rejected"; moderator_note?: string }
+  ) =>
+    adminRequest<{ message: string; request: import("../types/admin").AdminEquipmentStatusRequest }>(
+      `/equipment-status-requests/${id}/review`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A28: Owner Membership Subscriptions
+  // ==========================================
+  listMemberships: (
+    token: string,
+    params?: { status?: string; plan?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.plan) query.set("plan", params.plan);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminMembershipsResponse>(
+      `/memberships${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  grantOwnerMembership: (
+    token: string,
+    body: {
+      owner_id: string;
+      plan?: string;
+      duration_months?: number;
+      note?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; membership: import("../types/admin").AdminMembership }>(
+      "/memberships/grant",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A29: Rental Settlement & Escrow Release
+  // ==========================================
+  listSettlements: (
+    token: string,
+    params?: { payout_status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.payout_status) query.set("payout_status", params.payout_status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminSettlementsResponse>(
+      `/settlements${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  approveSettlement: (
+    token: string,
+    id: string,
+    body: { action: "approve" | "reject"; note?: string; transaction_code?: string }
+  ) =>
+    adminRequest<{ message: string; settlement: import("../types/admin").AdminSettlement }>(
+      `/settlements/${id}/approve`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A30: Handover & Return Inspection
+  // ==========================================
+  listHandoverRecords: (
+    token: string,
+    params?: { record_type?: string; review_status?: string; contract_id?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.record_type) query.set("record_type", params.record_type);
+    if (params?.review_status) query.set("review_status", params.review_status);
+    if (params?.contract_id) query.set("contract_id", params.contract_id);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminHandoverRecordsResponse>(
+      `/handover-records${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  reviewHandoverRecord: (
+    token: string,
+    id: string,
+    body: { status: "verified" | "needs_changes"; note?: string }
+  ) =>
+    adminRequest<{ message: string; record: import("../types/admin").AdminHandoverDetail }>(
+      `/handover-records/${id}/review`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A31: Risk & Fraud Monitor
+  // ==========================================
+  getRiskMonitor: (token: string) =>
+    adminRequest<import("../types/admin").AdminRiskMonitorResponse>(
+      "/risk-monitor",
+      { method: "GET" },
+      token
+    ),
+
+  freezeRiskUser: (
+    token: string,
+    userId: string,
+    body: { action: "freeze" | "unfreeze"; reason?: string }
+  ) =>
+    adminRequest<{ message: string; user: User }>(
+      `/risk-monitor/${userId}/freeze`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A32: Standard Damage Tariffs
+  // ==========================================
+  listDamageTariffs: (
+    token: string,
+    params?: { category?: string; severity?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.severity) query.set("severity", params.severity);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminDamageTariffsResponse>(
+      `/damage-tariffs${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createDamageTariff: (
+    token: string,
+    body: {
+      category: string;
+      item_name: string;
+      severity?: string;
+      standard_fee: number;
+      fee_type?: string;
+      description?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; tariff: import("../types/admin").AdminDamageTariff }>(
+      "/damage-tariffs",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateDamageTariff: (
+    token: string,
+    id: string,
+    body: {
+      standard_fee?: number;
+      is_active?: boolean;
+      description?: string;
+      severity?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; tariff: import("../types/admin").AdminDamageTariff }>(
+      `/damage-tariffs/${id}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      token
+    ),
+
+  // ==========================================
+  // UC_A33: Equipment Maintenance & Shutter Logs
+  // ==========================================
+  listMaintenanceLogs: (
+    token: string,
+    params?: { maintenance_type?: string; status?: string; search?: string }
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.maintenance_type) query.set("maintenance_type", params.maintenance_type);
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return adminRequest<import("../types/admin").AdminMaintenanceLogsResponse>(
+      `/maintenance-logs${qs}`,
+      { method: "GET" },
+      token
+    );
+  },
+
+  createMaintenanceLog: (
+    token: string,
+    body: {
+      equipment_id: string;
+      maintenance_type?: string;
+      current_shutter_count?: number;
+      max_rated_shutter?: number;
+      service_center?: string;
+      cost?: number;
+      scheduled_date?: string;
+      next_due_date?: string;
+      technician_notes?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; log: import("../types/admin").AdminMaintenanceLog }>(
+      "/maintenance-logs",
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    ),
+
+  updateMaintenanceLogStatus: (
+    token: string,
+    id: string,
+    body: {
+      status: "scheduled" | "in_progress" | "completed" | "cancelled";
+      completed_date?: string;
+      cost?: number;
+      technician_notes?: string;
+    }
+  ) =>
+    adminRequest<{ message: string; log: import("../types/admin").AdminMaintenanceLog }>(
+      `/maintenance-logs/${id}/status`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      token
+    ),
 };

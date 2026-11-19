@@ -7,6 +7,11 @@ const Settlement = require("../models/Settlement");
 const RentalContract = require("../models/RentalContract");
 const HandoverRecord = require("../models/HandoverRecord");
 const AuditLog = require("../models/AuditLog");
+const ContractTemplate = require("../models/ContractTemplate");
+const EquipmentStatusRequest = require("../models/EquipmentStatusRequest");
+const OwnerMembership = require("../models/OwnerMembership");
+const DamageTariff = require("../models/DamageTariff");
+const EquipmentMaintenanceLog = require("../models/EquipmentMaintenanceLog");
 const { recordAuditLog } = require("../utils/auditLogger");
 const AppError = require("../utils/AppError");
 
@@ -19,6 +24,8 @@ async function getOverview(req, res) {
     pendingDisputes,
     pendingKyc,
     openTickets,
+    activeMaintenance,
+    activeTemplates,
     recentUsers,
   ] = await Promise.all([
     User.countDocuments(),
@@ -30,6 +37,8 @@ async function getOverview(req, res) {
     Dispute.countDocuments({ status: { $in: ["pending_review", "investigating"] } }),
     User.countDocuments({ kycStatus: "pending" }),
     SupportTicket.countDocuments({ status: "open" }),
+    EquipmentMaintenanceLog.countDocuments({ status: { $in: ["scheduled", "in_progress"] } }),
+    ContractTemplate.countDocuments({ status: "published" }),
     User.find({}, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
       .sort({ createdAt: -1 })
       .lean(),
@@ -45,6 +54,8 @@ async function getOverview(req, res) {
       pendingDisputes,
       pendingKyc,
       openTickets,
+      activeMaintenance,
+      activeTemplates,
     },
     users: recentUsers,
   });
@@ -55,16 +66,41 @@ async function updateUserRole(req, res) {
   const { role } = req.body;
 
   if (!role || typeof role !== "string") {
-    throw new AppError(400, "Role is required and must be a string");
+    throw new AppError(400, "Vui lòng chỉ định quyền hợp lệ");
   }
 
   const user = await User.findById(userId);
   if (!user) {
-    throw new AppError(404, "User not found");
+    throw new AppError(404, "Không tìm thấy người dùng trong hệ thống");
+  }
+
+  const cleanRole = role.trim();
+  const oldRoleLower = (user.role || "").toLowerCase();
+  const newRoleLower = cleanRole.toLowerCase();
+
+  // 1. Chặn tự hạ quyền của chính tài khoản đang đăng nhập
+  if (user._id.toString() === req.user._id.toString() && newRoleLower !== "systemadmin") {
+    throw new AppError(
+      400,
+      "Không thể tự hạ quyền của chính tài khoản đang đăng nhập để tránh mất quyền quản trị hệ thống."
+    );
+  }
+
+  // 2. Chặn hạ quyền System Admin duy nhất còn lại trong hệ thống
+  if (oldRoleLower === "systemadmin" && newRoleLower !== "systemadmin") {
+    const adminCount = await User.countDocuments({
+      role: { $regex: /^systemadmin$/i },
+    });
+    if (adminCount <= 1) {
+      throw new AppError(
+        400,
+        "Không thể hạ quyền System Admin duy nhất còn lại trong hệ thống. Hệ thống bắt buộc phải duy trì tối thiểu 1 System Admin."
+      );
+    }
   }
 
   const oldRole = user.role;
-  user.role = role.trim();
+  user.role = cleanRole;
   await user.save();
 
   await recordAuditLog(req, {
@@ -76,7 +112,7 @@ async function updateUserRole(req, res) {
   });
 
   res.json({
-    message: "User role updated successfully",
+    message: `Đã cập nhật vai trò của ${user.name} thành "${user.role}" thành công.`,
     user: {
       _id: user._id,
       name: user.name,
@@ -1096,6 +1132,1100 @@ async function listAuditLogs(req, res) {
   });
 }
 
+// ==========================================
+// UC_A26: Digital Contract Template Management
+// ==========================================
+async function listContractTemplates(req, res) {
+  const { status, search } = req.query;
+  const filter = {};
+
+  if (status && ["draft", "published", "retired"].includes(status)) {
+    filter.status = status;
+  }
+
+  if (search && search.trim()) {
+    const regex = new RegExp(search.trim(), "i");
+    filter.$or = [{ template_code: regex }, { name: regex }];
+  }
+
+  const [templates, totalDraft, totalPublished, totalRetired] = await Promise.all([
+    ContractTemplate.find(filter)
+      .populate("created_by", "name email role")
+      .populate("published_by", "name email role")
+      .sort({ updatedAt: -1 })
+      .lean(),
+    ContractTemplate.countDocuments({ status: "draft" }),
+    ContractTemplate.countDocuments({ status: "published" }),
+    ContractTemplate.countDocuments({ status: "retired" }),
+  ]);
+
+  res.json({
+    templates,
+    stats: {
+      total: templates.length,
+      draft: totalDraft,
+      published: totalPublished,
+      retired: totalRetired,
+    },
+  });
+}
+
+async function createContractTemplate(req, res) {
+  const { template_code, name, version, terms_content, fields, status } = req.body;
+
+  if (!template_code || !name || !terms_content) {
+    throw new AppError(400, "Mã mẫu, tên hợp đồng và điều khoản thuê là bắt buộc.");
+  }
+
+  const parsedVersion = Number(version) || 1;
+  const existing = await ContractTemplate.findOne({
+    template_code: template_code.trim().toUpperCase(),
+    version: parsedVersion,
+  });
+
+  if (existing) {
+    throw new AppError(409, `Mẫu hợp đồng ${template_code} phiên bản ${parsedVersion} đã tồn tại.`);
+  }
+
+  const newTemplate = new ContractTemplate({
+    template_code: template_code.trim().toUpperCase(),
+    name: name.trim(),
+    version: parsedVersion,
+    terms_content: terms_content.trim(),
+    fields: Array.isArray(fields) ? fields : [],
+    status: ["draft", "published"].includes(status) ? status : "draft",
+    created_by: req.user._id,
+    published_by: status === "published" ? req.user._id : undefined,
+    published_at: status === "published" ? new Date() : undefined,
+  });
+
+  await newTemplate.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_CREATED",
+    targetType: "ContractTemplate",
+    targetId: newTemplate._id,
+    details: { template_code: newTemplate.template_code, version: newTemplate.version, status: newTemplate.status },
+  });
+
+  res.status(201).json({
+    message: "Tạo mẫu hợp đồng thành công.",
+    template: newTemplate,
+  });
+}
+
+async function updateContractTemplate(req, res) {
+  const { id } = req.params;
+  const { name, terms_content, fields, status } = req.body;
+
+  const template = await ContractTemplate.findById(id);
+  if (!template) {
+    throw new AppError(404, "Không tìm thấy mẫu hợp đồng.");
+  }
+
+  if (name) template.name = name.trim();
+  if (terms_content) template.terms_content = terms_content.trim();
+  if (Array.isArray(fields)) template.fields = fields;
+
+  if (status && ["draft", "published", "retired"].includes(status)) {
+    if (status === "published" && template.status !== "published") {
+      template.published_by = req.user._id;
+      template.published_at = new Date();
+    } else if (status === "retired" && template.status !== "retired") {
+      template.retired_by = req.user._id;
+      template.retired_at = new Date();
+    }
+    template.status = status;
+  }
+
+  await template.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_UPDATED",
+    targetType: "ContractTemplate",
+    targetId: template._id,
+    details: { template_code: template.template_code, status: template.status },
+  });
+
+  res.json({
+    message: "Cập nhật mẫu hợp đồng thành công.",
+    template,
+  });
+}
+
+async function updateContractTemplateStatus(req, res) {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!["draft", "published", "retired"].includes(status)) {
+    throw new AppError(400, "Trạng thái không hợp lệ (draft, published, retired).");
+  }
+
+  const template = await ContractTemplate.findById(id);
+  if (!template) {
+    throw new AppError(404, "Không tìm thấy mẫu hợp đồng.");
+  }
+
+  template.status = status;
+  if (status === "published") {
+    template.published_by = req.user._id;
+    template.published_at = new Date();
+  } else if (status === "retired") {
+    template.retired_by = req.user._id;
+    template.retired_at = new Date();
+  }
+
+  await template.save();
+
+  await recordAuditLog(req, {
+    action: "CONTRACT_TEMPLATE_STATUS_CHANGED",
+    targetType: "ContractTemplate",
+    targetId: template._id,
+    details: { status },
+  });
+
+  res.json({
+    message: `Đã chuyển trạng thái mẫu hợp đồng sang ${status}.`,
+    template,
+  });
+}
+
+// ==========================================
+// UC_A27: Equipment Status & Maintenance Review
+// ==========================================
+async function listEquipmentStatusRequests(req, res) {
+  const { status, target_status, search } = req.query;
+  const filter = {};
+
+  if (status && ["pending", "approved", "rejected"].includes(status)) {
+    filter.status = status;
+  }
+  if (target_status && ["available", "maintenance", "retired", "damaged", "hidden"].includes(target_status)) {
+    filter.target_status = target_status;
+  }
+
+  const [requests, totalPending, totalApproved, totalRejected] = await Promise.all([
+    EquipmentStatusRequest.find(filter)
+      .populate("equipment_id", "title name images condition status visibility serial_number")
+      .populate("owner_id", "name email phone")
+      .populate("reviewed_by", "name email")
+      .sort({ createdAt: -1 })
+      .lean(),
+    EquipmentStatusRequest.countDocuments({ status: "pending" }),
+    EquipmentStatusRequest.countDocuments({ status: "approved" }),
+    EquipmentStatusRequest.countDocuments({ status: "rejected" }),
+  ]);
+
+  let filteredRequests = requests;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filteredRequests = requests.filter((r) => {
+      const eqTitle = (r.equipment_id?.title || r.equipment_id?.name || "").toLowerCase();
+      const ownerName = (r.owner_id?.name || "").toLowerCase();
+      const ownerEmail = (r.owner_id?.email || "").toLowerCase();
+      return eqTitle.includes(q) || ownerName.includes(q) || ownerEmail.includes(q);
+    });
+  }
+
+  res.json({
+    requests: filteredRequests,
+    stats: {
+      total: requests.length,
+      pending: totalPending,
+      approved: totalApproved,
+      rejected: totalRejected,
+    },
+  });
+}
+
+async function reviewEquipmentStatusRequest(req, res) {
+  const { id } = req.params;
+  const { status, moderator_note } = req.body;
+
+  if (!["approved", "rejected"].includes(status)) {
+    throw new AppError(400, "Trạng thái thẩm định chỉ có thể là approved hoặc rejected.");
+  }
+
+  if (status === "rejected" && (!moderator_note || !moderator_note.trim())) {
+    throw new AppError(400, "Vui lòng nhập lý do từ chối yêu cầu đổi trạng thái.");
+  }
+
+  const statusRequest = await EquipmentStatusRequest.findById(id);
+  if (!statusRequest) {
+    throw new AppError(404, "Không tìm thấy yêu cầu đổi trạng thái thiết bị.");
+  }
+
+  if (statusRequest.status !== "pending") {
+    throw new AppError(400, "Yêu cầu này đã được xử lý trước đó.");
+  }
+
+  statusRequest.status = status;
+  statusRequest.moderator_note = moderator_note ? moderator_note.trim() : "";
+  statusRequest.reviewed_at = new Date();
+  statusRequest.reviewed_by = req.user._id;
+
+  if (status === "approved") {
+    const equipment = await Equipment.findById(statusRequest.equipment_id);
+    if (equipment) {
+      if (statusRequest.target_status === "hidden") {
+        equipment.visibility = "hidden";
+        equipment.hidden_reason = statusRequest.reason || "Chủ máy yêu cầu tạm ẩn thiết bị";
+      } else {
+        equipment.status = statusRequest.target_status;
+        if (statusRequest.target_status === "maintenance") {
+          equipment.visibility = "hidden"; // Ẩn khỏi marketplace khi đang bảo trì
+          equipment.hidden_reason = "Thiết bị đang trong kỳ bảo trì & bảo dưỡng định kỳ";
+        } else if (statusRequest.target_status === "available") {
+          equipment.visibility = "published";
+          equipment.hidden_reason = "";
+        }
+      }
+      await equipment.save();
+    }
+  }
+
+  await statusRequest.save();
+
+  // Create notification for Owner
+  try {
+    await UserNotification.create({
+      user_id: statusRequest.owner_id,
+      title: status === "approved" ? "Yêu cầu chuyển trạng thái thiết bị được chấp thuận" : "Yêu cầu chuyển trạng thái thiết bị bị từ chối",
+      message: status === "approved"
+        ? `Yêu cầu chuyển thiết bị sang trạng thái ${statusRequest.target_status.toUpperCase()} đã được Quản trị viên duyệt.`
+        : `Yêu cầu chuyển thiết bị sang ${statusRequest.target_status.toUpperCase()} bị từ chối. Lý do: ${moderator_note}`,
+      type: "equipment_status_review",
+      read: false,
+    });
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: status === "approved" ? "EQUIPMENT_STATUS_APPROVED" : "EQUIPMENT_STATUS_REJECTED",
+    targetType: "EquipmentStatusRequest",
+    targetId: statusRequest._id,
+    details: {
+      equipment_id: statusRequest.equipment_id,
+      target_status: statusRequest.target_status,
+      moderator_note: statusRequest.moderator_note,
+    },
+  });
+
+  res.json({
+    message: status === "approved" ? "Đã duyệt yêu cầu đổi trạng thái thiết bị." : "Đã từ chối yêu cầu đổi trạng thái thiết bị.",
+    request: statusRequest,
+  });
+}
+
+// ==========================================
+// UC_A28: Owner Membership & Subscription Management
+// ==========================================
+async function listMemberships(req, res) {
+  const { status, plan, search } = req.query;
+  const filter = {};
+
+  if (status && ["pending_payment", "active", "extended", "expired", "failed"].includes(status)) {
+    filter.status = status;
+  }
+  if (plan && ["trial_7d", "month_1", "month_2", "month_3"].includes(plan)) {
+    filter.plan = plan;
+  }
+
+  const [memberships, totalActive, totalExpired, totalPending, revenueAgg] = await Promise.all([
+    OwnerMembership.find(filter)
+      .populate("owner_id", "name email phone role")
+      .sort({ createdAt: -1 })
+      .lean(),
+    OwnerMembership.countDocuments({ status: "active" }),
+    OwnerMembership.countDocuments({ status: "expired" }),
+    OwnerMembership.countDocuments({ status: "pending_payment" }),
+    OwnerMembership.aggregate([
+      { $match: { status: { $in: ["active", "extended", "expired"] }, is_trial: false } },
+      { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+    ]),
+  ]);
+
+  let filtered = memberships;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = memberships.filter((m) => {
+      const name = (m.owner_id?.name || "").toLowerCase();
+      const email = (m.owner_id?.email || "").toLowerCase();
+      const ref = (m.payment_reference || "").toLowerCase();
+      return name.includes(q) || email.includes(q) || ref.includes(q);
+    });
+  }
+
+  const totalRevenue = revenueAgg[0]?.totalAmount || 0;
+
+  res.json({
+    memberships: filtered,
+    stats: {
+      total: memberships.length,
+      active: totalActive,
+      expired: totalExpired,
+      pending: totalPending,
+      totalRevenue,
+    },
+  });
+}
+
+async function grantOwnerMembership(req, res) {
+  const { owner_id, plan, duration_months, note } = req.body;
+
+  if (!owner_id) {
+    throw new AppError(400, "Vui lòng chọn Chủ máy (Owner).");
+  }
+
+  const owner = await User.findById(owner_id);
+  if (!owner) {
+    throw new AppError(404, "Không tìm thấy người dùng.");
+  }
+
+  const months = Number(duration_months) || 1;
+  const planKey = ["trial_7d", "month_1", "month_2", "month_3"].includes(plan) ? plan : `month_${months}`;
+
+  // Find existing active membership
+  const now = new Date();
+  const existingActive = await OwnerMembership.findOne({
+    owner_id,
+    status: { $in: ["active", "extended"] },
+    expires_at: { $gt: now },
+  });
+
+  let membership;
+  if (existingActive) {
+    // Extend expiry
+    const newExpires = new Date(existingActive.expires_at);
+    newExpires.setMonth(newExpires.getMonth() + months);
+    existingActive.expires_at = newExpires;
+    existingActive.status = "extended";
+    existingActive.payment_reference = note || "Đặc cách gia hạn bởi Quản trị viên";
+    await existingActive.save();
+    membership = existingActive;
+  } else {
+    // Create new active membership
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + months);
+
+    membership = new OwnerMembership({
+      owner_id,
+      plan: planKey,
+      duration_months: months,
+      amount: 0,
+      payment_reference: note || "Cấp gói đặc cách bởi Quản trị viên",
+      status: "active",
+      is_trial: planKey === "trial_7d",
+      started_at: now,
+      expires_at: expiresAt,
+      paid_at: now,
+    });
+    await membership.save();
+  }
+
+  // Auto unhide equipment if owner has active membership
+  try {
+    await Equipment.updateMany(
+      { owner_id, hidden_reason: /hết hạn gói hội viên/i },
+      { $set: { visibility: "published", hidden_reason: "" } }
+    );
+  } catch (err) {
+    // Non-fatal
+  }
+
+  // Create notification
+  try {
+    await UserNotification.create({
+      user_id: owner_id,
+      title: "Gói Hội Viên Chủ Máy Đã Được Kích Hoạt",
+      message: `Quản trị viên đã kích hoạt/gia hạn gói hội viên (${months} tháng) cho bạn. Hạn sử dụng đến ngày ${new Date(membership.expires_at).toLocaleDateString("vi-VN")}.`,
+      type: "membership_granted",
+      read: false,
+    });
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: "OWNER_MEMBERSHIP_MANUAL_GRANT",
+    targetType: "OwnerMembership",
+    targetId: membership._id,
+    details: { owner_id, months, expires_at: membership.expires_at, note },
+  });
+
+  res.status(201).json({
+    message: "Kích hoạt/Gia hạn gói hội viên thành công.",
+    membership,
+  });
+}
+
+// ==========================================
+// UC_A29: Rental Settlement & Escrow Release Audit
+// ==========================================
+async function listSettlements(req, res) {
+  const { payout_status, search } = req.query;
+  const filter = {};
+
+  if (payout_status && ["pending_owner_confirmation", "pending_moderator_approval", "confirmed", "processing", "paid", "rejected"].includes(payout_status)) {
+    filter.payout_status = payout_status;
+  }
+
+  const [settlements, totalPendingApproval, totalPaid, totalProcessing, statsAgg] = await Promise.all([
+    Settlement.find(filter)
+      .populate("owner_id", "name email phone")
+      .populate("renter_id", "name email phone")
+      .populate("contract_id", "contract_code")
+      .populate("moderator_review.moderator_id", "name email")
+      .sort({ createdAt: -1 })
+      .lean(),
+    Settlement.countDocuments({ payout_status: "pending_moderator_approval" }),
+    Settlement.countDocuments({ payout_status: "paid" }),
+    Settlement.countDocuments({ payout_status: "processing" }),
+    Settlement.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalDepositRefund: { $sum: "$deposit_refund_to_renter" },
+          totalDamageDeduction: { $sum: "$damage_deduction" },
+          totalPlatformFee: { $sum: "$platform_fee" },
+          totalOwnerPayout: { $sum: "$owner_payout_amount" },
+        },
+      },
+    ]),
+  ]);
+
+  let filtered = settlements;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = settlements.filter((s) => {
+      const code = (s.settlement_code || "").toLowerCase();
+      const ownerName = (s.owner_id?.name || "").toLowerCase();
+      const renterName = (s.renter_id?.name || "").toLowerCase();
+      const contractCode = (s.contract_id?.contract_code || "").toLowerCase();
+      return code.includes(q) || ownerName.includes(q) || renterName.includes(q) || contractCode.includes(q);
+    });
+  }
+
+  const agg = statsAgg[0] || {};
+
+  res.json({
+    settlements: filtered,
+    stats: {
+      total: settlements.length,
+      pendingApproval: totalPendingApproval,
+      paid: totalPaid,
+      processing: totalProcessing,
+      totalDepositRefund: agg.totalDepositRefund || 0,
+      totalDamageDeduction: agg.totalDamageDeduction || 0,
+      totalPlatformFee: agg.totalPlatformFee || 0,
+      totalOwnerPayout: agg.totalOwnerPayout || 0,
+    },
+  });
+}
+
+async function approveSettlement(req, res) {
+  const { id } = req.params;
+  const { action, note, transaction_code } = req.body;
+
+  if (!["approve", "reject"].includes(action)) {
+    throw new AppError(400, "Hành động chỉ có thể là approve hoặc reject.");
+  }
+
+  const settlement = await Settlement.findById(id);
+  if (!settlement) {
+    throw new AppError(404, "Không tìm thấy bảng quyết toán hợp đồng.");
+  }
+
+  const isApproval = action === "approve";
+  settlement.payout_status = isApproval ? "paid" : "rejected";
+  if (isApproval) {
+    settlement.paid_at = new Date();
+  }
+
+  settlement.moderator_review = {
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+    note: note ? note.trim() : (isApproval ? "Quản trị viên đã duyệt giải ngân và hoàn cọc" : "Bị từ chối quyết toán"),
+    transaction_code: transaction_code ? transaction_code.trim() : "",
+  };
+
+  await settlement.save();
+
+  // Create notifications for Owner and Renter
+  try {
+    if (isApproval) {
+      await Promise.all([
+        UserNotification.create({
+          user_id: settlement.owner_id,
+          title: "Quyết Toán Thuê Máy Đã Được Giải Ngân",
+          message: `Bảng quyết toán ${settlement.settlement_code} đã được duyệt. Số tiền ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.owner_payout_amount)} đã được giải ngân.`,
+          type: "settlement_paid",
+          read: false,
+        }),
+        UserNotification.create({
+          user_id: settlement.renter_id,
+          title: "Tiền Cọc Thuê Máy Đã Được Hoàn Trả",
+          message: `Hợp đồng thuê kết thúc. Số tiền cọc hoàn lại ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(settlement.deposit_refund_to_renter)} đã được giải phóng an toàn.`,
+          type: "deposit_refunded",
+          read: false,
+        }),
+      ]);
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+
+  await recordAuditLog(req, {
+    action: isApproval ? "SETTLEMENT_APPROVED" : "SETTLEMENT_REJECTED",
+    targetType: "Settlement",
+    targetId: settlement._id,
+    details: {
+      settlement_code: settlement.settlement_code,
+      payout_status: settlement.payout_status,
+      deposit_refund: settlement.deposit_refund_to_renter,
+      damage_deduction: settlement.damage_deduction,
+      transaction_code: settlement.moderator_review?.transaction_code,
+    },
+  });
+
+  res.json({
+    message: isApproval ? "Duyệt quyết toán & giải phóng tiền cọc thành công." : "Đã từ chối bảng quyết toán.",
+    settlement,
+  });
+}
+
+// ==========================================
+// UC_A30: Handover & Return Records Inspection
+// ==========================================
+async function listHandoverRecords(req, res) {
+  const { record_type, review_status, contract_id, search } = req.query;
+  const filter = {};
+
+  if (record_type && ["handover", "return"].includes(record_type)) {
+    filter.record_type = record_type;
+  }
+  if (review_status && ["pending", "verified", "needs_changes"].includes(review_status)) {
+    filter["moderator_review.status"] = review_status;
+  }
+  if (contract_id) {
+    filter.contract_id = contract_id;
+  }
+
+  const [records, totalHandover, totalReturn, totalPendingReview, totalVerified] = await Promise.all([
+    HandoverRecord.find(filter)
+      .populate("equipment_id", "title name images serial_number condition")
+      .populate("owner_id", "name email phone")
+      .populate("renter_id", "name email phone")
+      .populate("contract_id", "contract_code")
+      .populate("moderator_review.moderator_id", "name email")
+      .sort({ record_date: -1 })
+      .lean(),
+    HandoverRecord.countDocuments({ record_type: "handover" }),
+    HandoverRecord.countDocuments({ record_type: "return" }),
+    HandoverRecord.countDocuments({ "moderator_review.status": "pending" }),
+    HandoverRecord.countDocuments({ "moderator_review.status": "verified" }),
+  ]);
+
+  let filtered = records;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = records.filter((r) => {
+      const eqTitle = (r.equipment_id?.title || r.equipment_id?.name || "").toLowerCase();
+      const ownerName = (r.owner_id?.name || "").toLowerCase();
+      const renterName = (r.renter_id?.name || "").toLowerCase();
+      const contractCode = (r.contract_id?.contract_code || "").toLowerCase();
+      return eqTitle.includes(q) || ownerName.includes(q) || renterName.includes(q) || contractCode.includes(q);
+    });
+  }
+
+  res.json({
+    records: filtered,
+    stats: {
+      total: records.length,
+      handover: totalHandover,
+      return: totalReturn,
+      pendingReview: totalPendingReview,
+      verified: totalVerified,
+    },
+  });
+}
+
+async function reviewHandoverRecord(req, res) {
+  const { id } = req.params;
+  const { status, note } = req.body;
+
+  if (!["verified", "needs_changes"].includes(status)) {
+    throw new AppError(400, "Trạng thái chỉ có thể là verified hoặc needs_changes.");
+  }
+
+  const record = await HandoverRecord.findById(id);
+  if (!record) {
+    throw new AppError(404, "Không tìm thấy biên bản bàn giao/hoàn trả.");
+  }
+
+  record.moderator_review = {
+    status,
+    note: note ? note.trim() : (status === "verified" ? "Đã đối soát tính toàn vẹn phụ kiện & tình trạng thiết bị" : "Cần bổ sung bằng chứng"),
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+  };
+
+  if (!record.moderator_review_history) {
+    record.moderator_review_history = [];
+  }
+  record.moderator_review_history.push({
+    status,
+    note: record.moderator_review.note,
+    moderator_id: req.user._id,
+    reviewed_at: new Date(),
+  });
+
+  await record.save();
+
+  await recordAuditLog(req, {
+    action: "HANDOVER_RECORD_REVIEWED",
+    targetType: "HandoverRecord",
+    targetId: record._id,
+    details: {
+      record_type: record.record_type,
+      status: record.moderator_review.status,
+      note: record.moderator_review.note,
+    },
+  });
+
+  res.json({
+    message: status === "verified" ? "Đã xác nhận kiểm tra biên bản thành công." : "Đã yêu cầu bổ sung bằng chứng biên bản.",
+    record,
+  });
+}
+
+// ==========================================
+// UC_A31: Risk & Fraud Anomaly Detection Monitor
+// ==========================================
+async function getRiskMonitor(req, res) {
+  const [users, openDisputes, pendingSettlements] = await Promise.all([
+    User.find({}, { password_hash: 0, password_reset_token_hash: 0, google_id: 0 })
+      .sort({ createdAt: -1 })
+      .lean(),
+    Dispute.find({ status: { $in: ["pending_review", "investigating"] } })
+      .populate("renter_id", "name email phone")
+      .populate("owner_id", "name email")
+      .lean(),
+    Settlement.find({ damage_deduction: { $gt: 0 } })
+      .populate("renter_id", "name email")
+      .lean(),
+  ]);
+
+  // Aggregate user risk scores based on disputes, damage deductions, and KYC status
+  const flaggedUsers = [];
+  let highRiskCount = 0;
+  let mediumRiskCount = 0;
+
+  for (const u of users) {
+    let riskScore = 0;
+    const reasons = [];
+
+    // Check open disputes
+    const userDisputes = openDisputes.filter(
+      (d) => String(d.renter_id?._id || d.renter_id) === String(u._id)
+    );
+    if (userDisputes.length > 0) {
+      riskScore += userDisputes.length * 40;
+      reasons.push(`Đang dính ${userDisputes.length} vụ khiếu nại tranh chấp hư hại`);
+    }
+
+    // Check history of damage deductions
+    const userDamages = pendingSettlements.filter(
+      (s) => String(s.renter_id?._id || s.renter_id) === String(u._id)
+    );
+    if (userDamages.length > 0) {
+      riskScore += userDamages.length * 25;
+      reasons.push(`Từng bị khấu trừ tiền cọc do làm hỏng thiết bị (${userDamages.length} lần)`);
+    }
+
+    // Unverified KYC with account suspended or flagged
+    if (u.status === "suspended") {
+      riskScore += 50;
+      reasons.push("Tài khoản đang bị đóng băng / tạm khóa");
+    } else if (u.kycStatus !== "verified") {
+      riskScore += 15;
+      reasons.push("Chưa hoàn tất định danh công dân KYC");
+    }
+
+    if (riskScore >= 20) {
+      const severity = riskScore >= 50 ? "high" : "medium";
+      if (severity === "high") highRiskCount++;
+      else mediumRiskCount++;
+
+      flaggedUsers.push({
+        user: u,
+        riskScore,
+        severity,
+        reasons,
+        disputeCount: userDisputes.length,
+        damageIncidentCount: userDamages.length,
+      });
+    }
+  }
+
+  // Sort by highest risk score
+  flaggedUsers.sort((a, b) => b.riskScore - a.riskScore);
+
+  res.json({
+    flaggedUsers,
+    stats: {
+      totalFlagged: flaggedUsers.length,
+      highRiskCount,
+      mediumRiskCount,
+      activeDisputesCount: openDisputes.length,
+      safetyIndex: Math.max(10, 100 - (highRiskCount * 5 + mediumRiskCount * 2)),
+    },
+  });
+}
+
+async function freezeRiskUser(req, res) {
+  const { userId } = req.params;
+  const { action, reason } = req.body; // action: "freeze" | "unfreeze"
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new AppError(404, "Không tìm thấy người dùng.");
+  }
+
+  if (action === "freeze") {
+    user.status = "suspended";
+    await user.save();
+
+    await recordAuditLog(req, {
+      action: "USER_RISK_FROZEN",
+      targetType: "User",
+      targetId: user._id,
+      details: { reason: reason || "Đóng băng tài khoản phòng ngừa rủi ro gian lận thiết bị" },
+    });
+
+    res.json({ message: `Đã đóng băng tài khoản ${user.name} thành công.`, user });
+  } else {
+    user.status = "active";
+    await user.save();
+
+    await recordAuditLog(req, {
+      action: "USER_RISK_UNFROZEN",
+      targetType: "User",
+      targetId: user._id,
+      details: { reason: reason || "Mở khóa tài khoản sau khi xác minh an toàn" },
+    });
+
+    res.json({ message: `Đã mở khóa tài khoản ${user.name} thành công.`, user });
+  }
+}
+
+// ==========================================
+// UC_A32: Standard Damage Compensation Tariffs
+// ==========================================
+const DEFAULT_TARIFFS = [
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Mất nắp che trước/sau ống kính (Lens Cap)",
+    severity: "minor",
+    standard_fee: 150000,
+    fee_type: "fixed",
+    description: "Khấu trừ chi phí mua nắp che ống kính chính hãng",
+  },
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Vỡ / Nứt kính lọc bảo vệ (Filter UV/ND)",
+    severity: "minor",
+    standard_fee: 450000,
+    fee_type: "fixed",
+    description: "Đền bù kính lọc bảo vệ thay mới",
+  },
+  {
+    category: "Ống Kính & Thấu Kính",
+    item_name: "Trầy xước lớp tráng phủ thấu kính trước (Coating Scratch)",
+    severity: "moderate",
+    standard_fee: 2500000,
+    fee_type: "fixed",
+    description: "Thay cụm thấu kính ngoài tại trung tâm bảo hành hãng",
+  },
+  {
+    category: "Thân Máy & Cảm Biến",
+    item_name: "Bụi bẩn bám cảm biến Full-frame (Cần vệ sinh chuyên sâu)",
+    severity: "minor",
+    standard_fee: 300000,
+    fee_type: "fixed",
+    description: "Chi phí vệ sinh sensor chuyên nghiệp tại phòng Lab",
+  },
+  {
+    category: "Thân Máy & Cảm Biến",
+    item_name: "Xước / Cháy cảm biến do tia Laser (Sensor Burn)",
+    severity: "severe",
+    standard_fee: 12000000,
+    fee_type: "fixed",
+    description: "Thay thế toàn bộ cụm cảm biến CMOS chính hãng",
+  },
+  {
+    category: "Phụ Kiện Điện Ảnh",
+    item_name: "Mất Pin Zin máy ảnh (Sony NP-FZ100 / Canon LP-E6NH)",
+    severity: "moderate",
+    standard_fee: 1400000,
+    fee_type: "fixed",
+    description: "Bồi thường mua lại pin zin nguyên seal",
+  },
+  {
+    category: "Phụ Kiện Điện Ảnh",
+    item_name: "Mất Thẻ Nhớ Tốc Độ Cao CFexpress Type A / SD V90",
+    severity: "moderate",
+    standard_fee: 2200000,
+    fee_type: "fixed",
+    description: "Thay thế thẻ nhớ tốc độ cao chuẩn quay 4K/8K",
+  },
+];
+
+async function listDamageTariffs(req, res) {
+  const { category, severity, search } = req.query;
+
+  // Auto seed default tariffs if table is empty
+  const count = await DamageTariff.countDocuments();
+  if (count === 0) {
+    await DamageTariff.insertMany(
+      DEFAULT_TARIFFS.map((t) => ({ ...t, updated_by: req.user._id }))
+    );
+  }
+
+  const filter = {};
+  if (category) filter.category = category;
+  if (severity) filter.severity = severity;
+
+  const tariffs = await DamageTariff.find(filter)
+    .populate("updated_by", "name email")
+    .sort({ category: 1, standard_fee: 1 })
+    .lean();
+
+  let filtered = tariffs;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = tariffs.filter(
+      (t) => t.item_name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+    );
+  }
+
+  const categories = [...new Set(tariffs.map((t) => t.category))];
+
+  res.json({
+    tariffs: filtered,
+    categories,
+    stats: {
+      total: tariffs.length,
+      active: tariffs.filter((t) => t.is_active).length,
+    },
+  });
+}
+
+async function createDamageTariff(req, res) {
+  const { category, item_name, severity, standard_fee, fee_type, description } = req.body;
+
+  if (!category || !item_name || standard_fee === undefined) {
+    throw new AppError(400, "Danh mục, tên linh kiện và biểu phí đền bù là bắt buộc.");
+  }
+
+  const tariff = new DamageTariff({
+    category: category.trim(),
+    item_name: item_name.trim(),
+    severity: ["minor", "moderate", "severe", "total_loss"].includes(severity) ? severity : "minor",
+    standard_fee: Number(standard_fee) || 0,
+    fee_type: fee_type === "percentage_of_value" ? "percentage_of_value" : "fixed",
+    description: description ? description.trim() : "",
+    is_active: true,
+    updated_by: req.user._id,
+  });
+
+  await tariff.save();
+
+  await recordAuditLog(req, {
+    action: "DAMAGE_TARIFF_CREATED",
+    targetType: "DamageTariff",
+    targetId: tariff._id,
+    details: { item_name: tariff.item_name, standard_fee: tariff.standard_fee },
+  });
+
+  res.status(201).json({ message: "Thêm biểu phí đền bù thành công.", tariff });
+}
+
+async function updateDamageTariff(req, res) {
+  const { id } = req.params;
+  const { standard_fee, is_active, description, severity } = req.body;
+
+  const tariff = await DamageTariff.findById(id);
+  if (!tariff) {
+    throw new AppError(404, "Không tìm thấy biểu phí bồi thường.");
+  }
+
+  if (standard_fee !== undefined) tariff.standard_fee = Number(standard_fee);
+  if (is_active !== undefined) tariff.is_active = Boolean(is_active);
+  if (description !== undefined) tariff.description = description.trim();
+  if (severity && ["minor", "moderate", "severe", "total_loss"].includes(severity)) {
+    tariff.severity = severity;
+  }
+  tariff.updated_by = req.user._id;
+
+  await tariff.save();
+
+  await recordAuditLog(req, {
+    action: "DAMAGE_TARIFF_UPDATED",
+    targetType: "DamageTariff",
+    targetId: tariff._id,
+    details: { item_name: tariff.item_name, standard_fee: tariff.standard_fee, is_active: tariff.is_active },
+  });
+
+  res.json({ message: "Cập nhật biểu phí đền bù thành công.", tariff });
+}
+
+// ==========================================
+// UC_A33: Equipment Periodic Maintenance & Shutter Count Tracking
+// ==========================================
+async function listMaintenanceLogs(req, res) {
+  const { maintenance_type, status, search } = req.query;
+  const filter = {};
+
+  if (maintenance_type && ["sensor_cleaning", "shutter_replacement", "lens_calibration", "firmware_update", "periodic_inspection"].includes(maintenance_type)) {
+    filter.maintenance_type = maintenance_type;
+  }
+  if (status && ["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+    filter.status = status;
+  }
+
+  const [logs, totalScheduled, totalInProgress, totalCompleted, costAgg] = await Promise.all([
+    EquipmentMaintenanceLog.find(filter)
+      .populate("equipment_id", "title name images serial_number condition status")
+      .populate("owner_id", "name email phone")
+      .populate("created_by", "name email")
+      .sort({ scheduled_date: -1 })
+      .lean(),
+    EquipmentMaintenanceLog.countDocuments({ status: "scheduled" }),
+    EquipmentMaintenanceLog.countDocuments({ status: "in_progress" }),
+    EquipmentMaintenanceLog.countDocuments({ status: "completed" }),
+    EquipmentMaintenanceLog.aggregate([
+      { $match: { status: "completed" } },
+      { $group: { _id: null, totalCost: { $sum: "$cost" } } },
+    ]),
+  ]);
+
+  let filtered = logs;
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = logs.filter((l) => {
+      const title = (l.equipment_id?.title || l.equipment_id?.name || "").toLowerCase();
+      const sn = (l.equipment_id?.serial_number || "").toLowerCase();
+      const owner = (l.owner_id?.name || "").toLowerCase();
+      const center = (l.service_center || "").toLowerCase();
+      return title.includes(q) || sn.includes(q) || owner.includes(q) || center.includes(q);
+    });
+  }
+
+  // Calculate shutter life warning count (> 75% max shutter)
+  const shutterAlertsCount = logs.filter((l) => {
+    if (!l.max_rated_shutter || !l.current_shutter_count) return false;
+    return (l.current_shutter_count / l.max_rated_shutter) >= 0.75;
+  }).length;
+
+  res.json({
+    logs: filtered,
+    stats: {
+      total: logs.length,
+      scheduled: totalScheduled,
+      inProgress: totalInProgress,
+      completed: totalCompleted,
+      shutterAlerts: shutterAlertsCount,
+      totalCost: costAgg[0]?.totalCost || 0,
+    },
+  });
+}
+
+async function createMaintenanceLog(req, res) {
+  const {
+    equipment_id,
+    maintenance_type,
+    current_shutter_count,
+    max_rated_shutter,
+    service_center,
+    cost,
+    scheduled_date,
+    next_due_date,
+    technician_notes,
+  } = req.body;
+
+  if (!equipment_id) {
+    throw new AppError(400, "Vui lòng chọn thiết bị bảo dưỡng.");
+  }
+
+  const equipment = await Equipment.findById(equipment_id);
+  if (!equipment) {
+    throw new AppError(404, "Không tìm thấy thiết bị.");
+  }
+
+  const log = new EquipmentMaintenanceLog({
+    equipment_id,
+    owner_id: equipment.owner_id,
+    maintenance_type: maintenance_type || "periodic_inspection",
+    current_shutter_count: Number(current_shutter_count) || 0,
+    max_rated_shutter: Number(max_rated_shutter) || 200000,
+    service_center: service_center ? service_center.trim() : "Trung tâm dịch vụ kỹ thuật SmartEquip",
+    cost: Number(cost) || 0,
+    scheduled_date: scheduled_date ? new Date(scheduled_date) : new Date(),
+    next_due_date: next_due_date ? new Date(next_due_date) : undefined,
+    technician_notes: technician_notes ? technician_notes.trim() : "",
+    status: "scheduled",
+    created_by: req.user._id,
+  });
+
+  await log.save();
+
+  await recordAuditLog(req, {
+    action: "MAINTENANCE_LOG_CREATED",
+    targetType: "EquipmentMaintenanceLog",
+    targetId: log._id,
+    details: {
+      equipment_id,
+      maintenance_type: log.maintenance_type,
+      current_shutter: log.current_shutter_count,
+    },
+  });
+
+  res.status(201).json({ message: "Tạo phiếu bảo dưỡng máy ảnh thành công.", log });
+}
+
+async function updateMaintenanceLogStatus(req, res) {
+  const { id } = req.params;
+  const { status, completed_date, cost, technician_notes } = req.body;
+
+  const log = await EquipmentMaintenanceLog.findById(id);
+  if (!log) {
+    throw new AppError(404, "Không tìm thấy phiếu bảo dưỡng.");
+  }
+
+  if (status && ["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+    log.status = status;
+    if (status === "completed") {
+      log.completed_date = completed_date ? new Date(completed_date) : new Date();
+    }
+  }
+
+  if (cost !== undefined) log.cost = Number(cost) || 0;
+  if (technician_notes) log.technician_notes = technician_notes.trim();
+
+  await log.save();
+
+  await recordAuditLog(req, {
+    action: "MAINTENANCE_LOG_STATUS_UPDATED",
+    targetType: "EquipmentMaintenanceLog",
+    targetId: log._id,
+    details: { status: log.status, cost: log.cost },
+  });
+
+  res.json({ message: "Cập nhật tiến độ bảo dưỡng thành công.", log });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
@@ -1112,4 +2242,24 @@ module.exports = {
   listKycSubmissions,
   reviewKycSubmission,
   listAuditLogs,
+  listContractTemplates,
+  createContractTemplate,
+  updateContractTemplate,
+  updateContractTemplateStatus,
+  listEquipmentStatusRequests,
+  reviewEquipmentStatusRequest,
+  listMemberships,
+  grantOwnerMembership,
+  listSettlements,
+  approveSettlement,
+  listHandoverRecords,
+  reviewHandoverRecord,
+  getRiskMonitor,
+  freezeRiskUser,
+  listDamageTariffs,
+  createDamageTariff,
+  updateDamageTariff,
+  listMaintenanceLogs,
+  createMaintenanceLog,
+  updateMaintenanceLogStatus,
 };

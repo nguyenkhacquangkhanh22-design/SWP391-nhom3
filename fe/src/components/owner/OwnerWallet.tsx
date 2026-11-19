@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../app/AuthProvider";
 import { walletApi } from "../../services/walletApi";
+import { ownerApi } from "../../services/ownerApi";
 import type {
   BankAccount,
   WithdrawalRequest,
@@ -81,6 +82,9 @@ export default function OwnerWallet() {
   const [customBankName, setCustomBankName] = useState<string>("");
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [accountHolderName, setAccountHolderName] = useState<string>("");
+  const [qrCodeFile, setQrCodeFile] = useState<File | null>(null);
+  const [qrCodePreview, setQrCodePreview] = useState<string>("");
+  const [viewingQrUrl, setViewingQrUrl] = useState<string>("");
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
 
   // State Modal rút tiền
@@ -213,6 +217,23 @@ export default function OwnerWallet() {
     setTimeout(() => setCopiedCode(""), 2000);
   };
 
+  // Chọn file mã QR ngân hàng
+  const handleQrFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn tệp định dạng ảnh (JPG, PNG, WEBP).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Dung lượng ảnh mã QR không được vượt quá 5MB.");
+      return;
+    }
+    setQrCodeFile(file);
+    const previewUrl = URL.createObjectURL(file);
+    setQrCodePreview(previewUrl);
+  };
+
   // Thêm tài khoản ngân hàng
   const handleAddBankAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,16 +261,34 @@ export default function OwnerWallet() {
 
     setActionLoading(true);
     try {
+      let uploadedQrUrl = "";
+      if (qrCodeFile && token) {
+        try {
+          const uploadRes = await ownerApi.uploadPhoto(token, qrCodeFile);
+          uploadedQrUrl = uploadRes.url;
+        } catch (uploadErr) {
+          console.warn("Upload QR error, converting to data URL:", uploadErr);
+          uploadedQrUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(qrCodeFile);
+          });
+        }
+      }
+
       const res = await walletApi.addBankAccount(token || "", {
         bankName: finalBankName,
         accountNumber: accountNumber.trim(),
         accountHolderName: accountHolderName.trim(),
+        qrCodeUrl: uploadedQrUrl,
       });
       setBankAccounts(res.data || []);
       setSuccess("Thêm tài khoản ngân hàng thành công! Đang chờ Quản trị viên (Admin) xét duyệt.");
       setAccountNumber("");
       setAccountHolderName("");
       setCustomBankName("");
+      setQrCodeFile(null);
+      setQrCodePreview("");
       setShowAddForm(false);
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || "Không thể thêm tài khoản ngân hàng");
@@ -1071,6 +1110,51 @@ export default function OwnerWallet() {
                 </div>
               </div>
 
+              {/* Trường Upload Ảnh Mã QR Ngân Hàng */}
+              <div className="pt-2 border-t border-slate-800/80">
+                <label className="block text-slate-300 font-semibold mb-1 text-xs">
+                  Ảnh mã QR chuyển khoản (JPG/PNG - Khuyên dùng)
+                </label>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <label className="px-3.5 py-2 rounded-xl bg-[#1a2333] border border-dashed border-slate-600 hover:border-orange-500 text-slate-300 hover:text-white cursor-pointer transition-all flex items-center gap-2 text-xs">
+                    <span>📷</span>
+                    <span>{qrCodeFile ? "Đổi ảnh mã QR..." : "Tải lên ảnh mã QR..."}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={handleQrFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  {qrCodePreview && (
+                    <div className="flex items-center gap-2 bg-[#141d2d] border border-orange-500/40 rounded-xl p-1.5 pr-3">
+                      <img
+                        src={qrCodePreview}
+                        alt="QR Preview"
+                        className="w-10 h-10 object-cover rounded-lg border border-slate-700"
+                      />
+                      <span className="text-[11px] text-slate-300 truncate max-w-[140px]">
+                        {qrCodeFile?.name || "Ảnh mã QR"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQrCodeFile(null);
+                          setQrCodePreview("");
+                        }}
+                        className="text-rose-400 hover:text-rose-300 text-xs font-bold cursor-pointer ml-1"
+                        title="Xóa ảnh"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  <span className="text-[11px] text-slate-400">
+                    Mã QR giúp Quản trị viên (Admin) quét chuyển khoản ngay lập tức khi bạn rút tiền.
+                  </span>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1161,8 +1245,19 @@ export default function OwnerWallet() {
                         {acc.accountNumber}
                       </div>
 
-                      <div className="text-xs text-slate-400 font-semibold uppercase">
-                        {acc.accountHolderName}
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-400 font-semibold uppercase">
+                          {acc.accountHolderName}
+                        </div>
+                        {acc.qrCodeUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setViewingQrUrl(acc.qrCodeUrl || "")}
+                            className="px-2 py-0.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/40 text-[10px] text-cyan-300 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>📱</span> Mã QR
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1502,6 +1597,41 @@ export default function OwnerWallet() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+      {/* Modal xem mã QR của tài khoản ngân hàng */}
+      {viewingQrUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-[#141d2d] border border-cyan-500/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700">
+              <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <span>📱</span> Ảnh Mã QR Ngân Hàng
+              </h4>
+              <button
+                type="button"
+                onClick={() => setViewingQrUrl("")}
+                className="text-slate-400 hover:text-white text-base font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex justify-center p-3 bg-white rounded-xl">
+              <img
+                src={viewingQrUrl}
+                alt="Mã QR"
+                className="w-56 h-56 object-contain"
+              />
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setViewingQrUrl("")}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

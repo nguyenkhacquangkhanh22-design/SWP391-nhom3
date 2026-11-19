@@ -10,11 +10,17 @@ export interface EquipmentSchedule {
   note?: string;
 }
 
+export interface MultiDayDiscount {
+  min_days: number;
+  discount_percent: number;
+}
+
 export interface EquipmentPricing {
   price_per_hour: number;
   price_per_day: number;
   deposit_amount: number;
   weekend_rate?: number;
+  multi_day_discounts?: MultiDayDiscount[];
 }
 
 export interface Equipment {
@@ -35,6 +41,8 @@ export interface Equipment {
   cancellation_policy: string;
   visibility: "published" | "hidden" | "draft";
   status: "available" | "rented" | "maintenance" | "reserved";
+  quantity?: number;
+  available_quantity?: number;
   availability_schedule: EquipmentSchedule[];
   rating: number;
   review_count: number;

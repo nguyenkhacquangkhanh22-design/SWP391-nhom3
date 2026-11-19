@@ -14,6 +14,10 @@ const ownerRegistrationRoutes = require("./routes/ownerRegistrationRoutes");
 const moderatorRoutes = require("./routes/moderatorRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const opticalBenchmarkRoutes = require("./routes/opticalBenchmarkRoutes");
+const productionPackageRoutes = require("./routes/productionPackageRoutes");
+const preOwnedRoutes = require("./routes/preOwnedRoutes");
+const labMaintenanceRoutes = require("./routes/labMaintenanceRoutes");
 const handleError = require("./middleware/handleError");
 
 const app = express();
@@ -83,6 +87,10 @@ app.use("/api/owner-registration", ownerRegistrationRoutes);
 app.use("/api/moderator", moderatorRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/optical-benchmark", opticalBenchmarkRoutes);
+app.use("/api/production-packages", productionPackageRoutes);
+app.use("/api/pre-owned", preOwnedRoutes);
+app.use("/api/lab-maintenance", labMaintenanceRoutes);
 
 app.use(handleError);
 

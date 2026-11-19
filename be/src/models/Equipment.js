@@ -60,6 +60,16 @@ const equipmentSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    available_quantity: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
     pricing: {
       price_per_hour: {
         type: Number,
@@ -81,6 +91,12 @@ const equipmentSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      multi_day_discounts: [
+        {
+          min_days: { type: Number, required: true },
+          discount_percent: { type: Number, required: true, min: 0, max: 100 },
+        },
+      ],
     },
     status: {
       type: String,

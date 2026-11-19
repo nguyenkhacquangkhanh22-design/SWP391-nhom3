@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../app/AuthProvider";
 import { smartEquipApi } from "../../services/smartEquipApi";
 import type { Equipment } from "../../types/owner";
@@ -66,20 +66,26 @@ export default function OwnerEquipmentsTab({
 
   const [accessoriesInput, setAccessoriesInput] = useState("");
   const [condition, setCondition] = useState("Tốt (95%)");
+  const [quantity, setQuantity] = useState<number | string>(1);
   const [pricePerDay, setPricePerDay] = useState<number | string>(500000);
   const [pricePerHour, setPricePerHour] = useState<number | string>(50000);
   const [depositAmount, setDepositAmount] = useState<number | string>(0);
+  const [discount3Days, setDiscount3Days] = useState<number | string>(5);
+  const [discount7Days, setDiscount7Days] = useState<number | string>(15);
+  const [discount30Days, setDiscount30Days] = useState<number | string>(25);
   const [rentalTerms, setRentalTerms] = useState(
     "Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn."
   );
   const [cancellationPolicy, setCancellationPolicy] = useState("Miễn phí hủy trước 24 giờ.");
   const [visibility, setVisibility] = useState<"published" | "hidden" | "draft">("published");
 
-  // Form states for Schedule (UC_O05)
+  // Form states for Schedule (UC_O05 & UC_O15)
   const [scheduleStart, setScheduleStart] = useState("");
   const [scheduleEnd, setScheduleEnd] = useState("");
   const [scheduleStatus, setScheduleStatus] = useState<"available" | "blocked">("blocked");
   const [scheduleNote, setScheduleNote] = useState("");
+  const [blackoutsList, setBlackoutsList] = useState<any[]>([]);
+  const [loadingBlackouts, setLoadingBlackouts] = useState(false);
 
   // Form states for Status Update Request (UC_O16)
   const [targetStatus, setTargetStatus] = useState("maintenance");
@@ -259,9 +265,13 @@ export default function OwnerEquipmentsTab({
     setExternalUrlInput("");
     setAccessoriesInput("");
     setCondition("Tốt (95%)");
+    setQuantity(1);
     setPricePerDay(500000);
     setPricePerHour(50000);
     setDepositAmount(0);
+    setDiscount3Days(5);
+    setDiscount7Days(15);
+    setDiscount30Days(25);
     setRentalTerms("Người thuê chịu trách nhiệm bảo quản nguyên vẹn thiết bị và hoàn trả đúng hẹn.");
     setCancellationPolicy("Miễn phí hủy trước 24 giờ.");
     setVisibility("published");
@@ -281,9 +291,17 @@ export default function OwnerEquipmentsTab({
     setExternalUrlInput("");
     setAccessoriesInput(eq.accessories?.join(", ") || "");
     setCondition(eq.condition || "Tốt (95%)");
+    setQuantity(eq.quantity || 1);
     setPricePerDay(eq.pricing.price_per_day);
     setPricePerHour(eq.pricing.price_per_hour || 0);
     setDepositAmount(eq.pricing.deposit_amount);
+    const dTiers = eq.pricing.multi_day_discounts || [];
+    const t3 = dTiers.find((t) => t.min_days === 3);
+    const t7 = dTiers.find((t) => t.min_days === 7);
+    const t30 = dTiers.find((t) => t.min_days === 30);
+    setDiscount3Days(t3 ? t3.discount_percent : 5);
+    setDiscount7Days(t7 ? t7.discount_percent : 15);
+    setDiscount30Days(t30 ? t30.discount_percent : 25);
     setRentalTerms(eq.rental_terms || "");
     setCancellationPolicy(eq.cancellation_policy || "");
     setVisibility(eq.visibility);
@@ -306,8 +324,18 @@ export default function OwnerEquipmentsTab({
     const finalPricePerHour = pricePerHour === "" ? 0 : Number(pricePerHour);
     const finalDepositAmount = depositAmount === "" ? 0 : Number(depositAmount);
 
-    if (finalPricePerDay < 0 || finalPricePerHour < 0 || finalDepositAmount < 0) {
-      onError("Số tiền giá thuê và tiền cọc không được là số âm (phải ≥ 0).");
+    if (finalPricePerDay < 1000 || finalPricePerDay > 500000000) {
+      onError("Giá thuê theo ngày phải từ 1.000 đ đến 500.000.000 đ.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (finalPricePerHour < 0 || finalPricePerHour > 50000000) {
+      onError("Giá thuê theo giờ không hợp lệ (tối đa 50.000.000 đ).");
+      setIsSubmitting(false);
+      return;
+    }
+    if (finalDepositAmount < 0 || finalDepositAmount > 500000000) {
+      onError("Tiền đặt cọc không hợp lệ (tối đa 500.000.000 đ).");
       setIsSubmitting(false);
       return;
     }
@@ -322,10 +350,16 @@ export default function OwnerEquipmentsTab({
       images: finalImages,
       accessories: accessoriesList,
       condition,
+      quantity: Math.max(1, Number(quantity) || 1),
       pricing: {
         price_per_day: finalPricePerDay,
         price_per_hour: finalPricePerHour,
         deposit_amount: finalDepositAmount,
+        multi_day_discounts: [
+          { min_days: 3, discount_percent: Math.min(100, Math.max(0, Number(discount3Days) || 0)) },
+          { min_days: 7, discount_percent: Math.min(100, Math.max(0, Number(discount7Days) || 0)) },
+          { min_days: 30, discount_percent: Math.min(100, Math.max(0, Number(discount30Days) || 0)) },
+        ],
       },
       rental_terms: rentalTerms,
       cancellation_policy: cancellationPolicy,
@@ -395,6 +429,14 @@ export default function OwnerEquipmentsTab({
         status: scheduleStatus,
         note: scheduleNote,
       });
+      if (scheduleStatus === "blocked") {
+        await ownerApi.createBlackout(token, scheduleEquipment._id, {
+          start_date: scheduleStart,
+          end_date: scheduleEnd,
+          reason: scheduleNote || "Lịch bận chụp riêng của Chủ máy",
+          note: scheduleNote,
+        }).catch(() => {});
+      }
       onSuccess("Đã thiết lập lịch thiết bị khả dụng / khóa lịch thành công.");
       setScheduleEquipment(null);
       setScheduleStart("");
@@ -405,6 +447,27 @@ export default function OwnerEquipmentsTab({
       onError(err instanceof Error ? err.message : "Thiết lập lịch thất bại.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (scheduleEquipment && token) {
+      setLoadingBlackouts(true);
+      ownerApi.getBlackouts(token, scheduleEquipment._id)
+        .then((res) => setBlackoutsList(res.blackouts || []))
+        .catch(() => setBlackoutsList([]))
+        .finally(() => setLoadingBlackouts(false));
+    }
+  }, [scheduleEquipment, token]);
+
+  async function handleDeleteBlackout(blackoutId: string) {
+    if (!scheduleEquipment || !token) return;
+    try {
+      await ownerApi.deleteBlackout(token, scheduleEquipment._id, blackoutId);
+      setBlackoutsList((prev) => prev.filter((b) => b._id !== blackoutId));
+      onSuccess("Đã mở khóa lịch thiết bị thành công.");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Xóa lịch chặn thất bại.");
     }
   }
 
@@ -847,6 +910,9 @@ export default function OwnerEquipmentsTab({
                       ? "Đang thuê"
                       : "Bảo trì"}
                 </span>
+                <span className="owner-status-badge" style={{ background: "rgba(30, 58, 138, 0.6)", color: "#93c5fd", border: "1px solid rgba(59, 130, 246, 0.4)" }}>
+                  📦 Kho: {eq.available_quantity !== undefined ? eq.available_quantity : (eq.quantity || 1)} / {eq.quantity || 1}
+                </span>
               </div>
 
               <div className="owner-card-body">
@@ -1040,6 +1106,25 @@ export default function OwnerEquipmentsTab({
                     <option value="Tốt (95%)">Tốt (95%)</option>
                     <option value="Khá (85-90%)">Khá (85-90%)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="field-label">Số lượng máy trong kho (Chiếc/Bộ) *</label>
+                  <input
+                    className="input-field font-mono"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={quantity}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                      setQuantity(raw === "" ? "" : Math.max(1, Number(raw)));
+                    }}
+                    required
+                  />
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    📦 Quản lý tồn kho để khách biết số lượng còn sẵn
+                  </span>
                 </div>
 
                 <div>
@@ -1468,18 +1553,19 @@ export default function OwnerEquipmentsTab({
                   <div>
                     <label className="field-label">Giá thuê theo ngày (VND) *</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
-                      min={0}
+                      min={1000}
+                      max={500000000}
                       step={1}
                       value={pricePerDay}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setPricePerDay("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setPricePerDay(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setPricePerDay(Math.min(500000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
@@ -1487,50 +1573,67 @@ export default function OwnerEquipmentsTab({
                       }}
                       required
                     />
+                    {pricePerDay !== "" && !isNaN(Number(pricePerDay)) && (
+                      <span className="text-[11px] text-amber-400 font-mono mt-1 block">
+                        ≈ {Number(pricePerDay).toLocaleString("vi-VN")} đ/ngày
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="field-label">Giá thuê theo giờ (VND)</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
                       min={0}
+                      max={50000000}
                       step={1}
                       value={pricePerHour}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setPricePerHour("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setPricePerHour(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setPricePerHour(Math.min(50000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
                     />
+                    {pricePerHour !== "" && Number(pricePerHour) > 0 && (
+                      <span className="text-[11px] text-slate-400 font-mono mt-1 block">
+                        ≈ {Number(pricePerHour).toLocaleString("vi-VN")} đ/giờ
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="field-label">Tiền đặt cọc (VND - Không cần cọc: 0 đ)</label>
                     <input
-                      className="input-field"
+                      className="input-field font-mono"
                       type="number"
                       min={0}
+                      max={500000000}
                       step={1}
                       value={depositAmount}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "");
+                        if (raw === "") {
                           setDepositAmount("");
                         } else {
-                          const num = Number(val);
-                          if (!isNaN(num)) setDepositAmount(Math.max(0, num));
+                          const num = Number(raw);
+                          if (!isNaN(num)) setDepositAmount(Math.min(500000000, Math.max(0, num)));
                         }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "-" || e.key === "e") e.preventDefault();
                       }}
                     />
+                    {depositAmount !== "" && Number(depositAmount) > 0 && (
+                      <span className="text-[11px] text-emerald-400 font-mono mt-1 block">
+                        ≈ {Number(depositAmount).toLocaleString("vi-VN")} đ
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1552,6 +1655,54 @@ export default function OwnerEquipmentsTab({
                     value={cancellationPolicy}
                     onChange={(e) => setCancellationPolicy(e.target.value)}
                   />
+                </div>
+
+                {/* Multi-day progressive discounts (UC_O16) */}
+                <div style={{ marginTop: "14px", padding: "12px", background: "rgba(30, 41, 59, 0.5)", borderRadius: "8px", border: "1px dashed rgba(59, 130, 246, 0.4)" }}>
+                  <label className="field-label" style={{ color: "#60a5fa", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🎁</span> Ưu đãi giảm giá thuê dài ngày (Multi-day Discounts - UC_O16):
+                  </label>
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted)", margin: "2px 0 10px" }}>
+                    Tự động chiết khấu phần trăm (%) trên tiền thuê theo ngày khi khách thuê thời gian dài:
+                  </p>
+                  <div className="form-grid-3">
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 3 ngày (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount3Days}
+                        onChange={(e) => setDiscount3Days(e.target.value)}
+                        placeholder="5%"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 7 ngày (Tuần) (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount7Days}
+                        onChange={(e) => setDiscount7Days(e.target.value)}
+                        placeholder="15%"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label" style={{ fontSize: "0.78rem" }}>Thuê từ 30 ngày (Tháng) (%)</label>
+                      <input
+                        className="input-field font-mono"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={discount30Days}
+                        onChange={(e) => setDiscount30Days(e.target.value)}
+                        placeholder="25%"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1651,6 +1802,60 @@ export default function OwnerEquipmentsTab({
                 </button>
               </div>
             </form>
+
+            {/* Danh sách ngày bận hiện tại (UC_O15) */}
+            <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: "0.88rem", color: "#38bdf8" }}>
+                🔒 Các khoảng ngày đang chặn lịch (Blackout Dates - UC_O15):
+              </h4>
+              {loadingBlackouts ? (
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Đang tải lịch bận...</p>
+              ) : blackoutsList.length === 0 ? (
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Chưa có ngày nào bị chặn lịch riêng.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "160px", overflowY: "auto" }}>
+                  {blackoutsList.map((b) => (
+                    <div
+                      key={b._id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "rgba(239, 68, 68, 0.1)",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        borderRadius: "8px",
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 600, color: "#f87171" }}>
+                          {new Date(b.start_date).toLocaleDateString("vi-VN")} ➔ {new Date(b.end_date).toLocaleDateString("vi-VN")}
+                        </span>
+                        <span style={{ display: "block", color: "var(--muted)", fontSize: "0.75rem" }}>
+                          {b.reason} {b.note ? `(${b.note})` : ""}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBlackout(b._id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#f87171",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                        }}
+                        title="Mở khóa lịch"
+                      >
+                        ✕ Mở khóa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -245,6 +245,7 @@ export default function OwnerPortal() {
   }
 
   const approvedRequests = requests.filter((r) => r.status === "approved");
+  const roleClean = (user?.role || "").toLowerCase().replace(/[\s_-]/g, "");
 
   return (
     <div className="owner-portal-layout">
@@ -462,6 +463,54 @@ export default function OwnerPortal() {
           >
             Chợ thiết bị 🔍
           </Link>
+
+          {/* Nút chuyển sang Cổng Kiểm duyệt viên / Moderator cho System Admin & Moderator */}
+          {(roleClean === "systemadmin" || roleClean === "admin" || roleClean === "rentalmoderator") && (
+            <Link
+              to="/moderator"
+              className="button button-quiet"
+              style={{
+                fontSize: "0.85rem",
+                borderRadius: "10px",
+                border: "1px solid rgba(56, 189, 248, 0.4)",
+                background: "rgba(56, 189, 248, 0.08)",
+                color: "#38bdf8",
+                padding: "7px 14px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: 600,
+              }}
+              title="Chuyển sang Cổng Điều phối Kiểm duyệt viên (Moderator)"
+            >
+              <span>🛡️</span>
+              <span>Kiểm duyệt viên / Moderator</span>
+            </Link>
+          )}
+
+          {/* Nút quay về Quản trị Admin cho System Admin */}
+          {(roleClean === "systemadmin" || roleClean === "admin") && (
+            <Link
+              to="/admin"
+              className="button button-quiet"
+              style={{
+                fontSize: "0.85rem",
+                borderRadius: "10px",
+                border: "1px solid rgba(168, 85, 247, 0.4)",
+                background: "rgba(168, 85, 247, 0.08)",
+                color: "#c084fc",
+                padding: "7px 14px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: 600,
+              }}
+              title="Quay lại Trang Quản trị Hệ thống (Admin Dashboard)"
+            >
+              <span>⚙️</span>
+              <span>Quản trị Viên (System Admin)</span>
+            </Link>
+          )}
           <Link
             to="/profile"
             className="button button-secondary"

@@ -11,7 +11,7 @@ const walletController = {
    * Quy định: Tối đa 3 tài khoản, trạng thái mặc định là 'PENDING'
    */
   async addBankAccount(req, res) {
-    const { bankName, accountNumber, accountHolderName } = req.body;
+    const { bankName, accountNumber, accountHolderName, qrCodeUrl, qr_code_url } = req.body;
 
     if (!bankName || !bankName.trim()) {
       throw new AppError(400, "Vui lòng chọn hoặc nhập tên ngân hàng.");
@@ -26,6 +26,7 @@ const walletController = {
     const cleanAccountNumber = accountNumber.trim().replace(/\s+/g, "");
     const cleanHolderName = accountHolderName.trim().toUpperCase();
     const cleanBankName = bankName.trim();
+    const cleanQrCode = (qrCodeUrl || qr_code_url || "").trim();
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -54,6 +55,7 @@ const walletController = {
       bankName: cleanBankName,
       accountNumber: cleanAccountNumber,
       accountHolderName: cleanHolderName,
+      qrCodeUrl: cleanQrCode,
       status: "PENDING", // Trạng thái mặc định: Chờ Admin phê duyệt
       createdAt: new Date(),
     };
@@ -215,6 +217,7 @@ const walletController = {
         bankName: account.bankName,
         accountNumber: account.accountNumber,
         accountHolderName: account.accountHolderName,
+        qrCodeUrl: account.qrCodeUrl || "",
         bankAccountId: account._id,
       },
       status: "PENDING",

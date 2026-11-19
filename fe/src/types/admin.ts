@@ -9,6 +9,8 @@ export interface AdminStats {
   pendingDisputes?: number;
   pendingKyc?: number;
   openTickets?: number;
+  activeMaintenance?: number;
+  activeTemplates?: number;
 }
 
 export interface AdminOverviewResponse {
@@ -345,5 +347,365 @@ export interface AdminAuditLogsResponse {
     totalPages: number;
     totalCount: number;
     limit: number;
+  };
+}
+
+// ==========================================
+// CONTRACT TEMPLATES (UC_A26)
+// ==========================================
+export interface ContractTemplateField {
+  key: string;
+  label: string;
+  required: boolean;
+}
+
+export interface AdminContractTemplate {
+  _id: string;
+  template_code: string;
+  name: string;
+  version: number;
+  terms_content: string;
+  fields: ContractTemplateField[];
+  status: "draft" | "published" | "retired";
+  created_by?: { _id: string; name: string; email: string; role: string };
+  published_by?: { _id: string; name: string; email: string; role: string };
+  published_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminContractTemplatesResponse {
+  templates: AdminContractTemplate[];
+  stats: {
+    total: number;
+    draft: number;
+    published: number;
+    retired: number;
+  };
+}
+
+// ==========================================
+// EQUIPMENT STATUS REQUESTS (UC_A27)
+// ==========================================
+export interface AdminEquipmentStatusRequest {
+  _id: string;
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    condition?: string;
+    status?: string;
+    visibility?: string;
+    serial_number?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  current_status: string;
+  target_status: "available" | "maintenance" | "retired" | "damaged" | "hidden";
+  reason: string;
+  evidence_photos: string[];
+  status: "pending" | "approved" | "rejected";
+  moderator_note?: string;
+  reviewed_at?: string;
+  reviewed_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEquipmentStatusRequestsResponse {
+  requests: AdminEquipmentStatusRequest[];
+  stats: {
+    total: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+  };
+}
+
+// ==========================================
+// OWNER MEMBERSHIPS (UC_A28)
+// ==========================================
+export interface AdminMembership {
+  _id: string;
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    role?: string;
+  };
+  plan: "trial_7d" | "month_1" | "month_2" | "month_3";
+  duration_months: number;
+  amount: number;
+  order_code?: number;
+  payment_reference?: string;
+  status: "pending_payment" | "active" | "extended" | "expired" | "failed";
+  is_trial: boolean;
+  started_at?: string;
+  expires_at?: string;
+  paid_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMembershipsResponse {
+  memberships: AdminMembership[];
+  stats: {
+    total: number;
+    active: number;
+    expired: number;
+    pending: number;
+    totalRevenue: number;
+  };
+}
+
+// ==========================================
+// SETTLEMENTS & ESCROW AUDIT (UC_A29)
+// ==========================================
+export interface AdminSettlement {
+  _id: string;
+  settlement_code: string;
+  contract_id?: {
+    _id: string;
+    contract_code?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  renter_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  total_rental_fee: number;
+  overtime_fee: number;
+  damage_deduction: number;
+  deduction_reason?: string;
+  deposit_paid: number;
+  deposit_refund_to_renter: number;
+  platform_fee: number;
+  owner_payout_amount: number;
+  payout_status: "pending_owner_confirmation" | "pending_moderator_approval" | "confirmed" | "processing" | "paid" | "rejected";
+  bank_info?: {
+    bank_name?: string;
+    bank_code?: string;
+    account_number?: string;
+    account_holder?: string;
+  };
+  moderator_review?: {
+    moderator_id?: {
+      _id: string;
+      name: string;
+      email: string;
+    };
+    reviewed_at?: string;
+    note?: string;
+    transaction_code?: string;
+  };
+  paid_at?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminSettlementsResponse {
+  settlements: AdminSettlement[];
+  stats: {
+    total: number;
+    pendingApproval: number;
+    paid: number;
+    processing: number;
+    totalDepositRefund: number;
+    totalDamageDeduction: number;
+    totalPlatformFee: number;
+    totalOwnerPayout: number;
+  };
+}
+
+// ==========================================
+// HANDOVER & RETURN RECORDS (UC_A30)
+// ==========================================
+export interface AdminHandoverCheckItem {
+  item: string;
+  checked: boolean;
+  notes?: string;
+}
+
+export interface AdminHandoverDetail {
+  _id: string;
+  contract_id?: {
+    _id: string;
+    contract_code?: string;
+  };
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    serial_number?: string;
+    condition?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  renter_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  record_type: "handover" | "return";
+  record_date: string;
+  accessories_checklist: AdminHandoverCheckItem[];
+  physical_condition: string;
+  working_status: string;
+  evidence_photos: string[];
+  notes?: string;
+  missing_items?: string[];
+  damage_detected?: string;
+  estimated_damage_cost?: number;
+  owner_confirmed: boolean;
+  renter_confirmed: boolean;
+  moderator_review?: {
+    status: "pending" | "verified" | "needs_changes";
+    note?: string;
+    moderator_id?: {
+      _id: string;
+      name: string;
+      email: string;
+    };
+    reviewed_at?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminHandoverRecordsResponse {
+  records: AdminHandoverDetail[];
+  stats: {
+    total: number;
+    handover: number;
+    return: number;
+    pendingReview: number;
+    verified: number;
+  };
+}
+
+// ==========================================
+// RISK & FRAUD MONITOR (UC_A31)
+// ==========================================
+export interface AdminFlaggedUser {
+  user: User & { _id: string };
+  riskScore: number;
+  severity: "high" | "medium";
+  reasons: string[];
+  disputeCount: number;
+  damageIncidentCount: number;
+}
+
+export interface AdminRiskMonitorResponse {
+  flaggedUsers: AdminFlaggedUser[];
+  stats: {
+    totalFlagged: number;
+    highRiskCount: number;
+    mediumRiskCount: number;
+    activeDisputesCount: number;
+    safetyIndex: number;
+  };
+}
+
+// ==========================================
+// DAMAGE TARIFFS (UC_A32)
+// ==========================================
+export interface AdminDamageTariff {
+  _id: string;
+  category: string;
+  item_name: string;
+  severity: "minor" | "moderate" | "severe" | "total_loss";
+  standard_fee: number;
+  fee_type: "fixed" | "percentage_of_value";
+  description: string;
+  is_active: boolean;
+  updated_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminDamageTariffsResponse {
+  tariffs: AdminDamageTariff[];
+  categories: string[];
+  stats: {
+    total: number;
+    active: number;
+  };
+}
+
+// ==========================================
+// EQUIPMENT MAINTENANCE & SHUTTER TRACKING (UC_A33)
+// ==========================================
+export interface AdminMaintenanceLog {
+  _id: string;
+  equipment_id?: {
+    _id: string;
+    title?: string;
+    name?: string;
+    images?: string[];
+    serial_number?: string;
+    condition?: string;
+    status?: string;
+  };
+  owner_id?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  maintenance_type: "sensor_cleaning" | "shutter_replacement" | "lens_calibration" | "firmware_update" | "periodic_inspection";
+  current_shutter_count: number;
+  max_rated_shutter: number;
+  service_center: string;
+  cost: number;
+  scheduled_date: string;
+  completed_date?: string;
+  next_due_date?: string;
+  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  technician_notes?: string;
+  created_by?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMaintenanceLogsResponse {
+  logs: AdminMaintenanceLog[];
+  stats: {
+    total: number;
+    scheduled: number;
+    inProgress: number;
+    completed: number;
+    shutterAlerts: number;
+    totalCost: number;
   };
 }

@@ -141,6 +141,13 @@ export default function RentalHistoryPage() {
   const [viewingDisputeRental, setViewingDisputeRental] = useState<Rental | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Modal SOS Sự Cố Hiện Trường (UC_R17)
+  const [sosRental, setSosRental] = useState<Rental | null>(null);
+  const [sosIssueType, setSosIssueType] = useState("overheat");
+  const [sosDesc, setSosDesc] = useState("");
+  const [sosPhone, setSosPhone] = useState("");
+  const [isSendingSos, setIsSendingSos] = useState(false);
+
   // Đồng hồ thời gian thực đếm ngược hạn trả thiết bị theo thời gian thực trên thiết bị
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   useEffect(() => {
@@ -503,6 +510,26 @@ export default function RentalHistoryPage() {
       setError(err instanceof Error ? err.message : (err?.message || "Không thể gia hạn đơn thuê"));
     } finally {
       setIsExtending(false);
+    }
+  };
+
+  const handleSendSos = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !sosRental) return;
+    setIsSendingSos(true);
+    try {
+      await smartEquipApi.submitEmergencySOS(token, sosRental._id, {
+        issue_type: sosIssueType,
+        description: sosDesc.trim(),
+        contact_phone: sosPhone.trim(),
+      });
+      setNotice("Đã phát tín hiệu SOS khẩn cấp tới Chủ máy thành công!");
+      setSosRental(null);
+      setSosDesc("");
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : (err?.message || "Gửi tín hiệu SOS thất bại"));
+    } finally {
+      setIsSendingSos(false);
     }
   };
 
@@ -984,6 +1011,11 @@ export default function RentalHistoryPage() {
                         >
                           {statusBadge.label}
                         </span>
+                        {(r as any).extension_request?.status === "PENDING" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 animate-pulse">
+                            ⏳ Chờ duyệt gia hạn (+{(r as any).extension_request?.extra_days} ngày)
+                          </span>
+                        )}
                       </div>
 
                       <h3 className="font-bold text-base text-white truncate">
@@ -1507,6 +1539,21 @@ export default function RentalHistoryPage() {
                       </button>
                     )}
 
+                    {/* Nút SOS Kỹ thuật Khẩn cấp Hiện trường (UC_R17) */}
+                    {(isPaidConfirmed || upperStatus === "ACTIVE" || canReturn) && (
+                      <button
+                        onClick={() => {
+                          setSosRental(r);
+                          setSosPhone(user?.phone || "");
+                        }}
+                        className="px-3 py-2 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 hover:text-white font-semibold rounded-xl text-xs transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Báo sự cố kỹ thuật khẩn cấp trên hiện trường cho Chủ máy"
+                      >
+                        <span>🚨</span>
+                        <span>SOS Hiện trường</span>
+                      </button>
+                    )}
+
                     {/* Nút báo trả đồ (UC_R10) */}
                     {canReturn && (
                       <button
@@ -1920,14 +1967,14 @@ setNotice(
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Vui lòng chụp từ <strong>1 - 3 ảnh rõ nét</strong> các góc máy, màn hình, ống kính và linh phụ kiện ngay khi nhận máy từ shipper. Bằng chứng này sẽ bảo vệ bạn tuyệt đối khỏi các rủi ro bị đổ lỗi trầy xước lúc hoàn trả!
+              Vui lòng chụp từ <strong>1 - 6 ảnh rõ nét</strong> các góc máy: mặt trước, mặt sau màn hình, ống kính, cảm biến và phụ kiện ngay khi nhận máy từ shipper. Bằng chứng này sẽ bảo vệ bạn tuyệt đối khỏi các rủi ro bị đổ lỗi trầy xước lúc hoàn trả!
             </p>
 
             <form onSubmit={handleCheckinSubmit} className="space-y-4 text-xs">
               {/* Image Previews & Upload Button */}
               <div>
                 <label className="block font-bold text-slate-300 mb-2">
-                  Ảnh ngoại quan thực tế (Tối đa 3 ảnh) *
+                  Ảnh ngoại quan thực tế 6 góc (Tối đa 6 ảnh) *
                 </label>
                 <div className="flex items-center gap-3 flex-wrap">
                   {checkinImages.map((img, idx) => (
@@ -1944,7 +1991,7 @@ setNotice(
                     </div>
                   ))}
 
-                  {checkinImages.length < 3 && (
+                  {checkinImages.length < 6 && (
                     <label className="w-20 h-20 rounded-xl border-2 border-dashed border-blue-500/40 hover:border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 flex flex-col items-center justify-center cursor-pointer text-blue-300 transition-all">
                       <span className="text-2xl">📷</span>
                       <span className="text-[10px] font-bold mt-1">+ Thêm ảnh</span>
@@ -1955,11 +2002,11 @@ setNotice(
                         className="hidden"
                         onChange={(e) => {
                           const files = Array.from(e.target.files || []);
-                          files.slice(0, 3 - checkinImages.length).forEach((file) => {
+                          files.slice(0, 6 - checkinImages.length).forEach((file) => {
                             const reader = new FileReader();
                             reader.onloadend = () => {
                               if (reader.result) {
-                                setCheckinImages((prev) => [...prev, reader.result as string].slice(0, 3));
+                                setCheckinImages((prev) => [...prev, reader.result as string].slice(0, 6));
                               }
                             };
                             reader.readAsDataURL(file);
@@ -2773,6 +2820,104 @@ setNotice(
                 Hủy bỏ
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Emergency SOS (UC_R17) */}
+      {sosRental && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#121a29] border border-rose-500/50 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="px-5 py-4 bg-gradient-to-r from-rose-950/80 to-red-950/60 border-b border-rose-500/40 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span className="text-xl">🚨</span>
+                  <span>Cứu Hộ Kỹ Thuật Hiện Trường (SOS Emergency)</span>
+                </h3>
+                <p className="text-xs text-rose-300 mt-0.5">
+                  Đơn thuê: <strong>#{sosRental.rentalCode}</strong> • {sosRental.equipment?.title}
+                </p>
+              </div>
+              <button
+                onClick={() => setSosRental(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSendSos} className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-rose-200">
+                <p className="font-semibold flex items-center gap-1.5 mb-1">
+                  <span>⚡</span> Thông báo khẩn cấp:
+                </p>
+                <p className="text-[11px] leading-relaxed opacity-90">
+                  Khi gửi SOS, hệ thống sẽ phát tín hiệu chuông cảnh báo đỏ ưu tiên tức thời tới Chủ máy (Owner) để kịp thời hướng dẫn khắc phục hoặc điều chuyển thiết bị backup tới hỗ trợ bạn tại phim trường.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  Loại sự cố kỹ thuật đang gặp phải *
+                </label>
+                <select
+                  value={sosIssueType}
+                  onChange={(e) => setSosIssueType(e.target.value)}
+                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500 text-xs"
+                >
+                  <option value="overheat">Nóng máy / Quá nhiệt cảm biến (Overheat / Tự ngắt)</option>
+                  <option value="lens_jam">Kẹt ngàm / Lỗi chống rung Lens / Không lấy nét được</option>
+                  <option value="card_error">Lỗi ghi thẻ nhớ / Báo Format thẻ / Mất file quay</option>
+                  <option value="battery_drain">Sụt nguồn nhanh / Chai pin / Không nhận dock sạc</option>
+                  <option value="other">Sự cố va đập / Thời tiết xấu / Vấn đề hiện trường khác</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  Số điện thoại hiện trường để Chủ máy gọi lại ngay *
+                </label>
+                <input
+                  type="tel"
+                  placeholder="0987654321..."
+                  value={sosPhone}
+                  onChange={(e) => setSosPhone(e.target.value)}
+                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500 text-xs font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  Mô tả vắn tắt tình trạng sự cố *
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Mô tả mã lỗi báo trên màn hình hoặc biểu hiện máy để Chủ máy tư vấn..."
+                  value={sosDesc}
+                  onChange={(e) => setSosDesc(e.target.value)}
+                  className="w-full bg-[#1b273d] border border-[#2b3a56] rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 text-xs"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#212c42]">
+                <button
+                  type="button"
+                  onClick={() => setSosRental(null)}
+                  className="px-4 py-2 bg-[#1c2436] hover:bg-[#253248] text-slate-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingSos}
+                  className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingSos ? "Đang phát tín hiệu SOS..." : "🚨 Phát Tín Hiệu SOS Khẩn Cấp"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

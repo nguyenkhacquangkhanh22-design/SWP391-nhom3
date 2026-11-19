@@ -41,6 +41,42 @@ router.patch("/kyc-submissions/:userId/review", asyncHandler(adminController.rev
 // Audit logs lookup (UC_A21)
 router.get("/audit-logs", asyncHandler(adminController.listAuditLogs));
 
+// Digital Contract Templates management (UC_A26)
+router.get("/contract-templates", asyncHandler(adminController.listContractTemplates));
+router.post("/contract-templates", asyncHandler(adminController.createContractTemplate));
+router.put("/contract-templates/:id", asyncHandler(adminController.updateContractTemplate));
+router.patch("/contract-templates/:id/status", asyncHandler(adminController.updateContractTemplateStatus));
+
+// Equipment Status & Maintenance Requests review (UC_A27)
+router.get("/equipment-status-requests", asyncHandler(adminController.listEquipmentStatusRequests));
+router.patch("/equipment-status-requests/:id/review", asyncHandler(adminController.reviewEquipmentStatusRequest));
+
+// Owner Membership management & manual grants (UC_A28)
+router.get("/memberships", asyncHandler(adminController.listMemberships));
+router.post("/memberships/grant", asyncHandler(adminController.grantOwnerMembership));
+
+// Rental Settlement & Escrow Release Audit (UC_A29)
+router.get("/settlements", asyncHandler(adminController.listSettlements));
+router.patch("/settlements/:id/approve", asyncHandler(adminController.approveSettlement));
+
+// Handover & Return Records inspection (UC_A30)
+router.get("/handover-records", asyncHandler(adminController.listHandoverRecords));
+router.patch("/handover-records/:id/review", asyncHandler(adminController.reviewHandoverRecord));
+
+// Risk & Fraud Anomaly Monitor (UC_A31)
+router.get("/risk-monitor", asyncHandler(adminController.getRiskMonitor));
+router.patch("/risk-monitor/:userId/freeze", asyncHandler(adminController.freezeRiskUser));
+
+// Standard Damage Compensation Tariffs (UC_A32)
+router.get("/damage-tariffs", asyncHandler(adminController.listDamageTariffs));
+router.post("/damage-tariffs", asyncHandler(adminController.createDamageTariff));
+router.put("/damage-tariffs/:id", asyncHandler(adminController.updateDamageTariff));
+
+// Equipment Maintenance & Shutter Count Tracking (UC_A33)
+router.get("/maintenance-logs", asyncHandler(adminController.listMaintenanceLogs));
+router.post("/maintenance-logs", asyncHandler(adminController.createMaintenanceLog));
+router.patch("/maintenance-logs/:id/status", asyncHandler(adminController.updateMaintenanceLogStatus));
+
 // Quản lý Tài chính: Duyệt Ngân hàng & Duyệt Rút tiền (Finance Manager)
 const walletController = require("../controllers/walletController");
 router.get("/bank-accounts/pending", asyncHandler(walletController.getPendingBankAccounts));
