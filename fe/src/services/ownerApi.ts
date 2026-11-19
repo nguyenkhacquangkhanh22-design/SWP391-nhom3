@@ -193,6 +193,27 @@ export const ownerApi = {
       token
     ),
 
+  getBlackouts: (token: string, equipmentId: string) =>
+    request<{ blackouts: Array<{ _id: string; start_date: string; end_date: string; reason: string; note?: string }> }>(
+      `/api/owner/equipments/${equipmentId}/blackouts`,
+      { method: "GET" },
+      token
+    ),
+
+  createBlackout: (token: string, equipmentId: string, data: { start_date: string; end_date: string; reason: string; note?: string }) =>
+    request<{ message: string; blackout: any }>(
+      `/api/owner/equipments/${equipmentId}/blackouts`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteBlackout: (token: string, equipmentId: string, blackoutId: string) =>
+    request<{ message: string }>(
+      `/api/owner/equipments/${equipmentId}/blackouts/${blackoutId}`,
+      { method: "DELETE" },
+      token
+    ),
+
   submitStatusRequest: (
     token: string,
     id: string,

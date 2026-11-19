@@ -76,11 +76,13 @@ export default function OwnerEquipmentsTab({
   const [cancellationPolicy, setCancellationPolicy] = useState("Miễn phí hủy trước 24 giờ.");
   const [visibility, setVisibility] = useState<"published" | "hidden" | "draft">("published");
 
-  // Form states for Schedule (UC_O05)
+  // Form states for Schedule (UC_O05 & UC_O15)
   const [scheduleStart, setScheduleStart] = useState("");
   const [scheduleEnd, setScheduleEnd] = useState("");
   const [scheduleStatus, setScheduleStatus] = useState<"available" | "blocked">("blocked");
   const [scheduleNote, setScheduleNote] = useState("");
+  const [blackoutsList, setBlackoutsList] = useState<any[]>([]);
+  const [loadingBlackouts, setLoadingBlackouts] = useState(false);
 
   // Form states for Status Update Request (UC_O16)
   const [targetStatus, setTargetStatus] = useState("maintenance");
@@ -409,6 +411,14 @@ export default function OwnerEquipmentsTab({
         status: scheduleStatus,
         note: scheduleNote,
       });
+      if (scheduleStatus === "blocked") {
+        await ownerApi.createBlackout(token, scheduleEquipment._id, {
+          start_date: scheduleStart,
+          end_date: scheduleEnd,
+          reason: scheduleNote || "Lịch bận chụp riêng của Chủ máy",
+          note: scheduleNote,
+        }).catch(() => {});
+      }
       onSuccess("Đã thiết lập lịch thiết bị khả dụng / khóa lịch thành công.");
       setScheduleEquipment(null);
       setScheduleStart("");
@@ -419,6 +429,27 @@ export default function OwnerEquipmentsTab({
       onError(err instanceof Error ? err.message : "Thiết lập lịch thất bại.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (scheduleEquipment && token) {
+      setLoadingBlackouts(true);
+      ownerApi.getBlackouts(token, scheduleEquipment._id)
+        .then((res) => setBlackoutsList(res.blackouts || []))
+        .catch(() => setBlackoutsList([]))
+        .finally(() => setLoadingBlackouts(false));
+    }
+  }, [scheduleEquipment, token]);
+
+  async function handleDeleteBlackout(blackoutId: string) {
+    if (!scheduleEquipment || !token) return;
+    try {
+      await ownerApi.deleteBlackout(token, scheduleEquipment._id, blackoutId);
+      setBlackoutsList((prev) => prev.filter((b) => b._id !== blackoutId));
+      onSuccess("Đã mở khóa lịch thiết bị thành công.");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Xóa lịch chặn thất bại.");
     }
   }
 
@@ -1705,6 +1736,60 @@ export default function OwnerEquipmentsTab({
                 </button>
               </div>
             </form>
+
+            {/* Danh sách ngày bận hiện tại (UC_O15) */}
+            <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: "0.88rem", color: "#38bdf8" }}>
+                🔒 Các khoảng ngày đang chặn lịch (Blackout Dates - UC_O15):
+              </h4>
+              {loadingBlackouts ? (
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Đang tải lịch bận...</p>
+              ) : blackoutsList.length === 0 ? (
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Chưa có ngày nào bị chặn lịch riêng.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "160px", overflowY: "auto" }}>
+                  {blackoutsList.map((b) => (
+                    <div
+                      key={b._id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "rgba(239, 68, 68, 0.1)",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        borderRadius: "8px",
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 600, color: "#f87171" }}>
+                          {new Date(b.start_date).toLocaleDateString("vi-VN")} ➔ {new Date(b.end_date).toLocaleDateString("vi-VN")}
+                        </span>
+                        <span style={{ display: "block", color: "var(--muted)", fontSize: "0.75rem" }}>
+                          {b.reason} {b.note ? `(${b.note})` : ""}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBlackout(b._id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#f87171",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                        }}
+                        title="Mở khóa lịch"
+                      >
+                        ✕ Mở khóa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
